@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Slopsplorer</title>
+    <link rel="stylesheet" href="/slopsplorer.css" />
+    <link rel="stylesheet" href="/highlight-github-dark.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="app-header">
+        <div>
+          <h1>Slopsplorer</h1>
+          <p id="rootSummary" class="root-summary">Scanning the source tree...</p>
+        </div>
+      </header>
+
+      <section id="summaryCards" class="summary-cards" aria-label="Source tree totals"></section>
+
+      <section class="control-bar" aria-label="Explorer controls">
+        <label class="search-control">
+          <span class="sr-only">Search file paths</span>
+          <input id="pathSearch" type="search" placeholder="Search folders and files" />
+        </label>
+        <div class="visibility-switches" aria-label="File kind visibility">
+          <label class="flavor-filter flavor-filter-code"><input data-kind="code" type="checkbox" checked /> Code</label>
+          <label class="flavor-filter flavor-filter-test"><input data-kind="test" type="checkbox" checked /> Tests</label>
+          <label class="flavor-filter flavor-filter-text"><input data-kind="text" type="checkbox" checked /> Text / Markdown</label>
+          <label class="flavor-filter flavor-filter-i18n"><input data-kind="i18n" type="checkbox" checked /> i18n</label>
+          <label class="flavor-filter flavor-filter-data"><input data-kind="data" type="checkbox" checked /> Data</label>
+          <label class="flavor-filter flavor-filter-other"><input data-kind="other" type="checkbox" checked /> Config / other</label>
+          <label class="flavor-filter flavor-filter-generated"><input id="showGenerated" type="checkbox" /> Generated</label>
+        </div>
+      </section>
+
+      <section class="explorer-grid">
+        <aside class="panel tree-panel">
+          <div class="panel-heading">
+            <span>Source tree</span>
+            <div class="tree-heading-actions">
+              <span id="visibleTreeTotal" class="mono-stat"></span>
+              <button id="collapseTree" class="tree-heading-button" type="button">Collapse</button>
+              <button id="expandTree" class="tree-heading-button" type="button">Expand</button>
+            </div>
+          </div>
+          <nav id="sourceTree" class="source-tree" aria-label="Source folder tree"></nav>
+        </aside>
+
+        <section class="panel detail-panel">
+          <div id="folderDetail"></div>
+        </section>
+      </section>
+
+      <section class="panel hotspot-panel">
+        <div class="section-heading">
+          <div>
+            <div class="eyebrow">Within selected scope</div>
+            <h2>Largest files</h2>
+          </div>
+          <div class="hotspot-controls">
+            <label>Minimum tokens <input id="minimumTokens" type="number" min="0" step="500" value="0" /></label>
+            <label>Rank by
+              <select id="largestFilesSort">
+                <option value="tokens">Tokens</option>
+                <option value="branches">Branch nodes</option>
+                <option value="functions">Functions</option>
+                <option value="lines">Lines</option>
+              </select>
+            </label>
+          </div>
+        </div>
+        <div id="hotspotTable"></div>
+      </section>
+    </main>
+
+    <dialog id="sourceDialog" class="source-dialog">
+      <header>
+        <div>
+          <div class="eyebrow">Read-only source preview</div>
+          <h2 id="sourceDialogPath"></h2>
+        </div>
+        <button id="closeSourceDialog" class="quiet-button" type="button">Close</button>
+      </header>
+      <pre><code id="sourcePreview"></code></pre>
+    </dialog>
+
+    <script src="/highlight.min.js"></script>
+    <script type="module" src="/slopsplorer.js"></script>
+  </body>
+</html>

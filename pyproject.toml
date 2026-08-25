@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools==80.9.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "slopsplorer"
+version = "0.1.0"
+description = "Local, token-weighted source tree explorer"
+requires-python = ">=3.11"
+dependencies = [
+  "certifi==2026.7.22",
+  "charset-normalizer==3.5.1",
+  "idna==3.19",
+  "regex==2026.7.19",
+  "requests==2.34.2",
+  "tiktoken==0.13.0",
+  "urllib3==2.7.0",
+]
+
+[project.scripts]
+slopsplorer = "slopsplorer.cli:run_slopsplorer"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+slopsplorer = ["static/*"]
