@@ -138,14 +138,23 @@ export interface DetailView {
 export interface SummaryView {
   /** Unfiltered weight of the whole scanned tree, the fixed percentage baseline. */
   projectWeight: number;
-  /** Whole-project weight under the active visibility and inclusion switches. */
+  /**
+   * Folder these figures describe, echoed from the request's drill path.
+   *
+   * `""` is the scan root. Echoed rather than assumed, so a label cannot name
+   * one scope while the numbers beside it still describe another.
+   */
+  scopePath: string;
+  /** Unfiltered weight of the drill scope, the denominator of "of scope". */
+  scopeWeight: number;
+  /** Drill-scope weight under the active visibility and inclusion switches. */
   selectedWeight: number;
   selectedFiles: number;
   selectedTokens: number;
   selectedLines: number;
   selectedCodeLines: number;
   selectedCommentLines: number;
-  /** Top-level segments of the whole-project proportion ribbon. */
+  /** Top-level segments of the drill scope's proportion ribbon. */
   ribbon: FolderCard[];
 }
 

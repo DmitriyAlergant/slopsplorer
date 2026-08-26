@@ -67,3 +67,20 @@ describe("drill scope URL state", () => {
     expect(written).toContain("path=src%2Fweb%2Fcomponents");
   });
 });
+
+describe("drill scope URL state", () => {
+  it("pulls a selection that falls outside the drill scope onto the scope itself", () => {
+    const bare = readRequest("?drill=src");
+    expect(bare.selected).toEqual({ rowKind: "folder", path: "src" });
+    expect(bare.expanded).toEqual(["", "src"]);
+
+    const elsewhere = readRequest("?drill=src&path=tests&sel=files");
+    expect(elsewhere.selected).toEqual({ rowKind: "folder", path: "src" });
+  });
+
+  it("leaves a selection inside the drill scope alone", () => {
+    const inside = readRequest("?drill=src&path=src/web&sel=files");
+    expect(inside.selected).toEqual({ rowKind: "files", path: "src/web" });
+    expect(inside.expanded).toEqual(["", "src", "src/web"]);
+  });
+});

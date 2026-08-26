@@ -32,6 +32,11 @@ export function readRequest(search: string, stored: ViewPreferences | null = nul
   const embeddedPreferences = params.get("prefs") === "1";
   const path = params.get("path") ?? "";
   const drillPath = params.get("drill") ?? "";
+  // A link may name a drill scope without naming a selection inside it. The
+  // server clamps a selection that falls outside the scope, so the link state
+  // has to agree, or a panel would name a folder its contents do not cover.
+  const insideDrill = !drillPath || path === drillPath || path.startsWith(`${drillPath}/`);
+  const selectedPath = insideDrill ? path : drillPath;
   const rawKinds = params.get("kinds");
   const metric = RANK_METRICS.find((candidate) => candidate === params.get("rank"));
   const treeSort = TREE_SORTS.find((candidate) => candidate === params.get("tree"));
@@ -47,10 +52,13 @@ export function readRequest(search: string, stored: ViewPreferences | null = nul
     query: params.get("q") ?? "",
     excludedFolders: params.getAll("x"),
     excludedDirectFiles: params.getAll("xf"),
-    expanded: ancestorsOf(path),
+    expanded: ancestorsOf(selectedPath),
     treeSort: treeSort ?? (!embeddedPreferences && stored !== null ? stored.treeSort : "name"),
     drillPath,
-    selected: { rowKind: params.get("sel") === "files" ? "files" : "folder", path },
+    selected: {
+      rowKind: insideDrill && params.get("sel") === "files" ? "files" : "folder",
+      path: selectedPath,
+    },
     rank: {
       metric: metric ?? "tokens",
       minWeight: Math.max(0, Number(params.get("min")) || 0),

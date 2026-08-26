@@ -241,6 +241,9 @@ button { cursor: pointer; }
 /* ---- Mass ribbon: the signature element -------------------------------- */
 
 .ribbon { margin: 24px 0 20px; }
+/* The drill trail is only in the document while a scope is active, and it already
+   carries the gap below the filter bar, so the ribbon tightens up under it. */
+.drill-trail + .ribbon { margin-top: 8px; }
 .ribbon__readouts { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 26px; margin-bottom: 14px; }
 .readout { display: flex; flex-direction: column; gap: 1px; }
 .readout__value { font-size: 20px; font-weight: 600; letter-spacing: -0.02em; }
@@ -455,7 +458,7 @@ button { cursor: pointer; }
   align-items: center;
   gap: 5px;
   min-height: 30px;
-  margin: -2px 0 10px;
+  margin: 22px 0 0;
   color: var(--ink-soft);
   font-family: var(--font-mono);
   font-size: 11.5px;
@@ -694,9 +697,12 @@ button { cursor: pointer; }
   transition: background 120ms ease, color 120ms ease;
 }
 .detail__tool svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
-.detail__tool--absent { pointer-events: none; }
 .detail__tool--drill { color: var(--signal); }
 .detail__tool--drill:hover { background: var(--signal-wash); }
+/* Inert rather than gone: the folder already is the drill scope.
+   Muted by colour, never by opacity - the tooltip is a child and would fade with it. */
+.detail__tool--drill[aria-disabled="true"] { color: var(--rule-firm); cursor: default; }
+.detail__tool--drill[aria-disabled="true"]:hover { background: transparent; }
 /* Secondary to the drill arrow: a utility beside the name, not a way through it. */
 .detail__tool--copy { color: var(--ink-faint); }
 .detail__tool--copy:hover { background: var(--sunk); color: var(--ink); }

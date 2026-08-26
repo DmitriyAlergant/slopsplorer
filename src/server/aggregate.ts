@@ -362,6 +362,13 @@ function buildFolderCard(
   };
 }
 
+/**
+ * The panel for whatever the tree has selected.
+ *
+ * A `.` row is its own subject rather than a second way to name its folder: it
+ * reports the folder's own files, drops the child-folder tiles that belong to
+ * the subtree, and puts the folder itself into the heading trail.
+ */
 function buildDetail(
   index: ScanIndex,
   request: ViewRequest,
@@ -369,21 +376,19 @@ function buildDetail(
   baseline: number,
   scopeBaseline: number,
 ): DetailView {
-  // A `.` row names the same folder as the row above it, so it produces the same
-  // panel. The selection still narrows the ranking, which is what it is for.
+  const directFilesOnly = request.selected.rowKind === "files";
   const folder = index.folderByPath.get(request.selected.path) ?? index.folderByPath.get("")!;
-  const totals = aggregation.subtree.get(folder.path) ?? emptyTotals();
+  const totals = (directFilesOnly ? aggregation.direct : aggregation.subtree).get(folder.path) ?? emptyTotals();
 
   const cards: FolderCard[] = [];
-  let cardColumns = request.cardColumns;
-  const children = folder.childPaths
+  const cardColumns = request.cardColumns;
+  const children = directFilesOnly ? [] : folder.childPaths
     .map((childPath) => ({ node: index.folderByPath.get(childPath), totals: aggregation.subtree.get(childPath) }))
     .filter((entry): entry is { node: FolderNode; totals: Totals } => entry.node !== undefined && entry.totals !== undefined)
     .filter((entry) => entry.totals.files > 0)
     .sort((left, right) => right.totals.weight - left.totals.weight);
 
   const plan = planFolderCards(children.length, request.cardColumns);
-  cardColumns = plan.columns;
   if (plan.tiles < children.length) {
     const shown = plan.tiles - 1;
     for (const entry of children.slice(0, shown)) {
@@ -404,20 +409,22 @@ function buildDetail(
     .map((fileIndex) => index.files[fileIndex]!)
     .sort((left, right) => right[measure] - left[measure] || left.path.localeCompare(right.path));
 
-  // The heading already names the folder, so the trail stops at its parent.
+  // The heading already names its own subject, so the trail stops one step
+  // short of it: at the folder's parent, or at the folder itself for a `.`.
   const segments = folder.path.split("/").filter(Boolean);
+  const trailSegments = directFilesOnly ? segments : segments.slice(0, -1);
   const trail: PathCrumb[] = [];
-  if (segments.length > 0) {
+  if (directFilesOnly || segments.length > 0) {
     trail.push({ name: index.meta.rootName, path: "" });
     let ancestorPath = "";
-    for (const segment of segments.slice(0, -1)) {
+    for (const segment of trailSegments) {
       ancestorPath = ancestorPath ? `${ancestorPath}/${segment}` : segment;
       trail.push({ name: segment, path: ancestorPath });
     }
   }
 
   return {
-    title: folder.name,
+    title: directFilesOnly ? DIRECT_FILES_LABEL : folder.name,
     trail,
     weight: totals.weight,
     files: totals.files,
@@ -468,41 +475,45 @@ function rankFiles(index: ScanIndex, request: ViewRequest, aggregation: Aggregat
 }
 
 /**
- * Project-level headline figures under the active filters and tree checkboxes.
+ * Headline figures for the drill scope under the active filters and checkboxes.
  *
- * Ordinary folder selection drives the detail and ranking panels only. Keeping
- * it out of this summary lets the top ribbon remain a project-level instrument.
+ * Drilling is a move of the whole viewport, so this strip re-roots along with
+ * the tree beside it and the bar always splits the scope the tree is showing.
+ * Ordinary folder selection is navigation inside that scope and deliberately
+ * leaves these figures alone, so clicking through the detail panel cannot make
+ * the headline totals jump.
  */
 function buildSummary(
   index: ScanIndex,
   aggregation: Aggregation,
   baseline: number,
+  scopeRoot: FolderNode,
+  scopeBaseline: number,
 ): SummaryView {
-  const rootTotals = aggregation.subtree.get("") ?? emptyTotals();
-  const root = index.folderByPath.get("");
+  const scopeTotals = aggregation.subtree.get(scopeRoot.path) ?? emptyTotals();
   const ribbon: FolderCard[] = [];
-  if (root) {
-    const children = root.childPaths
-      .map((childPath) => ({ node: index.folderByPath.get(childPath), totals: aggregation.subtree.get(childPath) }))
-      .filter((entry): entry is { node: FolderNode; totals: Totals } => entry.node !== undefined && entry.totals !== undefined)
-      .filter((entry) => entry.totals.weight > 0)
-      .sort((left, right) => right.totals.weight - left.totals.weight);
-    for (const entry of children) {
-      ribbon.push(buildFolderCard(entry.node.name, entry.node.path, entry.totals, baseline, baseline));
-    }
-    const rootDirect = aggregation.direct.get("") ?? emptyTotals();
-    if (rootDirect.weight > 0) {
-      ribbon.push(buildFolderCard(DIRECT_FILES_LABEL, null, rootDirect, baseline, baseline));
-    }
+  const children = scopeRoot.childPaths
+    .map((childPath) => ({ node: index.folderByPath.get(childPath), totals: aggregation.subtree.get(childPath) }))
+    .filter((entry): entry is { node: FolderNode; totals: Totals } => entry.node !== undefined && entry.totals !== undefined)
+    .filter((entry) => entry.totals.weight > 0)
+    .sort((left, right) => right.totals.weight - left.totals.weight);
+  for (const entry of children) {
+    ribbon.push(buildFolderCard(entry.node.name, entry.node.path, entry.totals, baseline, scopeBaseline));
+  }
+  const scopeDirect = aggregation.direct.get(scopeRoot.path) ?? emptyTotals();
+  if (scopeDirect.weight > 0) {
+    ribbon.push(buildFolderCard(DIRECT_FILES_LABEL, null, scopeDirect, baseline, scopeBaseline));
   }
   return {
     projectWeight: baseline,
-    selectedWeight: rootTotals.weight,
-    selectedFiles: rootTotals.files,
-    selectedTokens: rootTotals.tokens,
-    selectedLines: rootTotals.lines,
-    selectedCodeLines: rootTotals.codeLines,
-    selectedCommentLines: rootTotals.commentLines,
+    scopePath: scopeRoot.path,
+    scopeWeight: scopeBaseline,
+    selectedWeight: scopeTotals.weight,
+    selectedFiles: scopeTotals.files,
+    selectedTokens: scopeTotals.tokens,
+    selectedLines: scopeTotals.lines,
+    selectedCodeLines: scopeTotals.codeLines,
+    selectedCommentLines: scopeTotals.commentLines,
     ribbon,
   };
 }
@@ -534,7 +545,7 @@ export function buildView(index: ScanIndex, request: ViewRequest): ViewResponse 
   return {
     meta: index.meta,
     measure: request.measure,
-    summary: buildSummary(index, aggregation, baseline),
+    summary: buildSummary(index, aggregation, baseline, scopeRoot, scopeBaseline),
     tree: buildTree(index, effectiveRequest, aggregation, exclusions, scopeRoot, scopeBaseline),
     detail: buildDetail(index, effectiveRequest, aggregation, baseline, scopeBaseline),
     ranked: ranked.rows,

@@ -514,7 +514,7 @@ describe("bar normalisation", () => {
 });
 
 describe("drill scope", () => {
-  it("makes a folder the common baseline for the main widgets without changing the project ribbon", () => {
+  it("makes a folder the common baseline for the main widgets", () => {
     const project = buildView(index, request());
     const drilled = buildView(index, request({
       drillPath: "src",
@@ -525,13 +525,48 @@ describe("drill scope", () => {
     expect(drilled.tree[0]).toMatchObject({ rowKind: "folder", path: "src", depth: 0 });
     expect(drilled.tree.every((row) => row.path === "src" || row.path.startsWith("src/"))).toBe(true);
     expect(drilled.summary.projectWeight).toBe(project.summary.projectWeight);
-    expect(drilled.summary.ribbon).toEqual(project.summary.ribbon);
 
     const scopeTokens = tokensOf("src/main.ts", "src/util.ts", "src/deep/helper.ts");
     const deep = folderRow(drilled.tree, "src/deep")!;
     expect(deep.shareOfScope).toBeCloseTo(deep.weight / scopeTokens, 10);
     expect(drilled.detail.shareOfScope).toBeCloseTo(deep.weight / scopeTokens, 10);
     expect(drilled.detail.shareOfProject).toBeCloseTo(deep.weight / project.summary.projectWeight, 10);
+  });
+
+  it("re-roots the headline figures and the ribbon onto the drilled folder", () => {
+    const project = buildView(index, request());
+    const drilled = buildView(index, request({ drillPath: "src", selected: { rowKind: "folder", path: "src" } }));
+
+    const scopeTokens = tokensOf("src/main.ts", "src/util.ts", "src/deep/helper.ts");
+    expect(drilled.summary.scopePath).toBe("src");
+    expect(drilled.summary.scopeWeight).toBe(scopeTokens);
+    expect(drilled.summary.selectedWeight).toBe(scopeTokens);
+    expect(drilled.summary.selectedFiles).toBe(3);
+    expect(drilled.summary.selectedTokens).toBe(scopeTokens);
+
+    // The bar splits the scope the tree beside it is showing: the child folder,
+    // then the pseudo-segment for the files sitting directly in src.
+    expect(drilled.summary.ribbon.map((segment) => segment.name)).toEqual(["deep", "."]);
+    expect(drilled.summary.ribbon.reduce((total, segment) => total + segment.weight, 0)).toBe(scopeTokens);
+    const deepSegment = drilled.summary.ribbon.find((segment) => segment.path === "src/deep")!;
+    expect(deepSegment.weight).toBe(tokensOf("src/deep/helper.ts"));
+    expect(deepSegment.shareOfScope).toBeCloseTo(deepSegment.weight / scopeTokens, 10);
+    expect(deepSegment.shareOfProject).toBeCloseTo(deepSegment.weight / project.summary.projectWeight, 10);
+
+    expect(project.summary.scopePath).toBe("");
+    expect(project.summary.scopeWeight).toBe(project.summary.projectWeight);
+  });
+
+  it("counts only the drilled subtree when a checkbox outside it is cleared", () => {
+    const drilled = buildView(index, request({ drillPath: "src" }));
+    const testsExcluded = buildView(index, request({ drillPath: "src", excludedFolders: ["tests"] }));
+    const srcDeepExcluded = buildView(index, request({ drillPath: "src", excludedFolders: ["src/deep"] }));
+
+    expect(testsExcluded.summary.selectedWeight).toBe(drilled.summary.selectedWeight);
+    expect(srcDeepExcluded.summary.selectedWeight).toBe(
+      drilled.summary.selectedWeight - tokensOf("src/deep/helper.ts"),
+    );
+    expect(srcDeepExcluded.summary.scopeWeight).toBe(drilled.summary.scopeWeight);
   });
 
   it("falls back to the drill root when a stale selection lies outside the scope", () => {
@@ -654,14 +689,33 @@ describe("folder heading", () => {
     expect(root.detail.trail).toEqual([]);
   });
 
-  it("renders the same panel whether a folder or its own-files row is selected", () => {
-    // The `.` row names the same folder, so only the ranking narrows.
-    const folder = buildView(index, request({ selected: { rowKind: "folder", path: "src/deep" } }));
-    const direct = buildView(index, request({ selected: { rowKind: "files", path: "src/deep" } }));
+  it("makes the own-files row its own subject rather than a second view of its folder", () => {
+    const folder = buildView(index, request({ selected: { rowKind: "folder", path: "src" } }));
+    const direct = buildView(index, request({ selected: { rowKind: "files", path: "src" } }));
 
-    expect(direct.detail).toEqual(folder.detail);
-    expect(direct.detail.title).toBe("deep");
-    expect(direct.rankScope).toBe("src/deep/.");
-    expect(folder.rankScope).toBe("src/deep");
+    expect(folder.detail.title).toBe("src");
+    expect(folder.detail.cards.map((card) => card.path)).toEqual(["src/deep"]);
+    expect(folder.detail.weight).toBe(tokensOf("src/main.ts", "src/util.ts", "src/deep/helper.ts"));
+
+    // The heading becomes slopsplorer/src/., the tiles belong to the subtree
+    // rather than to the loose files, and every figure is the loose files'.
+    expect(direct.detail.title).toBe(".");
+    expect(direct.detail.trail.map((crumb) => crumb.path)).toEqual(["", "src"]);
+    expect(direct.detail.cards).toEqual([]);
+    expect(direct.detail.weight).toBe(tokensOf("src/main.ts", "src/util.ts"));
+    expect(direct.detail.files).toBe(2);
+    expect(direct.detail.shareOfProject)
+      .toBeCloseTo(direct.detail.weight / direct.summary.projectWeight, 10);
+
+    expect(direct.rankScope).toBe("src/.");
+    expect(folder.rankScope).toBe("src");
+  });
+
+  it("keeps the root's own-files row addressable from the scan root", () => {
+    const view = buildView(index, request({ selected: { rowKind: "files", path: "" } }));
+
+    expect(view.detail.title).toBe(".");
+    expect(view.detail.trail.map((crumb) => crumb.name)).toEqual([index.meta.rootName]);
+    expect(view.detail.weight).toBe(tokensOf("README.md"));
   });
 });

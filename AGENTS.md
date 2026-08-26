@@ -71,6 +71,24 @@ A grammar is chosen by extension first and by `#!` line second.
 The whole Bourne family - `.sh`, `.bash`, `.ksh`, `.bats`, `.zsh`, and any script whose shebang names `sh`, `bash`, `zsh`, `ksh`, `dash`, `ash`, or `mksh` - runs through the `bash` grammar.
 Fish is deliberately not routed there: it uses `#` comments but its syntax is not Bourne shell, so it takes the marker fallback instead.
 
+### Scope, selection, and drill
+
+Three controls narrow what the page shows, and they are deliberately different things.
+
+The kind filters and the search box decide which files are counted at all.
+The tree checkboxes decide which of those count toward the totals.
+Drill decides which folder the page is looking at.
+
+Drill moves the whole viewport, so everything above the workspace re-roots with the tree: the headline readouts, the proportion bar, and the percentage baselines all describe the drilled folder.
+The strip keeps one project anchor while drilled, the "of project" readout, so the global figure never disappears.
+Ordinary folder selection is navigation inside that scope and moves the detail and ranking panels only, which is what keeps the headline totals still while you click around.
+
+Selection is clamped to the drill scope on both sides.
+`buildView` substitutes the scope root for a selection that falls outside it, and `readRequest` does the same to a link, so a panel can never name a folder its contents do not cover.
+
+A `.` row is its own subject, not a second way to name its folder.
+Selecting it reports the folder's own files: the heading reads `root/folder/.`, the child-folder tiles disappear because they belong to the subtree rather than to the loose files, and every figure in the panel is the loose files' own.
+
 ### The primary measure
 
 `ViewRequest.measure` selects the unit every aggregation is expressed in: `tokens`, `lines`, or `codeLines`.

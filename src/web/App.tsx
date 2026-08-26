@@ -300,17 +300,18 @@ export function App(): React.JSX.Element {
         onMeasureChange={setMeasure}
       />
 
+      {/* The trail names the scope the ribbon below it measures, so it reads first. */}
+      <DrillBreadcrumbs
+        rootName={view?.meta.rootName ?? "Project"}
+        drillPath={request.drillPath}
+        onDrill={drill}
+      />
+
       <MassRibbon
         summary={view?.summary ?? null}
         measure={view?.measure ?? request.measure}
         selectedPath={request.selected.rowKind === "folder" ? request.selected.path : null}
         onSelect={(path) => select("folder", path)}
-      />
-
-      <DrillBreadcrumbs
-        rootName={view?.meta.rootName ?? "Project"}
-        drillPath={request.drillPath}
-        onDrill={drill}
       />
 
       {error ? <p className="error-banner" role="status">{error}</p> : null}
@@ -338,7 +339,8 @@ export function App(): React.JSX.Element {
           measure={view?.measure ?? request.measure}
           path={request.selected.path}
           onSelectFolder={(path) => select("folder", path)}
-          canDrill={request.selected.path !== request.drillPath}
+          directFilesOnly={request.selected.rowKind === "files"}
+          canDrill={request.selected.rowKind === "folder" && request.selected.path !== request.drillPath}
           onDrill={() => drill(request.selected.path)}
           onOpenSource={setSourcePath}
           onCapacityChange={setCardColumns}
