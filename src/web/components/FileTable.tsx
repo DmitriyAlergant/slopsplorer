@@ -3,6 +3,7 @@ import { displayFilePath } from "../displayPath.ts";
 import { FILE_KIND_DETAILS } from "../fileKinds.ts";
 import { count, percent } from "../format.ts";
 import { CopyPathButton } from "./CopyPathButton.tsx";
+import { Tooltip, tooltipHandlers } from "./Tooltip.tsx";
 
 interface Props {
   files: readonly FileRow[];
@@ -47,8 +48,9 @@ export function FileTable({ files, measure, displayRoot, prefixRelativePaths, on
                 </td>
                 <td className="metrics__path">
                   <span className="metrics__file">
-                    <button type="button" className="link" onClick={() => onOpenSource(file.path)} title={displayedPath}>
+                    <button type="button" className="link" onClick={() => onOpenSource(file.path)} {...tooltipHandlers}>
                       {displayedPath}
+                      <Tooltip compact>{file.path}</Tooltip>
                     </button>
                     <CopyPathButton path={file.path} />
                   </span>
@@ -56,8 +58,9 @@ export function FileTable({ files, measure, displayRoot, prefixRelativePaths, on
                 <td data-active={measure === "tokens"}>{count(file.tokens)}</td>
                 <td data-active={measure === "lines"}>{count(file.lines)}</td>
                 <td data-active={measure === "codeLines"}>{count(file.codeLines)}</td>
-                <td title={`${percent(commentShare)} of lines are comment`}>
+                <td {...tooltipHandlers}>
                   {count(file.commentLines)}
+                  <Tooltip compact>{`${percent(commentShare)} of lines are comment`}</Tooltip>
                   {commentShare >= 0.4 && file.lines >= 40 ? <i className="dot" aria-hidden="true" /> : null}
                 </td>
                 <td>{file.language ? count(file.functions) : "-"}</td>

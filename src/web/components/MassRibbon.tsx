@@ -1,5 +1,6 @@
 import type { Measure, SummaryView } from "../../shared/api.ts";
 import { compact, count, measureName, percent } from "../format.ts";
+import { Tooltip, tooltipHandlers } from "./Tooltip.tsx";
 
 interface Props {
   summary: SummaryView | null;
@@ -62,9 +63,10 @@ export function MassRibbon({ summary, measure, selectedPath, onSelect }: Props):
                 className="ribbon__segment ribbon__segment--static"
                 style={{ width: `${share * 100}%` }}
                 data-shade={shade}
-                title={label}
+                {...tooltipHandlers}
               >
                 <SegmentLabel share={share} name={segment.name} weight={segment.weight} />
+                <Tooltip compact>{label}</Tooltip>
               </div>
             );
           }
@@ -76,11 +78,12 @@ export function MassRibbon({ summary, measure, selectedPath, onSelect }: Props):
               style={{ width: `${share * 100}%` }}
               data-shade={shade}
               data-selected={selected}
-              title={label}
               aria-label={label}
               onClick={() => onSelect(segment.path!)}
+              {...tooltipHandlers}
             >
               <SegmentLabel share={share} name={segment.name} weight={segment.weight} />
+              <Tooltip compact>{label}</Tooltip>
             </button>
           );
         })}

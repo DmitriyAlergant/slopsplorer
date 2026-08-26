@@ -1,7 +1,7 @@
 import type { Measure } from "../../shared/api.ts";
 import { MEASURES } from "../../shared/api.ts";
 import { measureHeading } from "../format.ts";
-import { positionTooltip } from "../tooltip.ts";
+import { Tooltip, tooltipHandlers } from "./Tooltip.tsx";
 
 interface Props {
   measure: Measure;
@@ -33,14 +33,11 @@ export function MeasureSwitch({ measure, onChange }: Props): React.JSX.Element {
             className="measure__option"
             aria-pressed={candidate === measure}
             aria-describedby={`measure-tooltip-${candidate}`}
-            onMouseEnter={positionTooltip}
-            onFocus={positionTooltip}
             onClick={() => onChange(candidate)}
+            {...tooltipHandlers}
           >
             {measureHeading(candidate)}
-            <span className="tooltip" id={`measure-tooltip-${candidate}`} role="tooltip">
-              {MEASURE_DESCRIPTIONS[candidate]}
-            </span>
+            <Tooltip id={`measure-tooltip-${candidate}`}>{MEASURE_DESCRIPTIONS[candidate]}</Tooltip>
           </button>
         ))}
       </div>

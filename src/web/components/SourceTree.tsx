@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import type { Measure, TreeRow, TreeSort } from "../../shared/api.ts";
 import { count, measureHeading } from "../format.ts";
+import { Tooltip, tooltipHandlers } from "./Tooltip.tsx";
 
 interface Props {
   rows: readonly TreeRow[];
@@ -22,6 +23,21 @@ function Chevron({ open }: { open: boolean }): React.JSX.Element {
   return (
     <svg className="chevron" data-open={open} viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
       <path d="M6 3.5L10.5 8L6 12.5" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+/**
+ * Marks the column the tree is ordered by, and which way that order runs.
+ *
+ * Each column sorts one way only: names ascend, weight descends. A caret that
+ * never flips is a statement of fact rather than a control, so it is drawn on
+ * the active column alone.
+ */
+function SortCaret({ ascending }: { ascending: boolean }): React.JSX.Element {
+  return (
+    <svg className="tree__caret" data-ascending={ascending} viewBox="0 0 10 10" width="9" height="9" aria-hidden="true">
+      <path d="M1.5 3.5L5 7L8.5 3.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -56,11 +72,6 @@ export function SourceTree({
       <div className="panel__head">
         <h2>Source tree</h2>
         <div className="panel__tools">
-          <div className="tree__sort" role="group" aria-label="Sort source tree">
-            <button type="button" aria-pressed={sort === "name"} onClick={() => onSortChange("name")}>Name</button>
-            <span aria-hidden="true">|</span>
-            <button type="button" aria-pressed={sort === "weight"} onClick={() => onSortChange("weight")}>{measureHeading(measure)}</button>
-          </div>
           <button
             type="button"
             className="button button--tiny"
@@ -72,6 +83,32 @@ export function SourceTree({
       </div>
 
       <div className="tree__scroll">
+        {/* Aligned to the row grid, so each heading sits over the column it orders. */}
+        <div className="tree__columns">
+          <span className="tree__disclose tree__disclose--leaf" aria-hidden="true" />
+          <span aria-hidden="true" />
+          <button
+            type="button"
+            className="tree__column"
+            aria-pressed={sort === "name"}
+            aria-label="Sort by name"
+            onClick={() => onSortChange("name")}
+          >
+            Name
+            {sort === "name" ? <SortCaret ascending /> : null}
+          </button>
+          <button
+            type="button"
+            className="tree__column tree__column--weight"
+            aria-pressed={sort === "weight"}
+            aria-label={`Sort by ${measureHeading(measure).toLowerCase()}`}
+            onClick={() => onSortChange("weight")}
+          >
+            {sort === "weight" ? <SortCaret ascending={false} /> : null}
+            {measureHeading(measure)}
+          </button>
+        </div>
+
         {rows.length === 0 ? (
           <p className="empty">Nothing matches the current filters.</p>
         ) : (
@@ -103,16 +140,17 @@ export function SourceTree({
                 onChange={() => (row.rowKind === "files" ? onToggleDirectFiles(row) : onToggleFolder(row))}
               />
 
+              {/* Only the `.` row needs explaining. A folder row says what it is. */}
               <button
                 type="button"
                 className="tree__label"
                 onClick={() => onSelect(row.rowKind, row.path)}
-                onDoubleClick={() => {
-                  if (row.rowKind === "folder") onDrill(row.path);
-                }}
-                title={row.rowKind === "folder" ? `${row.path || row.name} - double-click to drill down` : row.path || row.name}
+                // A `.` row names the same folder, so it drills to the same place.
+                onDoubleClick={() => onDrill(row.path)}
+                {...(row.rowKind === "files" ? tooltipHandlers : {})}
               >
                 {row.name}
+                {row.rowKind === "files" ? <Tooltip compact>Files directly in this folder</Tooltip> : null}
               </button>
 
               <span className="tree__weight">

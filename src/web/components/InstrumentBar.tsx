@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { ScanMeta } from "../../shared/api.ts";
 import { count, since } from "../format.ts";
+import { Tooltip, tooltipHandlers } from "./Tooltip.tsx";
 
 interface Props {
   meta: ScanMeta | null;
@@ -70,11 +71,12 @@ export function InstrumentBar({ meta, rescanning, opening, onRescan, onOpen, onI
           <button
             type="button"
             className="instrument__path"
-            title={meta?.rootPath ?? ""}
             onClick={() => setEditingPath(true)}
             disabled={!meta || scanning}
+            {...tooltipHandlers}
           >
             {meta ? meta.rootPath : "Scanning the source tree"}
+            <Tooltip compact>{meta ? `${meta.rootPath} - click to scan another folder` : "Scanning the source tree"}</Tooltip>
           </button>
         )}
       </div>

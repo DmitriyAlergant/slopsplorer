@@ -1,5 +1,6 @@
 import type { FlavorSlice, Measure } from "../../shared/api.ts";
 import { count, measureName } from "../format.ts";
+import { Tooltip, tooltipHandlers } from "./Tooltip.tsx";
 
 interface Props {
   slices: readonly FlavorSlice[];
@@ -28,8 +29,10 @@ export function FlavorBar({ slices, measure, scale = 1 }: Props): React.JSX.Elem
             className="flavor-bar__slice"
             data-flavor={slice.flavor}
             style={{ width: `${total > 0 ? (slice.weight / total) * 100 : 0}%` }}
-            title={`${slice.flavor}: ${count(slice.weight)} ${measureName(measure)}`}
-          />
+            {...tooltipHandlers}
+          >
+            <Tooltip compact>{`${slice.flavor}: ${count(slice.weight)} ${measureName(measure)}`}</Tooltip>
+          </span>
         ))}
       </div>
     </div>

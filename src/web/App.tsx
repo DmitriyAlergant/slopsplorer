@@ -3,6 +3,7 @@ import type { FileKind, Measure, TreeRow, ViewRequest, ViewResponse } from "../s
 import { MEASURES } from "../shared/api.ts";
 import { fetchView, openRoot, rescan } from "./api.ts";
 import { readPreferences, readTreePanelRatio, writePreferences, writeTreePanelRatio } from "./preferences.ts";
+import { closeTooltip } from "./tooltip.ts";
 import { readRequest, selectionKey, writeRequest } from "./urlState.ts";
 import { FilterBar } from "./components/FilterBar.tsx";
 import { DrillBreadcrumbs } from "./components/DrillBreadcrumbs.tsx";
@@ -112,6 +113,10 @@ export function App(): React.JSX.Element {
       controller.abort();
     };
   }, [request]);
+
+  // A new view re-lays out the tree and the tables, so whatever a tooltip was
+  // describing may no longer sit under the pointer.
+  useEffect(closeTooltip, [view]);
 
   const patch = useCallback((change: Partial<ViewRequest>) => {
     setRequest((previous) => ({ ...previous, ...change }));
@@ -333,7 +338,7 @@ export function App(): React.JSX.Element {
           measure={view?.measure ?? request.measure}
           path={request.selected.path}
           onSelectFolder={(path) => select("folder", path)}
-          canDrill={request.selected.rowKind === "folder" && request.selected.path !== request.drillPath}
+          canDrill={request.selected.path !== request.drillPath}
           onDrill={() => drill(request.selected.path)}
           onOpenSource={setSourcePath}
           onCapacityChange={setCardColumns}
@@ -346,6 +351,7 @@ export function App(): React.JSX.Element {
         total={view?.rankedTotal ?? 0}
         scopePath={request.selected.path}
         directFilesOnly={request.selected.rowKind === "files"}
+        rootName={view?.meta.rootName ?? ""}
         displayRoot={request.drillPath}
         rank={request.rank}
         onRankChange={setRank}
@@ -360,7 +366,7 @@ export function App(): React.JSX.Element {
             <span className="progress-modal__spinner" aria-hidden="true" />
             <div className="progress-modal__copy">
               <h2 id="opening-folder-title">Opening folder</h2>
-              <p className="progress-modal__path" title={openingRoot}>{openingRoot}</p>
+              <p className="progress-modal__path">{openingRoot}</p>
               <p className="progress-modal__hint">Scanning and measuring the source tree. Large folders can take a moment.</p>
             </div>
           </div>

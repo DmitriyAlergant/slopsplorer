@@ -1,7 +1,7 @@
 import { FILE_KINDS, type FileKind, type Measure, type ViewRequest } from "../../shared/api.ts";
 import { FILE_KIND_DETAILS } from "../fileKinds.ts";
-import { positionTooltip } from "../tooltip.ts";
 import { MeasureSwitch } from "./MeasureSwitch.tsx";
+import { Tooltip, tooltipHandlers } from "./Tooltip.tsx";
 
 interface Props {
   request: ViewRequest;
@@ -36,8 +36,7 @@ export function FilterBar({ request, onToggleKind, onToggleGenerated, onQueryCha
               className="chip"
               data-flavor={kind}
               data-on={request.kinds.includes(kind)}
-              onMouseEnter={positionTooltip}
-              onFocus={positionTooltip}
+              {...tooltipHandlers}
             >
               <input
                 type="checkbox"
@@ -46,7 +45,7 @@ export function FilterBar({ request, onToggleKind, onToggleGenerated, onQueryCha
                 onChange={() => onToggleKind(kind)}
               />
               {label}
-              <span className="tooltip" id={`flavor-tooltip-${kind}`} role="tooltip">{description}</span>
+              <Tooltip id={`flavor-tooltip-${kind}`}>{description}</Tooltip>
             </label>
           );
         })}
@@ -54,8 +53,7 @@ export function FilterBar({ request, onToggleKind, onToggleGenerated, onQueryCha
           className="chip"
           data-flavor="generated"
           data-on={request.showGenerated}
-          onMouseEnter={positionTooltip}
-          onFocus={positionTooltip}
+          {...tooltipHandlers}
         >
           <input
             type="checkbox"
@@ -64,7 +62,7 @@ export function FilterBar({ request, onToggleKind, onToggleGenerated, onQueryCha
             onChange={onToggleGenerated}
           />
           Generated
-          <span className="tooltip" id="flavor-tooltip-generated" role="tooltip">{GENERATED_DESCRIPTION}</span>
+          <Tooltip id="flavor-tooltip-generated">{GENERATED_DESCRIPTION}</Tooltip>
         </label>
       </div>
 

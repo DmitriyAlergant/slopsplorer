@@ -103,9 +103,22 @@ export interface FlavorSlice {
   weight: number;
 }
 
+/** One navigable step of the folder heading's path. */
+export interface PathCrumb {
+  name: string;
+  /** Folder path this step selects. `""` is the scan root. */
+  path: string;
+}
+
 export interface DetailView {
   title: string;
-  breadcrumb: string;
+  /**
+   * Ancestors of the heading, nearest last, each one selectable.
+   *
+   * Sent as steps rather than as a joined string, so the client never has to
+   * take a path apart to know where a segment leads.
+   */
+  trail: PathCrumb[];
   /** Folder total in the active measure. */
   weight: number;
   files: number;

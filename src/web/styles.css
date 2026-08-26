@@ -89,7 +89,7 @@ body:has(.viewer[open]) { overflow: hidden; }
 
 /* Every figure in this interface is meant to be compared vertically. */
 .mono, .readout__value, .tree__weight, .metrics td, .metrics th,
-.instrument__path, .crumb, .fact dd, .ribbon__weight, .command {
+.instrument__path, .fact dd, .ribbon__weight, .command {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
 }
@@ -268,9 +268,9 @@ button { cursor: pointer; }
   border: 0;
   overflow: hidden;
   color: oklch(0.99 0 0);
-  transition: filter 120ms ease;
+  transition: box-shadow 120ms ease;
 }
-.ribbon__segment:hover { filter: brightness(1.14); }
+.ribbon__segment:hover { box-shadow: inset 0 0 0 100vmax oklch(1 0 0 / 0.11); }
 .ribbon__segment--empty { width: 100%; background: var(--sunk); }
 .ribbon__label {
   display: flex;
@@ -315,6 +315,17 @@ button { cursor: pointer; }
   align-items: center;
   gap: 18px;
   padding: 12px 0;
+}
+/*
+ * The blur lives on a pseudo-element because `backdrop-filter` on the bar itself
+ * would make it the containing block for every fixed tooltip inside it, and the
+ * chips and the measure switch both hang one.
+ */
+.filters::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
   background: color-mix(in oklab, var(--paper) 90%, transparent);
   backdrop-filter: blur(10px);
 }
@@ -353,10 +364,10 @@ button { cursor: pointer; }
 .chip[data-flavor="generated"] { --chip-color: var(--flavor-generated); }
 .tooltip {
   --tooltip-shift: 0px;
-  position: absolute;
-  top: calc(100% + 10px);
-  left: 50%;
-  z-index: 20;
+  position: fixed;
+  top: var(--tooltip-top, 0);
+  left: var(--tooltip-left, 0);
+  z-index: 40;
   display: flex;
   align-items: center;
   width: min(260px, calc(100vw - 24px));
@@ -367,16 +378,28 @@ button { cursor: pointer; }
   background: var(--tooltip-surface);
   box-shadow: 0 8px 24px oklch(0.18 0.025 265 / 0.18);
   color: var(--tooltip-ink);
+  font-family: var(--font-sans);
   font-size: 11.5px;
   font-weight: 400;
   line-height: 1.4;
+  letter-spacing: 0;
   text-align: left;
+  text-transform: none;
   white-space: normal;
   opacity: 0;
   pointer-events: none;
   transform: translate(calc(-50% + var(--tooltip-shift)), -3px);
   visibility: hidden;
   transition: opacity 120ms ease, transform 120ms ease, visibility 0s linear 120ms;
+}
+/* A path or a short label reads better as one line than as a padded block. */
+.tooltip[data-compact="true"] {
+  width: auto;
+  max-width: min(420px, calc(100vw - 24px));
+  min-height: 0;
+  padding: 6px 9px;
+  font-family: var(--font-mono);
+  white-space: nowrap;
 }
 .tooltip::before {
   content: "";
@@ -390,15 +413,14 @@ button { cursor: pointer; }
   background: inherit;
   transform: translate(-50%, 5px) rotate(45deg);
 }
-.chip:hover .tooltip,
-.chip:focus-within .tooltip,
-.measure__option:hover .tooltip,
-.measure__option:focus-within .tooltip {
+/* Opened from an event rather than from `:hover`. See src/web/tooltip.ts. */
+.tooltip[data-open] {
   opacity: 1;
   transform: translate(calc(-50% + var(--tooltip-shift)), 0);
   visibility: visible;
   transition-delay: 0s;
 }
+
 .measure {
   display: flex;
   align-items: center;
@@ -525,17 +547,39 @@ button { cursor: pointer; }
 /* ---- Source tree ------------------------------------------------------- */
 
 .tree__scroll { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 6px; }
-.tree__sort { display: flex; align-items: center; gap: 4px; color: var(--ink-faint); font-size: 11px; }
-.tree__sort button {
-  padding: 2px 1px;
+/*
+ * The headings share the row grid and scroll with the list, so a heading always
+ * stands over the column it orders however wide the panel gets.
+ */
+.tree__columns {
+  position: sticky;
+  top: -6px;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: 28px 16px minmax(0, 1fr) 108px;
+  align-items: center;
+  gap: 4px;
+  margin: -6px -6px 4px;
+  padding: 0 6px;
+  background: var(--sunk);
+  border-bottom: 1px solid var(--rule);
+}
+.tree__column {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 7px 2px;
   border: 0;
   background: transparent;
-  color: inherit;
-  font: inherit;
-  font-weight: 600;
+  color: var(--ink-faint);
+  font-size: 9.5px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase;
+  text-align: left;
 }
-.tree__sort button:hover { color: var(--ink); }
-.tree__sort button[aria-pressed="true"] { color: var(--ink); }
+.tree__column--weight { justify-content: flex-end; padding-right: 7px; }
+.tree__column:hover { color: var(--ink); }
+.tree__column[aria-pressed="true"] { color: var(--ink); }
+.tree__caret { flex: none; }
+.tree__caret[data-ascending="true"] { transform: rotate(180deg); }
 .tree__row {
   position: relative;
   display: grid;
@@ -617,9 +661,29 @@ button { cursor: pointer; }
 }
 .detail__identity { min-width: 0; }
 .detail__actions { display: flex; flex: none; flex-direction: column; align-items: flex-end; gap: 7px; }
-.crumb { margin: 0 0 4px; color: var(--ink-faint); font-size: 11px; word-break: break-all; }
-.detail__title-row { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.detail__head h2 { margin: 0; font-size: 20px; font-weight: 700; letter-spacing: -0.02em; }
+.detail__title-row { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.detail__head h2 {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 19px; font-weight: 700; letter-spacing: -0.01em;
+}
+/* The trail reads as the quiet part of one path, not as a separate line. */
+.detail__step { white-space: nowrap; }
+.detail__ancestor, .detail__separator {
+  color: var(--ink-soft);
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+.detail__ancestor {
+  padding: 0 1px;
+  border: 0; border-radius: 3px;
+  background: transparent;
+  word-break: break-all;
+}
+.detail__ancestor:hover { color: var(--signal); text-decoration: underline; text-underline-offset: 3px; }
+.detail__separator { color: var(--ink-faint); font-weight: 400; }
 .detail__tool {
   position: relative;
   display: inline-grid; place-items: center;
@@ -630,53 +694,12 @@ button { cursor: pointer; }
   transition: background 120ms ease, color 120ms ease;
 }
 .detail__tool svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.detail__tool--absent { pointer-events: none; }
 .detail__tool--drill { color: var(--signal); }
 .detail__tool--drill:hover { background: var(--signal-wash); }
 /* Secondary to the drill arrow: a utility beside the name, not a way through it. */
 .detail__tool--copy { color: var(--ink-faint); }
 .detail__tool--copy:hover { background: var(--sunk); color: var(--ink); }
-.detail__tooltip {
-  position: absolute;
-  top: calc(100% + 8px);
-  left: 50%;
-  z-index: 20;
-  width: max-content;
-  max-width: 220px;
-  padding: 7px 9px;
-  border: 1px solid var(--tooltip-rule);
-  border-radius: 6px;
-  background: var(--tooltip-surface);
-  box-shadow: 0 8px 24px oklch(0.18 0.025 265 / 0.18);
-  color: var(--tooltip-ink);
-  font-size: 11.5px;
-  font-weight: 400;
-  line-height: 1.4;
-  white-space: normal;
-  opacity: 0;
-  pointer-events: none;
-  transform: translate(-50%, -3px);
-  visibility: hidden;
-  transition: opacity 120ms ease, transform 120ms ease, visibility 0s linear 120ms;
-}
-.detail__tooltip::before {
-  content: "";
-  position: absolute;
-  bottom: 100%;
-  left: 50%;
-  width: 9px;
-  height: 9px;
-  border-top: 1px solid var(--tooltip-rule);
-  border-left: 1px solid var(--tooltip-rule);
-  background: inherit;
-  transform: translate(-50%, 5px) rotate(45deg);
-}
-.detail__tool:hover .detail__tooltip,
-.detail__tool:focus-visible .detail__tooltip {
-  opacity: 1;
-  transform: translate(-50%, 0);
-  visibility: visible;
-  transition-delay: 0s;
-}
 .detail__stats { margin: 5px 0 0; color: var(--ink-soft); font-size: 12px; }
 .detail__share {
   margin: 0; flex: none;

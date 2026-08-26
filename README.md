@@ -69,7 +69,7 @@ LOC answers how much logic is actually there, which is the question a comment-pa
 - **A ranked file list** for the current scope, sortable by any metric, with a floor expressed in the active measure. A dot marks files whose lines are mostly commentary, a common shape for generated bulk.
 - **Read-only source previews**, capped at 512 KiB.
 
-The folder and `(files)` checkboxes narrow the analytical scope.
+The folder and `.` checkboxes narrow the analytical scope, where `.` is the row holding the files that sit directly in a folder.
 They work independently of tree expansion, so you can drop a vendored subtree from the totals and still see it in the tree.
 
 ## Options

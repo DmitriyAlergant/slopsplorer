@@ -94,6 +94,10 @@ Python docstrings count as comment, because Python has no block-comment syntax a
 - Relative imports carry the `.ts` / `.tsx` extension. `tsc` rewrites them on emit.
 - Strict TypeScript, including `noUncheckedIndexedAccess` and `exactOptionalPropertyTypes`.
 - Descriptive names. No abbreviations.
+- Tooltips are CSS, never the native `title` attribute.
+  Render `Tooltip` from `src/web/components/Tooltip.tsx` as a direct child of the control and spread `tooltipHandlers` onto that control.
+  `title` cannot be styled, appears after a delay the page does not control, and never appears for a keyboard user.
+  The panel is fixed-position and placed on hover, so it escapes a scrolling tree, a table cell, and a panel with hidden overflow.
 
 ## Dependencies
 

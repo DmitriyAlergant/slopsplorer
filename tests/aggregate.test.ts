@@ -559,13 +559,13 @@ describe("ranking scope", () => {
     expect(justSrc.rankScope).toBe("src");
   });
 
-  it("narrows to a folder's own files when the (files) row is selected", () => {
+  it("narrows to a folder's own files when the `.` row is selected", () => {
     const subtree = buildView(index, request({ selected: { rowKind: "folder", path: "src" } }));
     const directOnly = buildView(index, request({ selected: { rowKind: "files", path: "src" } }));
 
     expect(subtree.ranked.some((file) => file.path.startsWith("src/deep/"))).toBe(true);
     expect(directOnly.ranked.every((file) => file.path.lastIndexOf("/") === "src".length)).toBe(true);
-    expect(directOnly.rankScope).toBe("src/(files)");
+    expect(directOnly.rankScope).toBe("src/.");
   });
 
   it("still honours the visibility switches inside the selected folder", () => {
@@ -641,19 +641,27 @@ describe("folder heading", () => {
   it("does not repeat the folder name in the trail above it", () => {
     const nested = buildView(index, request({ selected: { rowKind: "folder", path: "src/deep" } }));
     expect(nested.detail.title).toBe("deep");
-    expect(nested.detail.breadcrumb).toBe(`${index.meta.rootName}/src`);
-    expect(nested.detail.breadcrumb.endsWith(nested.detail.title)).toBe(false);
+    expect(nested.detail.trail).toEqual([
+      { name: index.meta.rootName, path: "" },
+      { name: "src", path: "src" },
+    ]);
+    expect(nested.detail.trail.some((crumb) => crumb.name === nested.detail.title)).toBe(false);
   });
 
   it("leaves the trail empty at the root, where the heading is the whole path", () => {
     const root = buildView(index, request());
     expect(root.detail.title).toBe(index.meta.rootName);
-    expect(root.detail.breadcrumb).toBe("");
+    expect(root.detail.trail).toEqual([]);
   });
 
-  it("keeps the full folder path in the trail when its own files are selected", () => {
+  it("renders the same panel whether a folder or its own-files row is selected", () => {
+    // The `.` row names the same folder, so only the ranking narrows.
+    const folder = buildView(index, request({ selected: { rowKind: "folder", path: "src/deep" } }));
     const direct = buildView(index, request({ selected: { rowKind: "files", path: "src/deep" } }));
-    expect(direct.detail.title).toBe("(files)");
-    expect(direct.detail.breadcrumb).toBe(`${index.meta.rootName}/src/deep`);
+
+    expect(direct.detail).toEqual(folder.detail);
+    expect(direct.detail.title).toBe("deep");
+    expect(direct.rankScope).toBe("src/deep/.");
+    expect(folder.rankScope).toBe("src/deep");
   });
 });

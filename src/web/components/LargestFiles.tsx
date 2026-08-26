@@ -1,5 +1,4 @@
 import type { FileRow, Measure, RankMetric, ViewRequest } from "../../shared/api.ts";
-import { pathRelativeTo } from "../displayPath.ts";
 import { count, measureName } from "../format.ts";
 import { FileTable } from "./FileTable.tsx";
 
@@ -12,6 +11,8 @@ interface Props {
   scopePath: string;
   /** Whether the ranking is limited to files directly inside its scope folder. */
   directFilesOnly: boolean;
+  /** Name of the scan root, so the label reads as a whole path rather than a relative one. */
+  rootName: string;
   /** Drill root that file names and the scope label should be relative to. */
   displayRoot: string;
   rank: ViewRequest["rank"];
@@ -33,11 +34,12 @@ const METRIC_LABELS: ReadonlyArray<{ metric: RankMetric; label: string }> = [
 const THRESHOLD_STEPS: Record<Measure, number> = { tokens: 500, lines: 50, codeLines: 50 };
 
 /** The ranked file list for whatever scope the tree currently describes. */
-export function LargestFiles({ files, measure, total, scopePath, directFilesOnly, displayRoot, rank, onRankChange, onOpenSource }: Props): React.JSX.Element {
-  const relativeScope = pathRelativeTo(scopePath, displayRoot);
-  const relativeScopeLabel = relativeScope === "." || relativeScope === "" ? "./" : `./${relativeScope}`;
-  const scopeLabel = directFilesOnly ? `${relativeScopeLabel} files only` : relativeScopeLabel;
-  const drillRootLabel = displayRoot || "project root";
+export function LargestFiles({ files, measure, total, scopePath, directFilesOnly, rootName, displayRoot, rank, onRankChange, onOpenSource }: Props): React.JSX.Element {
+  // The whole path from the scan root, so the heading names a place rather than
+  // an offset from one. The rows below stay relative, which the caption states.
+  const scopeSegments = scopePath ? scopePath.split("/") : [];
+  const scopeLabel = [rootName, ...scopeSegments].join("/") + (directFilesOnly ? "/." : "");
+  const truncated = files.length < total;
   return (
     <section className="panel ranking" aria-label="Heaviest files in scope">
       <div className="panel__head">
@@ -70,9 +72,11 @@ export function LargestFiles({ files, measure, total, scopePath, directFilesOnly
         </div>
       </div>
 
-      <p className="detail__caption">
-        Showing {count(files.length)} of {count(total)} matching files · <code>./</code> is {drillRootLabel}
-      </p>
+      {truncated ? (
+        <p className="detail__caption">
+          Showing the heaviest {count(files.length)} of {count(total)} matching files
+        </p>
+      ) : null}
       <FileTable
         files={files}
         measure={measure}

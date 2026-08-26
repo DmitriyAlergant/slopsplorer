@@ -1,4 +1,5 @@
 import { useEffect, useId, useState } from "react";
+import { Tooltip, tooltipHandlers } from "./Tooltip.tsx";
 
 interface Props {
   path: string;
@@ -25,6 +26,7 @@ export function CopyPathButton({ path }: Props): React.JSX.Element {
       type="button"
       className="detail__tool detail__tool--copy"
       onClick={copyPath}
+      {...tooltipHandlers}
       aria-label={copied ? `Copied ${path}` : `Copy project-relative path ${path}`}
       aria-describedby={tooltipId}
     >
@@ -38,9 +40,7 @@ export function CopyPathButton({ path }: Props): React.JSX.Element {
           </>
         )}
       </svg>
-      <span className="detail__tooltip" id={tooltipId} role="tooltip">
-        {copied ? "Copied" : "Copy project path"}
-      </span>
+      <Tooltip id={tooltipId} compact>{copied ? "Copied" : "Copy project path"}</Tooltip>
     </button>
   );
 }

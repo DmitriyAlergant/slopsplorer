@@ -4,6 +4,7 @@ import { count, measureAbbreviation, measureName, percent } from "../format.ts";
 import { CopyPathButton } from "./CopyPathButton.tsx";
 import { FileTable } from "./FileTable.tsx";
 import { FlavorBar } from "./FlavorBar.tsx";
+import { Tooltip, tooltipHandlers } from "./Tooltip.tsx";
 
 interface Props {
   detail: DetailView | null;
@@ -66,17 +67,32 @@ export function FolderDetail({ detail, measure, path, onSelectFolder, canDrill, 
     <section ref={panelRef} className="panel detail" aria-label="Folder detail">
       <header className="detail__head">
         <div className="detail__identity">
-          {detail.breadcrumb ? <p className="crumb">{detail.breadcrumb}</p> : null}
           <div className="detail__title-row">
             {canDrill ? (
-              <button type="button" className="detail__tool detail__tool--drill" onClick={onDrill} aria-label="Drill down" aria-describedby="drill-tooltip">
+              <button type="button" className="detail__tool detail__tool--drill" onClick={onDrill} {...tooltipHandlers} aria-label="Drill down" aria-describedby="drill-tooltip">
                 <svg viewBox="0 0 20 20" width="13" height="13" aria-hidden="true">
                   <path d="M4 4v4.5A3.5 3.5 0 0 0 7.5 12H16m-4-4 4 4-4 4" />
                 </svg>
-                <span className="detail__tooltip" id="drill-tooltip" role="tooltip">Drill down</span>
+                <Tooltip id="drill-tooltip" compact>Drill down</Tooltip>
               </button>
-            ) : null}
-            <h2>{detail.title}</h2>
+            ) : (
+              // The slot stays open, so the heading does not jump left when a folder
+              // cannot be drilled into.
+              <span className="detail__tool detail__tool--absent" aria-hidden="true" />
+            )}
+            {/* The trail and the name are one path, so the heading is read in a single pass
+                and a bare "." lands where a path would put it rather than standing alone. */}
+            <h2>
+              {detail.trail.map((crumb) => (
+                <span key={crumb.path} className="detail__step">
+                  <button type="button" className="detail__ancestor" onClick={() => onSelectFolder(crumb.path)}>
+                    {crumb.name}
+                  </button>
+                  <span className="detail__separator" aria-hidden="true">/</span>
+                </span>
+              ))}
+              {detail.title}
+            </h2>
             {path ? <CopyPathButton path={path} /> : null}
           </div>
           <p className="detail__stats">{stats.join(" · ")}</p>

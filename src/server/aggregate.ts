@@ -1,10 +1,18 @@
 import path from "node:path";
 import type {
-  DetailView, FileRow, Flavor, FlavorSlice, FolderCard, Measure, RankMetric,
+  DetailView, FileRow, Flavor, FlavorSlice, FolderCard, Measure, PathCrumb, RankMetric,
   SummaryView, TreeRow, ViewRequest, ViewResponse,
 } from "../shared/api.ts";
 import { FILE_KINDS, FLAVORS, MEASURES, RANK_METRICS, TREE_SORTS } from "../shared/api.ts";
 import type { FolderNode, ScanIndex } from "../scanner/scan.ts";
+
+/**
+ * How the row holding a folder's own files is named.
+ *
+ * `.` is how a path already names the folder itself, so the row reads as part
+ * of the tree rather than as a caption about it.
+ */
+const DIRECT_FILES_LABEL = ".";
 
 /** Bounds on the column count the client may ask for. */
 const MIN_CARD_COLUMNS = 1;
@@ -283,7 +291,7 @@ function buildTree(
     if (hasVisibleDirectFiles) {
       children.push({
         rowKind: "files",
-        name: "(files)",
+        name: DIRECT_FILES_LABEL,
         weight: directTotals.weight,
         sortWeight: aggregation.categoryDirectWeight.get(folder.path) ?? 0,
       });
@@ -361,35 +369,32 @@ function buildDetail(
   baseline: number,
   scopeBaseline: number,
 ): DetailView {
+  // A `.` row names the same folder as the row above it, so it produces the same
+  // panel. The selection still narrows the ranking, which is what it is for.
   const folder = index.folderByPath.get(request.selected.path) ?? index.folderByPath.get("")!;
-  const directFilesOnly = request.selected.rowKind === "files";
-  const totals = directFilesOnly
-    ? aggregation.direct.get(folder.path) ?? emptyTotals()
-    : aggregation.subtree.get(folder.path) ?? emptyTotals();
+  const totals = aggregation.subtree.get(folder.path) ?? emptyTotals();
 
   const cards: FolderCard[] = [];
   let cardColumns = request.cardColumns;
-  if (!directFilesOnly) {
-    const children = folder.childPaths
-      .map((childPath) => ({ node: index.folderByPath.get(childPath), totals: aggregation.subtree.get(childPath) }))
-      .filter((entry): entry is { node: FolderNode; totals: Totals } => entry.node !== undefined && entry.totals !== undefined)
-      .filter((entry) => entry.totals.files > 0)
-      .sort((left, right) => right.totals.weight - left.totals.weight);
+  const children = folder.childPaths
+    .map((childPath) => ({ node: index.folderByPath.get(childPath), totals: aggregation.subtree.get(childPath) }))
+    .filter((entry): entry is { node: FolderNode; totals: Totals } => entry.node !== undefined && entry.totals !== undefined)
+    .filter((entry) => entry.totals.files > 0)
+    .sort((left, right) => right.totals.weight - left.totals.weight);
 
-    const plan = planFolderCards(children.length, request.cardColumns);
-    cardColumns = plan.columns;
-    if (plan.tiles < children.length) {
-      const shown = plan.tiles - 1;
-      for (const entry of children.slice(0, shown)) {
-        cards.push(buildFolderCard(entry.node.name, entry.node.path, entry.totals, baseline, scopeBaseline));
-      }
-      const rest = emptyTotals();
-      for (const entry of children.slice(shown)) mergeTotals(rest, entry.totals);
-      cards.push(buildFolderCard(`${children.length - shown} more folders`, null, rest, baseline, scopeBaseline));
-    } else {
-      for (const entry of children) {
-        cards.push(buildFolderCard(entry.node.name, entry.node.path, entry.totals, baseline, scopeBaseline));
-      }
+  const plan = planFolderCards(children.length, request.cardColumns);
+  cardColumns = plan.columns;
+  if (plan.tiles < children.length) {
+    const shown = plan.tiles - 1;
+    for (const entry of children.slice(0, shown)) {
+      cards.push(buildFolderCard(entry.node.name, entry.node.path, entry.totals, baseline, scopeBaseline));
+    }
+    const rest = emptyTotals();
+    for (const entry of children.slice(shown)) mergeTotals(rest, entry.totals);
+    cards.push(buildFolderCard(`${children.length - shown} more folders`, null, rest, baseline, scopeBaseline));
+  } else {
+    for (const entry of children) {
+      cards.push(buildFolderCard(entry.node.name, entry.node.path, entry.totals, baseline, scopeBaseline));
     }
   }
 
@@ -401,14 +406,19 @@ function buildDetail(
 
   // The heading already names the folder, so the trail stops at its parent.
   const segments = folder.path.split("/").filter(Boolean);
-  const ancestors = directFilesOnly ? segments : segments.slice(0, -1);
-  const breadcrumb = directFilesOnly || segments.length > 0
-    ? [index.meta.rootName, ...ancestors].join("/")
-    : "";
+  const trail: PathCrumb[] = [];
+  if (segments.length > 0) {
+    trail.push({ name: index.meta.rootName, path: "" });
+    let ancestorPath = "";
+    for (const segment of segments.slice(0, -1)) {
+      ancestorPath = ancestorPath ? `${ancestorPath}/${segment}` : segment;
+      trail.push({ name: segment, path: ancestorPath });
+    }
+  }
 
   return {
-    title: directFilesOnly ? "(files)" : folder.name,
-    breadcrumb,
+    title: folder.name,
+    trail,
     weight: totals.weight,
     files: totals.files,
     tokens: totals.tokens,
@@ -427,7 +437,7 @@ function buildDetail(
  * Rank the heaviest files inside the selected folder.
  *
  * The ranking follows the tree selection, not just the visibility switches, so
- * selecting a folder narrows the list to that subtree. Selecting the `(files)`
+ * selecting a folder narrows the list to that subtree. Selecting the `.`
  * row narrows it further to the files sitting directly in the folder. Because
  * descendants are contiguous in the path-sorted array, the subtree is a range
  * rather than a scan of the project.
@@ -482,7 +492,7 @@ function buildSummary(
     }
     const rootDirect = aggregation.direct.get("") ?? emptyTotals();
     if (rootDirect.weight > 0) {
-      ribbon.push(buildFolderCard("(files)", null, rootDirect, baseline, baseline));
+      ribbon.push(buildFolderCard(DIRECT_FILES_LABEL, null, rootDirect, baseline, baseline));
     }
   }
   return {
@@ -501,7 +511,7 @@ function buildSummary(
 function rankScopeLabel(index: ScanIndex, request: ViewRequest): string {
   const folder = index.folderByPath.get(request.selected.path) ?? index.folderByPath.get("")!;
   const base = folder.path || index.meta.rootName;
-  return request.selected.rowKind === "files" ? `${base}/(files)` : base;
+  return request.selected.rowKind === "files" ? `${base}/${DIRECT_FILES_LABEL}` : base;
 }
 
 /** Build every surface the client renders, for one scope request. */
