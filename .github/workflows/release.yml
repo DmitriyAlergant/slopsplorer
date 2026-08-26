@@ -77,11 +77,26 @@ jobs:
       - run: npm run typecheck
       - run: npm test
 
+      # A registry version is permanent, so re-running this workflow must not
+      # fail on a version that is already there. It also lets the tag for a
+      # manually published version run the rest of the release.
+      - name: Check whether this version is already on the registry
+        id: published
+        run: |
+          version="$(node -p 'require("./package.json").version')"
+          if npm view "slopsplorer@$version" version >/dev/null 2>&1; then
+            echo "already=true" >> "$GITHUB_OUTPUT"
+            echo "slopsplorer@$version is already published; skipping publish"
+          else
+            echo "already=false" >> "$GITHUB_OUTPUT"
+          fi
+
       # `prepack` builds the client and the server, so the tarball is produced
       # from this commit rather than from anything left in the working tree.
       # Trusted publishing adds the provenance attestation on its own, so
       # `--provenance` is not passed here.
       - name: Publish to npm
+        if: steps.published.outputs.already == 'false'
         run: npm publish
 
   release:
