@@ -1,6 +1,5 @@
-import { FILE_KINDS, type FileKind, type Measure, type ViewRequest } from "../../shared/api.ts";
+import { FILE_KINDS, type FileKind, type ViewRequest } from "../../shared/api.ts";
 import { FILE_KIND_DETAILS } from "../fileKinds.ts";
-import { MeasureSwitch } from "./MeasureSwitch.tsx";
 import { Tooltip, tooltipHandlers } from "./Tooltip.tsx";
 
 interface Props {
@@ -8,13 +7,18 @@ interface Props {
   onToggleKind: (kind: FileKind) => void;
   onToggleGenerated: () => void;
   onQueryChange: (query: string) => void;
-  onMeasureChange: (measure: Measure) => void;
 }
 
 const GENERATED_DESCRIPTION = "Generated output and lockfiles detected from path and filename conventions.";
 
-/** Search, the visibility switches, and the unit the totals are counted in. */
-export function FilterBar({ request, onToggleKind, onToggleGenerated, onQueryChange, onMeasureChange }: Props): React.JSX.Element {
+/**
+ * Search and the visibility switches: what is counted at all.
+ *
+ * The unit those counts are expressed in is not here. It belongs to the columns
+ * that show it, so it is chosen from the source tree's numbers heading or by
+ * sorting a file table on a measured column.
+ */
+export function FilterBar({ request, onToggleKind, onToggleGenerated, onQueryChange }: Props): React.JSX.Element {
   return (
     <section className="filters" aria-label="Scope filters">
       <label className="search">
@@ -65,8 +69,6 @@ export function FilterBar({ request, onToggleKind, onToggleGenerated, onQueryCha
           <Tooltip id="flavor-tooltip-generated">{GENERATED_DESCRIPTION}</Tooltip>
         </label>
       </div>
-
-      <MeasureSwitch measure={request.measure} onChange={onMeasureChange} />
     </section>
   );
 }

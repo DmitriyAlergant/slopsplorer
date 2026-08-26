@@ -30,17 +30,23 @@ export type Measure = "tokens" | "lines" | "codeLines";
 
 export const MEASURES: readonly Measure[] = ["tokens", "lines", "codeLines"];
 
+/**
+ * A sortable column of the file tables.
+ *
+ * Every metric here is a column both tables draw, and every numeric column
+ * they draw is a metric here. Sorting is the only way to choose one, so a
+ * metric without a column would be unreachable.
+ */
 export type RankMetric =
   | "tokens"
   | "lines"
   | "codeLines"
   | "commentLines"
   | "functions"
-  | "classes"
   | "branches";
 
 export const RANK_METRICS: readonly RankMetric[] = [
-  "tokens", "lines", "codeLines", "commentLines", "functions", "classes", "branches",
+  "tokens", "lines", "codeLines", "commentLines", "functions", "branches",
 ];
 
 /** One measured file. Paths are POSIX-style and relative to the scan root. */
@@ -191,7 +197,11 @@ export interface ViewRequest {
   /** Folder that replaces the project root in the main workspace widgets. */
   drillPath: string;
   selected: { rowKind: "folder" | "files"; path: string };
-  /** `minWeight` is a floor in the active measure, not always in tokens. */
+  /**
+   * The sorted column of both file tables, and the ranking's order.
+   *
+   * `minWeight` is a floor in the active measure, not always in tokens.
+   */
   rank: { metric: RankMetric; minWeight: number; limit: number };
   /**
    * How many tiles fit across the panel at its current width.

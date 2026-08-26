@@ -16,22 +16,30 @@ describe("source-tree sort URL state", () => {
   it("uses saved preferences unless the URL embeds its own complete preference state", () => {
     const saved: ViewPreferences = {
       kinds: ["code", "test"], showGenerated: true, treeSort: "weight", measure: "codeLines",
+      rankMetric: "commentLines",
     };
     const inherited = readRequest("?path=src", saved);
-    expect(inherited).toMatchObject(saved);
+    expect(inherited).toMatchObject({
+      kinds: saved.kinds, showGenerated: true, treeSort: "weight", measure: "codeLines",
+    });
+    expect(inherited.rank.metric).toBe("commentLines");
 
     const shared = readRequest("?prefs=1&kinds=text&path=src", saved);
     expect(shared.kinds).toEqual(["text"]);
     expect(shared.showGenerated).toBe(false);
     expect(shared.treeSort).toBe("name");
     expect(shared.measure).toBe("tokens");
+    expect(shared.rank.metric).toBe("tokens");
   });
 
   it("marks non-default preferences as complete when serialising a shared URL", () => {
     const request = readRequest("?tree=weight&kinds=code&gen=1");
     const written = writeRequest(request);
     expect(written).toContain("prefs=1");
-    expect(readRequest(`?${written}`, { kinds: ["text"], showGenerated: false, treeSort: "name", measure: "tokens" }))
+    const stored: ViewPreferences = {
+      kinds: ["text"], showGenerated: false, treeSort: "name", measure: "tokens", rankMetric: "tokens",
+    };
+    expect(readRequest(`?${written}`, stored))
       .toMatchObject({ kinds: ["code"], showGenerated: true, treeSort: "weight" });
   });
 });
@@ -47,6 +55,18 @@ describe("primary measure URL state", () => {
     const defaulted = readRequest("?measure=furlongs");
     expect(defaulted.measure).toBe("tokens");
     expect(writeRequest(defaulted)).not.toContain("measure=");
+  });
+
+  it("marks a sorted column outside the defaults as a complete preference state", () => {
+    const request = readRequest("?rank=functions");
+    expect(request.rank.metric).toBe("functions");
+    const written = writeRequest(request);
+    expect(written).toContain("rank=functions");
+    expect(written).toContain("prefs=1");
+
+    const defaulted = readRequest("?rank=classes");
+    expect(defaulted.rank.metric).toBe("tokens");
+    expect(writeRequest(defaulted)).not.toContain("rank=");
   });
 
   it("carries the ranking threshold in whatever measure is active", () => {

@@ -21,9 +21,9 @@ class MemoryStorage implements PreferenceStorage {
 }
 
 describe("view preferences", () => {
-  it("persists only flavor selection, source-tree sorting, and the primary measure", () => {
+  it("persists only flavor selection, sorting, and the primary measure", () => {
     const storage = new MemoryStorage();
-    const request = readRequest("?tree=weight&measure=codeLines&kinds=other%2Ccode&gen=1&path=src&q=worker");
+    const request = readRequest("?tree=weight&measure=codeLines&rank=functions&kinds=other%2Ccode&gen=1&path=src&q=worker");
     writePreferences(storage, request);
 
     expect(readPreferences(storage)).toEqual({
@@ -31,6 +31,7 @@ describe("view preferences", () => {
       showGenerated: true,
       treeSort: "weight",
       measure: "codeLines",
+      rankMetric: "functions",
     });
   });
 
@@ -39,13 +40,25 @@ describe("view preferences", () => {
     storage.value = "{broken";
     expect(readPreferences(storage)).toBeNull();
 
-    storage.value = JSON.stringify({ kinds: "code", showGenerated: true, treeSort: "weight", measure: "tokens" });
+    storage.value = JSON.stringify({
+      kinds: "code", showGenerated: true, treeSort: "weight", measure: "tokens", rankMetric: "tokens",
+    });
     expect(readPreferences(storage)).toBeNull();
   });
 
   it("discards a stored payload naming a measure this build does not know", () => {
     const storage = new MemoryStorage();
-    storage.value = JSON.stringify({ kinds: ["code"], showGenerated: false, treeSort: "name", measure: "bytes" });
+    storage.value = JSON.stringify({
+      kinds: ["code"], showGenerated: false, treeSort: "name", measure: "bytes", rankMetric: "tokens",
+    });
+    expect(readPreferences(storage)).toBeNull();
+  });
+
+  it("discards a stored payload naming a sorted column this build does not know", () => {
+    const storage = new MemoryStorage();
+    storage.value = JSON.stringify({
+      kinds: ["code"], showGenerated: false, treeSort: "name", measure: "tokens", rankMetric: "classes",
+    });
     expect(readPreferences(storage)).toBeNull();
   });
 

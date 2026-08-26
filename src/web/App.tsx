@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { FileKind, Measure, TreeRow, ViewRequest, ViewResponse } from "../shared/api.ts";
+import type { FileKind, Measure, RankMetric, TreeRow, ViewRequest, ViewResponse } from "../shared/api.ts";
 import { MEASURES } from "../shared/api.ts";
 import { fetchView, openRoot, rescan } from "./api.ts";
 import { readPreferences, readTreePanelRatio, writePreferences, writeTreePanelRatio } from "./preferences.ts";
@@ -85,7 +85,7 @@ export function App(): React.JSX.Element {
     } catch {
       // Accessing localStorage itself can be denied in locked-down contexts.
     }
-  }, [request.kinds, request.showGenerated, request.treeSort, request.measure]);
+  }, [request.kinds, request.showGenerated, request.treeSort, request.measure, request.rank.metric]);
 
   useEffect(() => {
     writeTreePanelRatio(window.localStorage, treePanelRatio);
@@ -247,25 +247,55 @@ export function App(): React.JSX.Element {
   }, []);
 
   /**
-   * Switch the unit every figure is expressed in.
+   * Switch the unit every figure is expressed in, from the tree's numbers heading.
    *
-   * The ranking follows, because a page counting code lines that ranks its
-   * files by tokens reads as a bug. A ranking on a metric outside the measures,
-   * such as comment lines, is a deliberate choice and stays where it is. The
-   * threshold resets, since a floor of 2,000 tokens is not a floor of 2,000
-   * lines and carrying the number across would silently empty the list.
+   * Choosing a measure there is also how the tree is put on that column, so an
+   * unchanged measure still moves the sort. The file tables follow, because a
+   * page counting code lines that ranks its files by tokens reads as a bug. A
+   * sort on a metric outside the measures, such as comment lines, is a
+   * deliberate choice and stays where it is. The threshold resets, since a
+   * floor of 2,000 tokens is not a floor of 2,000 lines and carrying the number
+   * across would silently empty the list.
    */
   const setMeasure = useCallback((measure: Measure) => {
     setRequest((previous) => {
-      if (previous.measure === measure) return previous;
+      if (previous.measure === measure) {
+        return previous.treeSort === "weight" ? previous : { ...previous, treeSort: "weight" };
+      }
       const followsMeasure = MEASURES.some((candidate) => candidate === previous.rank.metric);
       return {
         ...previous,
         measure,
+        treeSort: "weight",
         rank: {
           ...previous.rank,
           metric: followsMeasure ? measure : previous.rank.metric,
           minWeight: 0,
+        },
+      };
+    });
+  }, []);
+
+  /**
+   * Sort both file tables on one of their columns.
+   *
+   * The three measured columns carry the measure with them, which is the same
+   * coupling {@link setMeasure} applies from the other side: the page has one
+   * unit and one file order, and every column heading that can set them does.
+   * The other columns order the tables without touching the unit.
+   */
+  const setRankMetric = useCallback((metric: RankMetric) => {
+    setRequest((previous) => {
+      if (previous.rank.metric === metric) return previous;
+      const measure = MEASURES.find((candidate) => candidate === metric);
+      const measureChanges = measure !== undefined && measure !== previous.measure;
+      return {
+        ...previous,
+        measure: measureChanges ? measure : previous.measure,
+        rank: {
+          ...previous.rank,
+          metric,
+          minWeight: measureChanges ? 0 : previous.rank.minWeight,
         },
       };
     });
@@ -297,21 +327,15 @@ export function App(): React.JSX.Element {
         onToggleKind={toggleKind}
         onToggleGenerated={() => patch({ showGenerated: !request.showGenerated })}
         onQueryChange={(query) => patch({ query })}
-        onMeasureChange={setMeasure}
       />
 
-      {/* The trail names the scope the ribbon below it measures, so it reads first. */}
+      {/* The trail names the scope the tree beneath it is rooted in, and is the
+          way back up out of a drill, so it sits with the tree rather than with
+          the figures that summarise the scope further down. */}
       <DrillBreadcrumbs
         rootName={view?.meta.rootName ?? "Project"}
         drillPath={request.drillPath}
         onDrill={drill}
-      />
-
-      <MassRibbon
-        summary={view?.summary ?? null}
-        measure={view?.measure ?? request.measure}
-        selectedPath={request.selected.rowKind === "folder" ? request.selected.path : null}
-        onSelect={(path) => select("folder", path)}
       />
 
       {error ? <p className="error-banner" role="status">{error}</p> : null}
@@ -327,6 +351,7 @@ export function App(): React.JSX.Element {
           onSelect={select}
           onDrill={drill}
           onSortChange={(treeSort) => patch({ treeSort })}
+          onMeasureChange={setMeasure}
           onToggleExpanded={toggleExpanded}
           onToggleFolder={toggleFolder}
           onToggleDirectFiles={toggleDirectFiles}
@@ -337,6 +362,8 @@ export function App(): React.JSX.Element {
         <FolderDetail
           detail={view?.detail ?? null}
           measure={view?.measure ?? request.measure}
+          sort={request.rank.metric}
+          onSortChange={setRankMetric}
           path={request.selected.path}
           onSelectFolder={(path) => select("folder", path)}
           directFilesOnly={request.selected.rowKind === "files"}
@@ -346,6 +373,15 @@ export function App(): React.JSX.Element {
           onCapacityChange={setCardColumns}
         />
       </div>
+
+      {/* Below the workspace, because the page reads downstream: the filters and
+          the tree decide what is counted, and every figure here is the result. */}
+      <MassRibbon
+        summary={view?.summary ?? null}
+        measure={view?.measure ?? request.measure}
+        selectedPath={request.selected.rowKind === "folder" ? request.selected.path : null}
+        onSelect={(path) => select("folder", path)}
+      />
 
       <LargestFiles
         files={view?.ranked ?? []}
@@ -357,6 +393,7 @@ export function App(): React.JSX.Element {
         displayRoot={request.drillPath}
         rank={request.rank}
         onRankChange={setRank}
+        onSortChange={setRankMetric}
         onOpenSource={setSourcePath}
       />
 

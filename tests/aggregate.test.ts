@@ -294,6 +294,23 @@ describe("file ranking", () => {
     expect(view.rankedTotal).toBe(5);
   });
 
+  it("orders a folder's own files by the same column, so the two tables never disagree", () => {
+    const byTokens = buildView(index, request({
+      selected: { rowKind: "folder", path: "src" },
+      rank: { metric: "tokens", minWeight: 0, limit: 100 },
+    }));
+    expect(byTokens.detail.directFiles.map((file) => file.path))
+      .toEqual(["src/main.ts", "src/util.ts"]);
+    expect(byTokens.detail.directFiles[0]!.path).toBe(byTokens.ranked[0]!.path);
+
+    const byComments = buildView(index, request({
+      selected: { rowKind: "folder", path: "src" },
+      rank: { metric: "commentLines", minWeight: 0, limit: 100 },
+    }));
+    expect(byComments.detail.directFiles.map((file) => file.path))
+      .toEqual(["src/util.ts", "src/main.ts"]);
+  });
+
   it("ranks only what is in scope, so an excluded folder cannot reappear in the top-files list", () => {
     const view = buildView(index, request({ excludedFolders: ["src"] }));
     expect(view.ranked.map((file) => file.path).sort()).toEqual(["README.md", "tests/main.test.ts"]);
@@ -321,6 +338,8 @@ describe("request parsing", () => {
     expect(parseViewRequest({ rank: { metric: "; DROP TABLE" } }).rank.metric).toBe("tokens");
     expect(parseViewRequest({ rank: { metric: "__proto__" } }).rank.metric).toBe("tokens");
     expect(parseViewRequest({ rank: { metric: "commentLines" } }).rank.metric).toBe("commentLines");
+    // Every metric is a table column now, and classes has none to be sorted by.
+    expect(parseViewRequest({ rank: { metric: "classes" } }).rank.metric).toBe("tokens");
   });
 
   it("accepts only known source-tree sort orders", () => {

@@ -1,9 +1,10 @@
-import type { FileKind, Measure, TreeSort, ViewRequest } from "../shared/api.ts";
-import { FILE_KINDS, MEASURES, TREE_SORTS } from "../shared/api.ts";
+import type { FileKind, Measure, RankMetric, TreeSort, ViewRequest } from "../shared/api.ts";
+import { FILE_KINDS, MEASURES, RANK_METRICS, TREE_SORTS } from "../shared/api.ts";
 
-// v2 carries the primary measure. A v1 payload names a tree sort this build no
-// longer knows, so it is discarded rather than half-read.
-const STORAGE_KEY = "slopsplorer.view-preferences.v2";
+// v3 carries the sorted file-table column, which is now how the measure itself
+// is chosen. Older payloads are discarded rather than half-read: v2 names no
+// column, and v1 names a tree sort this build no longer knows.
+const STORAGE_KEY = "slopsplorer.view-preferences.v3";
 const TREE_PANEL_STORAGE_KEY = "slopsplorer.tree-panel-ratio.v1";
 
 export interface ViewPreferences {
@@ -11,6 +12,8 @@ export interface ViewPreferences {
   showGenerated: boolean;
   treeSort: TreeSort;
   measure: Measure;
+  /** Sorted column of both file tables, and the ranking's order. */
+  rankMetric: RankMetric;
 }
 
 export interface PreferenceStorage {
@@ -52,7 +55,9 @@ export function readPreferences(storage: PreferenceStorage): ViewPreferences | n
     if (treeSort === undefined) return null;
     const measure = MEASURES.find((candidate_) => candidate_ === candidate["measure"]);
     if (measure === undefined) return null;
-    return { kinds, showGenerated: candidate["showGenerated"], treeSort, measure };
+    const rankMetric = RANK_METRICS.find((candidate_) => candidate_ === candidate["rankMetric"]);
+    if (rankMetric === undefined) return null;
+    return { kinds, showGenerated: candidate["showGenerated"], treeSort, measure, rankMetric };
   } catch {
     return null;
   }
@@ -65,6 +70,7 @@ export function writePreferences(storage: PreferenceStorage, request: ViewReques
     showGenerated: request.showGenerated,
     treeSort: request.treeSort,
     measure: request.measure,
+    rankMetric: request.rank.metric,
   };
   try {
     storage.setItem(STORAGE_KEY, JSON.stringify(preferences));

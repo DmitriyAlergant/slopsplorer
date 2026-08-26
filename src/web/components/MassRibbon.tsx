@@ -21,7 +21,7 @@ const LABEL_THRESHOLD = 0.06;
  * ordering readable without a legend, and each one selects its folder.
  *
  * Every figure here describes the drill scope, so the bar always splits the
- * same tree the panel below it is showing. Drilling therefore keeps one
+ * same tree the workspace above it is showing. Drilling therefore keeps one
  * project anchor on screen - the "of project" readout - rather than leaving
  * the strip describing a scope nothing else on the page is in.
  */

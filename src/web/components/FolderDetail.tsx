@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { DetailView, Measure } from "../../shared/api.ts";
+import type { DetailView, Measure, RankMetric } from "../../shared/api.ts";
 import { count, measureAbbreviation, measureName, percent } from "../format.ts";
 import { CopyPathButton } from "./CopyPathButton.tsx";
 import { FileTable } from "./FileTable.tsx";
@@ -10,6 +10,9 @@ interface Props {
   detail: DetailView | null;
   /** The measure the figures are in, taken from the response rather than the pending request. */
   measure: Measure;
+  /** Sorted column of the file table, shared with the ranking panel below. */
+  sort: RankMetric;
+  onSortChange: (metric: RankMetric) => void;
   /** The selected folder: the path the copy control hands over, and the root that file names shorten against. */
   path: string;
   onSelectFolder: (path: string) => void;
@@ -29,7 +32,7 @@ const CARD_PADDING = 40;
 const MAX_COLUMNS = 6;
 
 /** The selected folder: its weight, how its children divide it, and its own files. */
-export function FolderDetail({ detail, measure, path, onSelectFolder, directFilesOnly, canDrill, onDrill, onOpenSource, onCapacityChange }: Props): React.JSX.Element {
+export function FolderDetail({ detail, measure, sort, onSortChange, path, onSelectFolder, directFilesOnly, canDrill, onDrill, onOpenSource, onCapacityChange }: Props): React.JSX.Element {
   const panelRef = useRef<HTMLElement>(null);
   const [columns, setColumns] = useState(3);
 
@@ -55,9 +58,6 @@ export function FolderDetail({ detail, measure, path, onSelectFolder, directFile
   if (!detail) return <section ref={panelRef} className="panel detail" aria-label="Folder detail" />;
 
   const commentShare = detail.lines > 0 ? detail.commentLines / detail.lines : 0;
-  const directFileCount = detail.directFiles.length;
-  // A `.` heading is not a folder, so the caption names the folder holding it.
-  const enclosingFolder = detail.trail[detail.trail.length - 1]?.name;
   // Tokens are the cross-reference when they are not the headline themselves,
   // so the line always states the weight in two units.
   const stats = [
@@ -142,13 +142,13 @@ export function FolderDetail({ detail, measure, path, onSelectFolder, directFile
         </div>
       ) : null}
 
-      <p className="detail__caption">
-        {count(directFileCount)} file{directFileCount === 1 ? "" : "s"} directly in{" "}
-        {directFilesOnly && enclosingFolder ? enclosingFolder : "this folder"}
-      </p>
+      {/* No caption: the heading already names the subject, and the table's own
+          columns say what the rows are. */}
       <FileTable
         files={detail.directFiles}
         measure={measure}
+        sort={sort}
+        onSortChange={onSortChange}
         displayRoot={path}
         prefixRelativePaths={false}
         onOpenSource={onOpenSource}

@@ -403,11 +403,10 @@ function buildDetail(
     }
   }
 
-  const measure = request.measure;
   const directFiles = folder.directFileIndices
     .filter((fileIndex) => aggregation.included[fileIndex] === 1)
     .map((fileIndex) => index.files[fileIndex]!)
-    .sort((left, right) => right[measure] - left[measure] || left.path.localeCompare(right.path));
+    .sort(byMetric(request.rank.metric, request.measure));
 
   // The heading already names its own subject, so the trail stops one step
   // short of it: at the folder's parent, or at the folder itself for a `.`.
@@ -441,6 +440,19 @@ function buildDetail(
 }
 
 /**
+ * Order files by the sorted column, breaking ties on the active measure.
+ *
+ * Both file tables use it, so a folder's own files and the ranking beneath
+ * them can never disagree about what one sorted column means.
+ */
+function byMetric(metric: RankMetric, measure: Measure): (left: FileRow, right: FileRow) => number {
+  return (left, right) =>
+    right[metric] - left[metric]
+    || right[measure] - left[measure]
+    || left.path.localeCompare(right.path);
+}
+
+/**
  * Rank the heaviest files inside the selected folder.
  *
  * The ranking follows the tree selection, not just the visibility switches, so
@@ -450,7 +462,6 @@ function buildDetail(
  * rather than a scan of the project.
  */
 function rankFiles(index: ScanIndex, request: ViewRequest, aggregation: Aggregation): { rows: FileRow[]; total: number } {
-  const metric: RankMetric = request.rank.metric;
   const folder = index.folderByPath.get(request.selected.path) ?? index.folderByPath.get("")!;
   const directFilesOnly = request.selected.rowKind === "files";
   const matches: FileRow[] = [];
@@ -465,12 +476,7 @@ function rankFiles(index: ScanIndex, request: ViewRequest, aggregation: Aggregat
   } else {
     for (let position = folder.start; position < folder.end; position += 1) consider(position);
   }
-  matches.sort(
-    (left, right) =>
-      right[metric] - left[metric] ||
-      right[request.measure] - left[request.measure] ||
-      left.path.localeCompare(right.path),
-  );
+  matches.sort(byMetric(request.rank.metric, request.measure));
   return { rows: matches.slice(0, Math.max(0, request.rank.limit)), total: matches.length };
 }
 

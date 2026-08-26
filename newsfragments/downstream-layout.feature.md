@@ -1,0 +1,1 @@
+The headline readouts and the proportion bar now sit below the source tree and the folder panel, so the page reads downstream from the filters that drive it, and a folder's file table no longer repeats its heading in a caption above.

@@ -79,7 +79,7 @@ The kind filters and the search box decide which files are counted at all.
 The tree checkboxes decide which of those count toward the totals.
 Drill decides which folder the page is looking at.
 
-Drill moves the whole viewport, so everything above the workspace re-roots with the tree: the headline readouts, the proportion bar, and the percentage baselines all describe the drilled folder.
+Drill moves the whole viewport, so everything outside the workspace re-roots with the tree: the headline readouts, the proportion bar, and the percentage baselines all describe the drilled folder.
 The strip keeps one project anchor while drilled, the "of project" readout, so the global figure never disappears.
 Ordinary folder selection is navigation inside that scope and moves the detail and ranking panels only, which is what keeps the headline totals still while you click around.
 
@@ -88,6 +88,14 @@ Selection is clamped to the drill scope on both sides.
 
 A `.` row is its own subject, not a second way to name its folder.
 Selecting it reports the folder's own files: the heading reads `root/folder/.`, the child-folder tiles disappear because they belong to the subtree rather than to the loose files, and every figure in the panel is the loose files' own.
+
+### Reading order
+
+The page runs one way down: the filters and the drill trail, then the workspace that navigates the tree, then the readouts and the proportion bar, then the ranking.
+
+Everything below the workspace is a result of what the workspace is showing, so nothing on the page reaches back upwards to explain itself.
+That is also why the measure and the file order have no controls of their own - they belong to the columns that display them.
+The one deliberate exception is the proportion bar, whose segments select a folder in the detail panel above: the bar is a view of the scope, and selecting from it is the same act as clicking the tree.
 
 ### The primary measure
 
@@ -99,6 +107,17 @@ Every measure name is also a numeric `FileRow` field, so the aggregator applies 
 
 On the wire the measured quantity is `weight`, never `tokens`.
 `ViewResponse` echoes the measure back, so a label in the client cannot disagree with the numbers beside it while a newer request is still in flight.
+
+The measure has no control of its own.
+It is a property of a column, so it is chosen from the columns that show it: the source tree's numbers heading, which is a menu, or a measured column of either file table.
+A standalone switch alongside a per-table "rank by" list meant three widgets could each claim to decide what the page was counting.
+
+`ViewRequest.rank.metric` is the sorted column of both file tables, and it is coupled to the measure in one direction each way.
+Sorting on `tokens`, `lines`, or `codeLines` makes that the measure; choosing a measure moves the sort to it, unless the tables are sorted on a metric no measure covers, such as comment lines, which is a deliberate choice and stays where it is.
+Either way the threshold resets, since a floor of 2,000 tokens is not a floor of 2,000 lines.
+
+Every `RankMetric` is a column both tables draw, and every numeric column they draw is a `RankMetric`.
+Sorting is the only way to pick one, so a metric without a column could never be reached - which is why `classes` is not one.
 
 ### Line counting
 

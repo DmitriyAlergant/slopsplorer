@@ -60,7 +60,7 @@ export function readRequest(search: string, stored: ViewPreferences | null = nul
       path: selectedPath,
     },
     rank: {
-      metric: metric ?? "tokens",
+      metric: metric ?? (!embeddedPreferences && stored !== null ? stored.rankMetric : "tokens"),
       minWeight: Math.max(0, Number(params.get("min")) || 0),
       limit: RANK_LIMIT,
     },
@@ -79,7 +79,7 @@ export function writeRequest(request: ViewRequest): string {
   const params = new URLSearchParams();
   const preferencesDifferFromDefaults =
     request.kinds.length !== FILE_KINDS.length || request.showGenerated
-    || request.treeSort !== "name" || request.measure !== "tokens";
+    || request.treeSort !== "name" || request.measure !== "tokens" || request.rank.metric !== "tokens";
   if (preferencesDifferFromDefaults) params.set("prefs", "1");
   if (request.selected.path) params.set("path", request.selected.path);
   if (request.drillPath) params.set("drill", request.drillPath);

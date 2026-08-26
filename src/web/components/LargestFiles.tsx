@@ -17,24 +17,16 @@ interface Props {
   displayRoot: string;
   rank: ViewRequest["rank"];
   onRankChange: (change: Partial<ViewRequest["rank"]>) => void;
+  /** Ranking order, chosen by sorting a column rather than by a control of its own. */
+  onSortChange: (metric: RankMetric) => void;
   onOpenSource: (path: string) => void;
 }
-
-const METRIC_LABELS: ReadonlyArray<{ metric: RankMetric; label: string }> = [
-  { metric: "tokens", label: "Tokens" },
-  { metric: "lines", label: "Lines" },
-  { metric: "codeLines", label: "LOC" },
-  { metric: "commentLines", label: "Comment lines" },
-  { metric: "functions", label: "Functions" },
-  { metric: "classes", label: "Classes" },
-  { metric: "branches", label: "Branch nodes" },
-];
 
 /** A round step for each measure, so the spinner moves by a useful amount. */
 const THRESHOLD_STEPS: Record<Measure, number> = { tokens: 500, lines: 50, codeLines: 50 };
 
 /** The ranked file list for whatever scope the tree currently describes. */
-export function LargestFiles({ files, measure, total, scopePath, directFilesOnly, rootName, displayRoot, rank, onRankChange, onOpenSource }: Props): React.JSX.Element {
+export function LargestFiles({ files, measure, total, scopePath, directFilesOnly, rootName, displayRoot, rank, onRankChange, onSortChange, onOpenSource }: Props): React.JSX.Element {
   // The whole path from the scan root, so the heading names a place rather than
   // an offset from one. The rows below stay relative, which the caption states.
   const scopeSegments = scopePath ? scopePath.split("/") : [];
@@ -43,22 +35,13 @@ export function LargestFiles({ files, measure, total, scopePath, directFilesOnly
   return (
     <section className="panel ranking" aria-label="Heaviest files in scope">
       <div className="panel__head">
+        {/* The scope qualifies the heading, so it reads after it, the way the
+            folder panel puts its figures under the name they describe. */}
         <div>
-          <p className="eyebrow">Within {scopeLabel}</p>
           <h2>Heaviest files</h2>
+          <p className="panel__scope">Within {scopeLabel}</p>
         </div>
         <div className="ranking__controls">
-          <label>
-            <span>Rank by</span>
-            <select
-              value={rank.metric}
-              onChange={(event) => onRankChange({ metric: event.target.value as RankMetric })}
-            >
-              {METRIC_LABELS.map(({ metric, label }) => (
-                <option key={metric} value={metric}>{label}</option>
-              ))}
-            </select>
-          </label>
           <label>
             <span>Minimum {measureName(measure)}</span>
             <input
@@ -80,6 +63,8 @@ export function LargestFiles({ files, measure, total, scopePath, directFilesOnly
       <FileTable
         files={files}
         measure={measure}
+        sort={rank.metric}
+        onSortChange={onSortChange}
         displayRoot={displayRoot}
         prefixRelativePaths
         onOpenSource={onOpenSource}

@@ -1,16 +1,20 @@
 import { useEffect, useRef } from "react";
 import type { Measure, TreeRow, TreeSort } from "../../shared/api.ts";
-import { count, measureHeading } from "../format.ts";
+import { count } from "../format.ts";
+import { MeasureMenu } from "./MeasureMenu.tsx";
+import { SortCaret } from "./SortCaret.tsx";
 import { Tooltip, tooltipHandlers } from "./Tooltip.tsx";
 
 interface Props {
   rows: readonly TreeRow[];
   sort: TreeSort;
-  /** Names the sort control and the numbers column. */
+  /** Names the numbers column, and the unit every figure on the page is in. */
   measure: Measure;
   onSelect: (rowKind: "folder" | "files", path: string) => void;
   onDrill: (path: string) => void;
   onSortChange: (sort: TreeSort) => void;
+  /** Picking a measure also orders the tree by it, so the menu is the weight sort. */
+  onMeasureChange: (measure: Measure) => void;
   onToggleExpanded: (path: string) => void;
   onToggleFolder: (row: TreeRow) => void;
   onToggleDirectFiles: (row: TreeRow) => void;
@@ -23,21 +27,6 @@ function Chevron({ open }: { open: boolean }): React.JSX.Element {
   return (
     <svg className="chevron" data-open={open} viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
       <path d="M6 3.5L10.5 8L6 12.5" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-/**
- * Marks the column the tree is ordered by, and which way that order runs.
- *
- * Each column sorts one way only: names ascend, weight descends. A caret that
- * never flips is a statement of fact rather than a control, so it is drawn on
- * the active column alone.
- */
-function SortCaret({ ascending }: { ascending: boolean }): React.JSX.Element {
-  return (
-    <svg className="tree__caret" data-ascending={ascending} viewBox="0 0 10 10" width="9" height="9" aria-hidden="true">
-      <path d="M1.5 3.5L5 7L8.5 3.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -63,7 +52,7 @@ function ScopeCheckbox({ row, onChange }: { row: TreeRow; onChange: () => void }
 
 /** The folder hierarchy, with every row measured against the active scope root. */
 export function SourceTree({
-  rows, sort, measure, onSelect, onDrill, onSortChange, onToggleExpanded, onToggleFolder, onToggleDirectFiles, onExpandAll, onCollapseAll,
+  rows, sort, measure, onSelect, onDrill, onSortChange, onMeasureChange, onToggleExpanded, onToggleFolder, onToggleDirectFiles, onExpandAll, onCollapseAll,
 }: Props): React.JSX.Element {
   const expandableRows = rows.filter((row) => row.rowKind === "folder" && row.hasChildren);
   const allExpanded = expandableRows.length > 0 && expandableRows.every((row) => row.expanded);
@@ -97,16 +86,9 @@ export function SourceTree({
             Name
             {sort === "name" ? <SortCaret ascending /> : null}
           </button>
-          <button
-            type="button"
-            className="tree__column tree__column--weight"
-            aria-pressed={sort === "weight"}
-            aria-label={`Sort by ${measureHeading(measure).toLowerCase()}`}
-            onClick={() => onSortChange("weight")}
-          >
-            {sort === "weight" ? <SortCaret ascending={false} /> : null}
-            {measureHeading(measure)}
-          </button>
+          {/* The numbers column has no separate sort control: choosing the measure
+              is what puts the tree on it, so one heading carries both jobs. */}
+          <MeasureMenu measure={measure} sorted={sort === "weight"} onChange={onMeasureChange} />
         </div>
 
         {rows.length === 0 ? (
