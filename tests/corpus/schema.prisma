@@ -1,0 +1,11 @@
+// Prisma has line comments only.
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// Triple slash is a documentation comment.
+model User {
+  id    Int    @id @default(autoincrement())
+  email String @unique   // login handle
+}

@@ -1,0 +1,13 @@
+/* Palette for the corpus. */
+:root {
+  --accent: #4f46e5;   /* trailing block */
+}
+
+/*
+ * A block that spans lines.
+
+ * With a blank line inside it.
+ */
+.badge::after {
+  content: "/* not a comment */";
+}

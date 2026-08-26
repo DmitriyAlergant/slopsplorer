@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Feed metadata. -->
+<feed>
+  <entry id="1"><!-- inline --></entry>
+  <entry id="2">
+    <title>Second</title>
+  </entry>
+</feed>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { classifyFile, isGenerated, isSourceFile } from "../src/scanner/classify.ts";
+import { classifyFile, isGenerated, isSourceFile, shebangInterpreter } from "../src/scanner/classify.ts";
 
 describe("file kind classification", () => {
   it("puts ordinary source, prose, and structured data in separate buckets so the visibility switches mean something", () => {
@@ -71,5 +71,35 @@ describe("scan admission", () => {
     expect(isSourceFile("assets/logo.png")).toBe(false);
     expect(isSourceFile("node_modules/left-pad/index.js")).toBe(false);
     expect(isSourceFile("app/__pycache__/service.py")).toBe(false);
+  });
+
+  it("accepts the whole shell family, not just .sh", () => {
+    for (const name of ["deploy.sh", "build.bash", "run.ksh", "unit.bats", "prompt.zsh", "config.fish"]) {
+      expect({ name, admitted: isSourceFile(`scripts/${name}`) }).toEqual({ name, admitted: true });
+    }
+  });
+
+  it("refuses a file with no extension, which is why a shebang alone cannot bring one into a scan", () => {
+    // Recorded deliberately: `Dockerfile`, `Makefile`, and an extensionless
+    // script are all outside the walker's reach, so shebang detection only
+    // applies to a file that already earned its way into the listing.
+    expect(isSourceFile("scripts/provision")).toBe(false);
+    expect(isSourceFile("Dockerfile")).toBe(false);
+    expect(isSourceFile("Makefile")).toBe(false);
+  });
+});
+
+describe("shebang interpreter", () => {
+  it("reads the interpreter through a direct path and through env", () => {
+    expect(shebangInterpreter("#!/bin/bash\necho hi\n")).toBe("bash");
+    expect(shebangInterpreter("#!/usr/bin/env bash\n")).toBe("bash");
+    expect(shebangInterpreter("#!/usr/bin/env -S python3 -u\n")).toBe("python");
+    expect(shebangInterpreter("#!/usr/bin/perl5.34 -w\n")).toBe("perl");
+  });
+
+  it("returns nothing when the first line is not a shebang, so an ordinary comment is not mistaken for one", () => {
+    expect(shebangInterpreter("# just a comment\n")).toBeNull();
+    expect(shebangInterpreter("")).toBeNull();
+    expect(shebangInterpreter("echo hi\n#!/bin/sh\n")).toBeNull();
   });
 });

@@ -1,0 +1,10 @@
+# Continuous integration pipeline.
+name: ci
+
+jobs:
+  build:
+    runs-on: ubuntu-latest   # hosted runner
+    steps:
+      # Check the tree out first.
+      - uses: actions/checkout@v4
+      - run: echo "colour is #ff0000"

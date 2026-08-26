@@ -3,8 +3,8 @@ import path from "node:path";
 import type { FileRow, Measure, ScanMeta } from "../shared/api.ts";
 import { MEASURES } from "../shared/api.ts";
 import { classifyFile, isGenerated } from "./classify.ts";
-import { measureLines, measureLinesByPrefix } from "./lines.ts";
-import { grammarForExtension, StructureAnalyzer } from "./structure.ts";
+import { measureFile } from "./measure.ts";
+import { StructureAnalyzer } from "./structure.ts";
 import { tokenCounter, type TokenizerName } from "./tokenize.ts";
 import { listSourceFiles } from "./walk.ts";
 
@@ -130,18 +130,11 @@ export async function scanSourceTree(options: ScanOptions): Promise<ScanIndex> {
         return null;
       }
 
-      const extension = path.posix.extname(relativePath).toLowerCase();
-      const grammar = grammarForExtension(extension);
-      const structure = await analyzer.analyze(extension, text);
-      // A grammar gives exact comment spans. Anything else uses leading-marker
-      // detection, which reports zero for formats with no comment syntax
-      // rather than guessing.
-      const lineMetrics = grammar
-        ? measureLines(text, structure.commentRanges)
-        : measureLinesByPrefix(text, extension);
+      const name = path.posix.basename(relativePath);
+      const { grammar, structure, lines: lineMetrics } = await measureFile(analyzer, name, text);
       const row: FileRow = {
         path: relativePath,
-        name: path.posix.basename(relativePath),
+        name,
         kind: classifyFile(relativePath),
         generated: isGenerated(relativePath),
         tokens: countTokens(text),

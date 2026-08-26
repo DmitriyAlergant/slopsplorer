@@ -6,12 +6,12 @@ import type { FileKind } from "../shared/api.ts";
  * uninteresting artifact and never enters a snapshot.
  */
 export const SOURCE_EXTENSIONS: ReadonlySet<string> = new Set([
-  ".adoc", ".c", ".cc", ".cjs", ".cpp", ".cs", ".csv", ".css", ".go", ".h",
-  ".hpp", ".html", ".java", ".js", ".json", ".jsonc", ".jsx", ".kt", ".kts",
-  ".lock", ".lua", ".md", ".mdx", ".mjs", ".php", ".po", ".pot", ".prisma",
-  ".ps1", ".py", ".pyi", ".rb", ".rs", ".rst", ".scss", ".sh", ".sql",
-  ".svelte", ".swift", ".toml", ".ts", ".tsv", ".tsx", ".txt", ".vue", ".xml",
-  ".yaml", ".yml", ".zsh",
+  ".adoc", ".bash", ".bats", ".c", ".cc", ".cjs", ".cpp", ".cs", ".csv",
+  ".css", ".fish", ".go", ".h", ".hpp", ".html", ".java", ".js", ".json",
+  ".jsonc", ".jsx", ".ksh", ".kt", ".kts", ".lock", ".lua", ".md", ".mdx",
+  ".mjs", ".php", ".po", ".pot", ".prisma", ".ps1", ".py", ".pyi", ".rb",
+  ".rs", ".rst", ".scss", ".sh", ".sql", ".svelte", ".swift", ".toml", ".ts",
+  ".tsv", ".tsx", ".txt", ".vue", ".xml", ".yaml", ".yml", ".zsh",
 ]);
 
 /** Directories never worth measuring, even when a filesystem walk reaches them. */
@@ -22,10 +22,10 @@ export const EXCLUDED_DIRECTORIES: ReadonlySet<string> = new Set([
 ]);
 
 const CODE_EXTENSIONS: ReadonlySet<string> = new Set([
-  ".c", ".cc", ".cjs", ".cpp", ".cs", ".css", ".go", ".h", ".hpp", ".java",
-  ".js", ".jsx", ".kt", ".kts", ".lua", ".mjs", ".php", ".prisma", ".ps1",
-  ".py", ".pyi", ".rb", ".rs", ".scss", ".sh", ".sql", ".svelte", ".swift",
-  ".ts", ".tsx", ".vue", ".zsh",
+  ".bash", ".bats", ".c", ".cc", ".cjs", ".cpp", ".cs", ".css", ".fish",
+  ".go", ".h", ".hpp", ".java", ".js", ".jsx", ".ksh", ".kt", ".kts", ".lua",
+  ".mjs", ".php", ".prisma", ".ps1", ".py", ".pyi", ".rb", ".rs", ".scss",
+  ".sh", ".sql", ".svelte", ".swift", ".ts", ".tsx", ".vue", ".zsh",
 ]);
 
 const DATA_EXTENSIONS: ReadonlySet<string> = new Set([
@@ -128,6 +128,33 @@ export function isGenerated(relativePath: string): boolean {
   if (containsAny(directories, GENERATED_DIRECTORIES)) return true;
   if (GENERATED_NAMES.has(name)) return true;
   return GENERATED_SUFFIXES.some((suffix) => name.endsWith(suffix));
+}
+
+/** Trailing version digits on an interpreter name, as in `python3.12` or `perl5`. */
+const INTERPRETER_VERSION_SUFFIX = /[0-9]+(?:\.[0-9]+)*$/;
+
+/**
+ * The interpreter named on a leading `#!` line, lowercased and unversioned.
+ *
+ * `#!/bin/bash`, `#!/usr/bin/env bash -e`, and `#!/usr/bin/env -S python3 -u`
+ * yield `bash`, `bash`, and `python`. Scripts routinely carry no extension, and
+ * the shebang is the only thing left to identify them by.
+ */
+export function shebangInterpreter(text: string): string | null {
+  if (!text.startsWith("#!")) return null;
+  const lineEnd = text.indexOf("\n");
+  const words = text.slice(2, lineEnd === -1 ? undefined : lineEnd).trim().split(/\s+/).filter(Boolean);
+  const first = words[0];
+  if (first === undefined) return null;
+  let name = path.posix.basename(first).toLowerCase();
+  if (name === "env") {
+    // `env` runs its first non-option argument, which is the real interpreter.
+    const target = words.slice(1).find((word) => !word.startsWith("-"));
+    if (target === undefined) return null;
+    name = path.posix.basename(target).toLowerCase();
+  }
+  const unversioned = name.replace(INTERPRETER_VERSION_SUFFIX, "");
+  return unversioned === "" ? name : unversioned;
 }
 
 /** Whether the scanner should read this path at all. */

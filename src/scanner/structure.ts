@@ -1,6 +1,8 @@
 import { createRequire } from "node:module";
 import { readFile } from "node:fs/promises";
+import path from "node:path";
 import { Language, Parser } from "web-tree-sitter";
+import { shebangInterpreter } from "./classify.ts";
 import type { CommentRange } from "./lines.ts";
 
 const require = createRequire(import.meta.url);
@@ -160,12 +162,35 @@ const GRAMMAR_BY_EXTENSION: ReadonlyMap<string, string> = new Map([
   [".c", "cpp"], [".h", "cpp"], [".cc", "cpp"], [".cpp", "cpp"], [".hpp", "cpp"],
   [".cs", "c-sharp"],
   [".php", "php"],
-  [".sh", "bash"], [".zsh", "bash"],
+  [".sh", "bash"], [".zsh", "bash"], [".bash", "bash"], [".ksh", "bash"], [".bats", "bash"],
   [".ps1", "powershell"],
 ]);
 
-export function grammarForExtension(extension: string): string | null {
-  return GRAMMAR_BY_EXTENSION.get(extension.toLowerCase()) ?? null;
+/**
+ * Shebang interpreters the bash grammar can parse well enough.
+ *
+ * Shell scripts routinely carry no extension, so the `#!` line is the only
+ * thing left to identify them by. Only the Bourne family is listed: `ksh`,
+ * `dash`, and `zsh` differ from bash in ways the grammar tolerates, while fish
+ * is a different language and takes the marker fallback instead.
+ */
+const GRAMMAR_BY_SHEBANG: ReadonlyMap<string, string> = new Map([
+  ["sh", "bash"], ["bash", "bash"], ["zsh", "bash"], ["ksh", "bash"],
+  ["dash", "bash"], ["ash", "bash"], ["mksh", "bash"],
+]);
+
+/**
+ * The grammar for one file, by extension first and by `#!` line second.
+ *
+ * The extension wins so that a `.py` script with a `#!/bin/sh` wrapper line is
+ * still parsed as Python.
+ */
+export function grammarForFile(fileName: string, text: string): string | null {
+  const byExtension = GRAMMAR_BY_EXTENSION.get(path.posix.extname(fileName).toLowerCase());
+  if (byExtension !== undefined) return byExtension;
+  const interpreter = shebangInterpreter(text);
+  if (interpreter === null) return null;
+  return GRAMMAR_BY_SHEBANG.get(interpreter) ?? null;
 }
 
 /**
@@ -215,8 +240,7 @@ export class StructureAnalyzer {
    * block comments, nested comments, and doc comments are all handled without
    * per-language parsing rules.
    */
-  async analyze(extension: string, text: string): Promise<StructureCounts> {
-    const grammar = grammarForExtension(extension);
+  async analyze(grammar: string | null, text: string): Promise<StructureCounts> {
     if (!grammar) return emptyStructure();
     const rule = RULES_BY_GRAMMAR.get(grammar);
     if (!rule) return emptyStructure();

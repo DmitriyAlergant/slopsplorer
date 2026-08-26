@@ -38,10 +38,15 @@ For every file that enters the scan it reports:
 | `language` | The tree-sitter grammar that produced the structure counts, or `null`. |
 
 Structure counts come from 13 tree-sitter grammars: `python`, `typescript`, `tsx`, `javascript`, `go`, `rust`, `java`, `ruby`, `cpp`, `c-sharp`, `php`, `bash`, `powershell`.
+Shell scripts reach `bash` by extension (`.sh`, `.bash`, `.ksh`, `.bats`, `.zsh`) or by a `#!` line naming a Bourne shell.
 A file outside those grammars still gets accurate `tokens`, `lines`, and `blankLines`.
 For such a file, `functions`, `classes`, and `branches` are all `0`, and `language` is `null`.
-For YAML, TOML, SQL, Prisma, and JSONC, the comment split uses leading-marker detection instead of a grammar.
-For Markdown and JSON it reports zero comment lines, because a Markdown paragraph is content rather than commentary.
+
+The comment split for those files comes from a comment-marker table rather than a grammar.
+It covers YAML, TOML, SQL, Prisma, JSONC, CSS, SCSS, LESS, HTML, XML, SVG, Vue, Svelte, Lua, Kotlin, Swift, Scala, Dart, Terraform, INI, Java properties, R, Perl, fish, `.env`, `Dockerfile`, and `Makefile`.
+Block comments are read across lines, and a marker inside a string literal is ignored.
+For Markdown and JSON it reports zero comment lines, because a Markdown paragraph is content rather than commentary and JSON has no comment syntax.
+A format with no rule at all reports its content as `codeLines`, so a file with content is never reported as empty.
 
 ## What it does not measure
 

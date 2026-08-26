@@ -29,11 +29,14 @@ Vite bundles a TypeScript config into a temporary file beside it on every start,
 The data flows one way, and every aggregation happens on the server.
 
 ```
-src/scanner/     walk -> classify -> tokenize + tree-sitter -> ScanIndex
+src/scanner/     walk -> classify -> tokenize + measure -> ScanIndex
 src/server/      ScanIndex + ViewRequest -> buildView -> ViewResponse
 src/web/         ViewRequest state -> POST /api/view -> render
 src/shared/      the wire contract both sides import
 ```
+
+`src/scanner/measure.ts` is the one place that decides whether a file gets tree-sitter comment spans or marker detection.
+The scanner and the corpus test both go through it, so they cannot drift apart on which files get which treatment.
 
 `src/shared/api.ts` is the contract.
 Change it and both sides must change together.
@@ -64,6 +67,10 @@ Thirteen grammars ship prebuilt as WASM in `@vscode/tree-sitter-wasm`, which is 
 Files outside those grammars still get token and line counts.
 They report `language: null` and zero structure counts.
 
+A grammar is chosen by extension first and by `#!` line second.
+The whole Bourne family - `.sh`, `.bash`, `.ksh`, `.bats`, `.zsh`, and any script whose shebang names `sh`, `bash`, `zsh`, `ksh`, `dash`, `ash`, or `mksh` - runs through the `bash` grammar.
+Fish is deliberately not routed there: it uses `#` comments but its syntax is not Bourne shell, so it takes the marker fallback instead.
+
 ### The primary measure
 
 `ViewRequest.measure` selects the unit every aggregation is expressed in: `tokens`, `lines`, or `codeLines`.
@@ -83,8 +90,35 @@ It does not shell out to `cloc`, and `cloc` is not a dependency.
 `lines` is non-blank lines only.
 `lines === codeLines + commentLines`, and the three buckets are mutually exclusive, matching the convention `cloc` uses.
 A line that holds code plus a trailing comment counts as code.
-Comment spans come from the grammar, not from a leading-marker guess, so block comments and doc comments need no per-language rules.
+Comment detection may only move a line between the code bucket and the comment bucket, never in or out of `lines`, and it never touches `tokens`.
+
+Where a grammar exists, comment spans come from the grammar, so block comments and doc comments need no per-language rules.
 Python docstrings count as comment, because Python has no block-comment syntax and docstrings carry the weight that `/* */` carries elsewhere.
+That is a deliberate divergence from `cloc`, which counts a docstring as code.
+
+Everything else goes through the marker table in `src/scanner/lines.ts`.
+The table carries line markers and block delimiters per format, so `/* ... */`, `<!-- ... -->`, and `--[[ ... ]]` are read across lines rather than guessed at from the first token.
+It also tracks string literals, because one `/*` inside a quoted value would otherwise open a block comment that swallows the rest of the file.
+String state is line-local and block state is not, which bounds the cost of an unbalanced quote to the line that holds it.
+A format keys off the filename first, then the extension, then a `#!` line, so `Dockerfile` and `.env` are recognised even though they have no extension.
+
+A format with no rule reports every content line as code.
+That is the point of the fallback: a file with content must never report `0/0/0`, and misclassifying code as comment is cheaper than reporting nothing.
+Markdown and JSON stay out of the table on purpose - a Markdown paragraph is content rather than commentary, and JSON has no comment syntax at all.
+
+### Checking line counting against cloc
+
+`cloc` was read as the reference when the marker table was built, and it is run by hand against `tests/corpus/` when the table changes.
+It is not a runtime dependency, a test dependency, or a CI dependency, and nothing in the committed suite invokes it.
+
+`tests/comment-corpus.test.ts` holds one expectation per corpus file together with the numbers `cloc 2.00` reported for it.
+Every file asserts that our content total and blank count match `cloc` exactly, so a change can only ever move a line between code and comment.
+A file whose split differs from `cloc` must carry a written reason, and a file whose split matches must not, so neither drift can pass silently.
+Four reasons are recorded today: a `#!` line counts as comment for us and as code for `cloc` in the Bourne family, `#` opens an INI comment, an unterminated block comment runs to the end of the file, and a Svelte `<script>` block gets its script comments read.
+
+Several formats sit in the marker table but never reach it in a scan, because `isSourceFile` admits a file only when its extension is in `SOURCE_EXTENSIONS`.
+Terraform, INI, LESS, SVG, R, Perl, `Dockerfile`, `Makefile`, `.env`, and every extensionless script are all outside the walker today.
+Widening the scan is a separate decision about what belongs on the map; the rules are in place for when it is taken.
 
 ## Conventions
 

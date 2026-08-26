@@ -34,11 +34,17 @@ Per file:
 | `functions` / `classes` / `branches` | From tree-sitter, across 13 languages |
 
 Structure metrics come from prebuilt WASM grammars for Python, TypeScript, TSX, JavaScript, Go, Rust, Java, Ruby, C/C++, C#, PHP, Bash, and PowerShell.
+Shell scripts reach the Bash grammar by extension (`.sh`, `.bash`, `.ksh`, `.bats`, `.zsh`) or by their `#!` line.
 Files outside those languages still get token and line counts.
 They report zero structure counts rather than a guess.
 
-Comment spans come from the grammar, not from a leading-`#` heuristic, so block comments and doc comments are counted correctly.
+Comment spans come from the grammar wherever there is one, so block comments and doc comments are counted correctly.
 Python docstrings count as comment, because Python has no block-comment syntax.
+
+Formats with no grammar use a comment-marker table instead, covering YAML, TOML, SQL, Prisma, JSONC, CSS, SCSS, LESS, HTML, XML, SVG, Vue, Svelte, Lua, Kotlin, Swift, Scala, Dart, Terraform, INI, `.env`, `Dockerfile`, `Makefile`, and more.
+It reads block comments across lines and ignores markers inside string literals.
+Markdown and JSON report no comment lines on purpose, because a Markdown paragraph is content rather than commentary and JSON has no comment syntax.
+A format with no rule at all reports its content as code, so no file with content is ever reported as empty.
 
 Files are sorted into flavors that you can show or hide independently: code, tests, docs, i18n catalogues, structured data, and configuration.
 Generated output is tracked separately.
