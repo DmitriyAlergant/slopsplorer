@@ -30,7 +30,7 @@ export function App(): React.JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [rescanning, setRescanning] = useState(false);
-  const [opening, setOpening] = useState(false);
+  const [openingRoot, setOpeningRoot] = useState<string | null>(null);
   const [sourcePath, setSourcePath] = useState<string | null>(null);
   const [skillOpen, setSkillOpen] = useState(false);
   const requestRef = useRef(request);
@@ -122,7 +122,7 @@ export function App(): React.JSX.Element {
       drillPath: "",
       selected: { rowKind: "folder", path: "" },
     };
-    setOpening(true);
+    setOpeningRoot(root);
     openRoot(root, nextRequest)
       .then((next) => {
         setRequest(nextRequest);
@@ -131,7 +131,7 @@ export function App(): React.JSX.Element {
         setError(null);
       })
       .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause)))
-      .finally(() => setOpening(false));
+      .finally(() => setOpeningRoot(null));
   }, []);
 
   const toggleKind = useCallback((kind: FileKind) => {
@@ -237,11 +237,11 @@ export function App(): React.JSX.Element {
   }
 
   return (
-    <main className="app" data-busy={busy || rescanning || opening}>
+    <main className="app" data-busy={busy || rescanning || openingRoot !== null}>
       <InstrumentBar
         meta={view?.meta ?? null}
         rescanning={rescanning}
-        opening={opening}
+        opening={openingRoot !== null}
         onRescan={handleRescan}
         onOpen={handleOpen}
         onInstallSkill={() => setSkillOpen(true)}
@@ -304,6 +304,18 @@ export function App(): React.JSX.Element {
 
       <SourceDialog path={sourcePath} onClose={() => setSourcePath(null)} />
       <SkillInstallDialog open={skillOpen} onClose={() => setSkillOpen(false)} />
+      {openingRoot ? (
+        <div className="progress-modal" role="dialog" aria-modal="true" aria-labelledby="opening-folder-title">
+          <div className="progress-modal__card">
+            <span className="progress-modal__spinner" aria-hidden="true" />
+            <div className="progress-modal__copy">
+              <h2 id="opening-folder-title">Opening folder</h2>
+              <p className="progress-modal__path" title={openingRoot}>{openingRoot}</p>
+              <p className="progress-modal__hint">Scanning and measuring the source tree. Large folders can take a moment.</p>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </main>
   );
 }

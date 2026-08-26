@@ -197,8 +197,40 @@ button { cursor: pointer; }
 }
 .button:hover:not(:disabled) { border-color: var(--signal); color: var(--signal); }
 .button:disabled { opacity: 0.5; cursor: progress; }
-.button--quiet { border-color: var(--rule); color: var(--ink-soft); }
 .button--tiny { padding: 3px 8px; font-size: 11px; }
+
+/* Opening a different root replaces the entire data model, so stale results stay covered until the scan completes. */
+.progress-modal {
+  position: fixed; inset: 0; z-index: 100;
+  display: grid; place-items: center;
+  padding: 24px;
+  background: oklch(0.16 0.02 265 / 0.34);
+  backdrop-filter: blur(3px);
+}
+.progress-modal__card {
+  display: flex; align-items: flex-start; gap: 16px;
+  width: min(500px, 100%);
+  padding: 22px;
+  border: 1px solid var(--rule-firm); border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: 0 18px 50px oklch(0.16 0.02 265 / 0.22);
+}
+.progress-modal__spinner {
+  flex: none;
+  width: 24px; height: 24px; margin-top: 2px;
+  border: 2px solid var(--rule-firm); border-top-color: var(--signal); border-radius: 50%;
+  animation: progress-spin 700ms linear infinite;
+}
+.progress-modal__copy { min-width: 0; }
+.progress-modal__copy h2 { margin: 0; font-size: 17px; }
+.progress-modal__path {
+  margin: 4px 0 0;
+  color: var(--ink-soft);
+  font-family: var(--font-mono); font-size: 11.5px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.progress-modal__hint { margin: 10px 0 0; color: var(--ink-faint); font-size: 12px; }
+@keyframes progress-spin { to { transform: rotate(360deg); } }
 
 /* ---- Mass ribbon: the signature element -------------------------------- */
 
@@ -509,7 +541,12 @@ button { cursor: pointer; }
 
 /* ---- Folder detail ----------------------------------------------------- */
 
-.detail { padding: 0; }
+.detail {
+  position: relative;
+  z-index: 2;
+  padding: 0;
+  overflow: visible;
+}
 .detail__head {
   flex: none;
   display: flex; align-items: flex-start; justify-content: space-between; gap: 24px;
@@ -518,7 +555,61 @@ button { cursor: pointer; }
 .detail__identity { min-width: 0; }
 .detail__actions { display: flex; flex: none; flex-direction: column; align-items: flex-end; gap: 7px; }
 .crumb { margin: 0 0 4px; color: var(--ink-faint); font-size: 11px; word-break: break-all; }
+.detail__title-row { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .detail__head h2 { margin: 0; font-size: 20px; font-weight: 700; letter-spacing: -0.02em; }
+.detail__drill {
+  position: relative;
+  display: inline-grid; place-items: center;
+  flex: none;
+  width: 20px; height: 20px; padding: 0;
+  border: 0; border-radius: 4px;
+  background: transparent; color: var(--signal);
+  transition: background 120ms ease, color 120ms ease;
+}
+.detail__drill svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.detail__drill:hover { background: var(--signal-wash); }
+.detail__drill-tooltip {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 50%;
+  z-index: 20;
+  width: max-content;
+  max-width: 220px;
+  padding: 7px 9px;
+  border: 1px solid var(--tooltip-rule);
+  border-radius: 6px;
+  background: var(--tooltip-surface);
+  box-shadow: 0 8px 24px oklch(0.18 0.025 265 / 0.18);
+  color: var(--tooltip-ink);
+  font-size: 11.5px;
+  font-weight: 400;
+  line-height: 1.4;
+  white-space: normal;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, -3px);
+  visibility: hidden;
+  transition: opacity 120ms ease, transform 120ms ease, visibility 0s linear 120ms;
+}
+.detail__drill-tooltip::before {
+  content: "";
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  width: 9px;
+  height: 9px;
+  border-top: 1px solid var(--tooltip-rule);
+  border-left: 1px solid var(--tooltip-rule);
+  background: inherit;
+  transform: translate(-50%, 5px) rotate(45deg);
+}
+.detail__drill:hover .detail__drill-tooltip,
+.detail__drill:focus-visible .detail__drill-tooltip {
+  opacity: 1;
+  transform: translate(-50%, 0);
+  visibility: visible;
+  transition-delay: 0s;
+}
 .detail__stats { margin: 5px 0 0; color: var(--ink-soft); font-size: 12px; }
 .detail__share {
   margin: 0; flex: none;

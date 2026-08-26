@@ -55,7 +55,17 @@ export function FolderDetail({ detail, filePathRoot, onSelectFolder, canDrill, o
       <header className="detail__head">
         <div className="detail__identity">
           {detail.breadcrumb ? <p className="crumb">{detail.breadcrumb}</p> : null}
-          <h2>{detail.title}</h2>
+          <div className="detail__title-row">
+            {canDrill ? (
+              <button type="button" className="detail__drill" onClick={onDrill} aria-label="Drill down" aria-describedby="drill-tooltip">
+                <svg viewBox="0 0 20 20" width="13" height="13" aria-hidden="true">
+                  <path d="M4 4v4.5A3.5 3.5 0 0 0 7.5 12H16m-4-4 4 4-4 4" />
+                </svg>
+                <span className="detail__drill-tooltip" id="drill-tooltip" role="tooltip">Drill down</span>
+              </button>
+            ) : null}
+            <h2>{detail.title}</h2>
+          </div>
           <p className="detail__stats">
             {count(detail.tokens)} tokens · {count(detail.files)} files · {count(detail.lines)} lines ·{" "}
             {percent(commentShare)} comment
@@ -65,9 +75,6 @@ export function FolderDetail({ detail, filePathRoot, onSelectFolder, canDrill, o
           <p className="detail__share" title="Share of the current scope, measured before any filter">
             {percent(detail.shareOfScope)}
           </p>
-          {canDrill ? (
-            <button type="button" className="button button--tiny" onClick={onDrill}>Drill down</button>
-          ) : null}
         </div>
       </header>
 

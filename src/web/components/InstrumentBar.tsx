@@ -99,13 +99,10 @@ export function InstrumentBar({ meta, rescanning, opening, onRescan, onOpen, onI
       </dl>
 
       <div className="instrument__actions">
-        <button type="button" className="button" onClick={() => setEditingPath(true)} disabled={!meta || scanning}>
-          {opening ? "Opening" : "Open"}
-        </button>
         <button type="button" className="button" onClick={onRescan} disabled={scanning}>
           {rescanning ? "Rescanning" : "Rescan"}
         </button>
-        <button type="button" className="button button--quiet" onClick={onInstallSkill}>
+        <button type="button" className="button" onClick={onInstallSkill}>
           Install agent skill
         </button>
       </div>
