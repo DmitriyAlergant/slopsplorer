@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from "react";
-import type { DetailView } from "../../shared/api.ts";
-import { count, percent } from "../format.ts";
+import type { DetailView, Measure } from "../../shared/api.ts";
+import { count, measureAbbreviation, measureName, percent } from "../format.ts";
 import { CopyPathButton } from "./CopyPathButton.tsx";
 import { FileTable } from "./FileTable.tsx";
 import { FlavorBar } from "./FlavorBar.tsx";
 
 interface Props {
   detail: DetailView | null;
+  /** The measure the figures are in, taken from the response rather than the pending request. */
+  measure: Measure;
   /** The selected folder: the path the copy control hands over, and the root that file names shorten against. */
   path: string;
   onSelectFolder: (path: string) => void;
@@ -24,7 +26,7 @@ const CARD_PADDING = 40;
 const MAX_COLUMNS = 6;
 
 /** The selected folder: its weight, how its children divide it, and its own files. */
-export function FolderDetail({ detail, path, onSelectFolder, canDrill, onDrill, onOpenSource, onCapacityChange }: Props): React.JSX.Element {
+export function FolderDetail({ detail, measure, path, onSelectFolder, canDrill, onDrill, onOpenSource, onCapacityChange }: Props): React.JSX.Element {
   const panelRef = useRef<HTMLElement>(null);
   const [columns, setColumns] = useState(3);
 
@@ -51,6 +53,14 @@ export function FolderDetail({ detail, path, onSelectFolder, canDrill, onDrill, 
 
   const commentShare = detail.lines > 0 ? detail.commentLines / detail.lines : 0;
   const directFileCount = detail.directFiles.length;
+  // Tokens are the cross-reference when they are not the headline themselves,
+  // so the line always states the weight in two units.
+  const stats = [
+    `${count(detail.weight)} ${measureName(measure)}`,
+    `${count(detail.files)} files`,
+    measure === "tokens" ? `${count(detail.lines)} lines` : `${count(detail.tokens)} tokens`,
+    `${percent(commentShare)} comment`,
+  ];
 
   return (
     <section ref={panelRef} className="panel detail" aria-label="Folder detail">
@@ -69,10 +79,7 @@ export function FolderDetail({ detail, path, onSelectFolder, canDrill, onDrill, 
             <h2>{detail.title}</h2>
             {path ? <CopyPathButton path={path} /> : null}
           </div>
-          <p className="detail__stats">
-            {count(detail.tokens)} tokens · {count(detail.files)} files · {count(detail.lines)} lines ·{" "}
-            {percent(commentShare)} comment
-          </p>
+          <p className="detail__stats">{stats.join(" · ")}</p>
         </div>
         <div className="detail__actions">
           <p className="detail__share" title="Share of the current scope, measured before any filter">
@@ -88,9 +95,10 @@ export function FolderDetail({ detail, path, onSelectFolder, canDrill, onDrill, 
               <>
                 <span className="card__name">{card.name}</span>
                 <span className="card__meta">
-                  {count(card.tokens)} tok · {count(card.files)} files · {percent(card.shareOfScope)} of current scope
+                  {count(card.weight)} {measureAbbreviation(measure)} · {count(card.files)} files ·{" "}
+                  {percent(card.shareOfScope)} of current scope
                 </span>
-                <FlavorBar slices={card.flavors} scale={card.shareOfScope} />
+                <FlavorBar slices={card.flavors} measure={measure} scale={card.shareOfScope} />
               </>
             );
             return card.path === null ? (
@@ -109,6 +117,7 @@ export function FolderDetail({ detail, path, onSelectFolder, canDrill, onDrill, 
       </p>
       <FileTable
         files={detail.directFiles}
+        measure={measure}
         displayRoot={path}
         prefixRelativePaths={false}
         onOpenSource={onOpenSource}

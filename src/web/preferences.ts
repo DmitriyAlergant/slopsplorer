@@ -1,13 +1,16 @@
-import type { FileKind, TreeSort, ViewRequest } from "../shared/api.ts";
-import { FILE_KINDS, TREE_SORTS } from "../shared/api.ts";
+import type { FileKind, Measure, TreeSort, ViewRequest } from "../shared/api.ts";
+import { FILE_KINDS, MEASURES, TREE_SORTS } from "../shared/api.ts";
 
-const STORAGE_KEY = "slopsplorer.view-preferences.v1";
+// v2 carries the primary measure. A v1 payload names a tree sort this build no
+// longer knows, so it is discarded rather than half-read.
+const STORAGE_KEY = "slopsplorer.view-preferences.v2";
 const TREE_PANEL_STORAGE_KEY = "slopsplorer.tree-panel-ratio.v1";
 
 export interface ViewPreferences {
   kinds: FileKind[];
   showGenerated: boolean;
   treeSort: TreeSort;
+  measure: Measure;
 }
 
 export interface PreferenceStorage {
@@ -47,7 +50,9 @@ export function readPreferences(storage: PreferenceStorage): ViewPreferences | n
     const kinds = FILE_KINDS.filter((kind) => storedKinds.includes(kind));
     const treeSort = TREE_SORTS.find((sort) => sort === candidate["treeSort"]);
     if (treeSort === undefined) return null;
-    return { kinds, showGenerated: candidate["showGenerated"], treeSort };
+    const measure = MEASURES.find((candidate_) => candidate_ === candidate["measure"]);
+    if (measure === undefined) return null;
+    return { kinds, showGenerated: candidate["showGenerated"], treeSort, measure };
   } catch {
     return null;
   }
@@ -59,6 +64,7 @@ export function writePreferences(storage: PreferenceStorage, request: ViewReques
     kinds: FILE_KINDS.filter((kind) => request.kinds.includes(kind)),
     showGenerated: request.showGenerated,
     treeSort: request.treeSort,
+    measure: request.measure,
   };
   try {
     storage.setItem(STORAGE_KEY, JSON.stringify(preferences));

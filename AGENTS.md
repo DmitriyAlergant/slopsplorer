@@ -64,7 +64,21 @@ Thirteen grammars ship prebuilt as WASM in `@vscode/tree-sitter-wasm`, which is 
 Files outside those grammars still get token and line counts.
 They report `language: null` and zero structure counts.
 
+### The primary measure
+
+`ViewRequest.measure` selects the unit every aggregation is expressed in: `tokens`, `lines`, or `codeLines`.
+It is orthogonal to the filters, which decide which files are counted rather than what counting means.
+
+Every measure name is also a numeric `FileRow` field, so the aggregator applies one by indexing a row rather than by branching, and `parseViewRequest` validates the name against `MEASURES` before it reaches an index expression.
+`ScanIndex.weightPrefix` holds one running-total array per measure, so an unfiltered folder baseline stays a single subtraction whichever measure is active.
+
+On the wire the measured quantity is `weight`, never `tokens`.
+`ViewResponse` echoes the measure back, so a label in the client cannot disagree with the numbers beside it while a newer request is still in flight.
+
 ### Line counting
+
+Slopsplorer does its own line classification.
+It does not shell out to `cloc`, and `cloc` is not a dependency.
 
 `lines` is non-blank lines only.
 `lines === codeLines + commentLines`, and the three buckets are mutually exclusive, matching the convention `cloc` uses.

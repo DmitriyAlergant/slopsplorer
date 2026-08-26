@@ -44,12 +44,29 @@ Files are sorted into flavors that you can show or hide independently: code, tes
 Generated output is tracked separately.
 Hiding the tests is usually the fastest way to find out whether a project is as large as it looks.
 
+## The primary measure
+
+Tokens are the default unit, and the **Measure** switch changes it to lines.
+
+| Measure | Counts |
+| --- | --- |
+| Tokens | Tokenizer weight for the whole file, comments and whitespace included |
+| Lines | Every line with content, comment lines included |
+| LOC | Lines of code: content lines that are not entirely comment |
+
+Neither line measure counts blank lines.
+
+The switch is orthogonal to every filter.
+It changes the unit on every total, every bar, and the ranking, and never changes which files are counted.
+Tokens answer what a review or a context window will cost.
+LOC answers how much logic is actually there, which is the question a comment-padded file distorts.
+
 ## What it shows
 
 - **A mass ribbon** across the top: the whole scope as one bar, split by top-level folder, shaded darkest-first by rank. Click a segment to drill in.
 - **A source tree** where each row carries a bar showing its share of its parent, so weight is visible before you read the number.
 - **Folder cards** showing how a folder divides among its children. Each card's composition bar is scaled to the folder rather than to the project.
-- **A ranked file list** for the current scope, sortable by any metric. A dot marks files whose lines are mostly commentary, a common shape for generated bulk.
+- **A ranked file list** for the current scope, sortable by any metric, with a floor expressed in the active measure. A dot marks files whose lines are mostly commentary, a common shape for generated bulk.
 - **Read-only source previews**, capped at 512 KiB.
 
 The folder and `(files)` checkboxes narrow the analytical scope.

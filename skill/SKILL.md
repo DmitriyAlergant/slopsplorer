@@ -86,10 +86,11 @@ Either way, ignored build output, dependencies, and caches stay out of the map, 
 
 ## Reading the UI
 
+- The **Measure** switch chooses the unit every total, bar, and ranking is expressed in: `Tokens` (the default), `Lines`, or `LOC`, which are the `tokens`, `lines`, and `codeLines` metrics above. Neither line measure counts blank lines. It is orthogonal to the filters: it changes the unit, never which files are counted. Tokens answer what a review or a context window costs. LOC answers how much logic is present, which is the question a comment-padded file distorts.
 - The visibility switches separate `code`, `test`, `text`, `i18n`, `data`, `other`, and `generated`. Clear one switch and that weight leaves every total.
 - The folder and `(files)` checkboxes narrow the analytical scope. They work independently of tree expansion, so you can drop a folder from the totals and still see it in the tree.
 - The percentage baseline is the whole scanned tree, measured before any filter. It does not move while you filter, so shares stay comparable between two views.
-- The ranked file list sorts by one metric. It reports the total number of matches before the display limit, so a truncated list still tells you how many files qualified.
+- The ranked file list sorts by one metric, and its minimum-size floor is expressed in the active measure. It reports the total number of matches before the display limit, so a truncated list still tells you how many files qualified.
 
 ## Recipes to give the user
 
@@ -104,6 +105,7 @@ A long tail means you must work folder by folder.
 
 **Find comment-padded or model-generated bulk.**
 Clear the `test`, `data`, `i18n`, and `generated` switches, so only hand-written code and prose remain.
+Set the measure to `Lines`, note where the weight sits, then set it to `LOC` and look at what shrank: those folders are mostly commentary.
 Rank the files by `commentLines`.
 Compare each result's `commentLines` against its `codeLines`.
 Open the files where commentary approaches or exceeds code, especially those with a low `functions` count.

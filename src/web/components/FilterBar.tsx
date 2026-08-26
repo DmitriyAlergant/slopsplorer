@@ -1,31 +1,20 @@
-import { FILE_KINDS, type FileKind, type ViewRequest } from "../../shared/api.ts";
+import { FILE_KINDS, type FileKind, type Measure, type ViewRequest } from "../../shared/api.ts";
 import { FILE_KIND_DETAILS } from "../fileKinds.ts";
+import { positionTooltip } from "../tooltip.ts";
+import { MeasureSwitch } from "./MeasureSwitch.tsx";
 
 interface Props {
   request: ViewRequest;
   onToggleKind: (kind: FileKind) => void;
   onToggleGenerated: () => void;
   onQueryChange: (query: string) => void;
+  onMeasureChange: (measure: Measure) => void;
 }
 
 const GENERATED_DESCRIPTION = "Generated output and lockfiles detected from path and filename conventions.";
 
-/** Keep a tooltip inside the viewport when its chip sits near either edge. */
-function positionTooltip(event: React.SyntheticEvent<HTMLLabelElement>): void {
-  const tooltip = event.currentTarget.querySelector<HTMLElement>(".chip__tooltip");
-  if (tooltip === null) return;
-
-  tooltip.style.setProperty("--tooltip-shift", "0px");
-  const bounds = tooltip.getBoundingClientRect();
-  const gutter = 12;
-  const shift = bounds.left < gutter
-    ? gutter - bounds.left
-    : Math.min(0, window.innerWidth - gutter - bounds.right);
-  tooltip.style.setProperty("--tooltip-shift", `${shift}px`);
-}
-
-/** Search plus the visibility switches that decide what counts toward the totals. */
-export function FilterBar({ request, onToggleKind, onToggleGenerated, onQueryChange }: Props): React.JSX.Element {
+/** Search, the visibility switches, and the unit the totals are counted in. */
+export function FilterBar({ request, onToggleKind, onToggleGenerated, onQueryChange, onMeasureChange }: Props): React.JSX.Element {
   return (
     <section className="filters" aria-label="Scope filters">
       <label className="search">
@@ -57,7 +46,7 @@ export function FilterBar({ request, onToggleKind, onToggleGenerated, onQueryCha
                 onChange={() => onToggleKind(kind)}
               />
               {label}
-              <span className="chip__tooltip" id={`flavor-tooltip-${kind}`} role="tooltip">{description}</span>
+              <span className="tooltip" id={`flavor-tooltip-${kind}`} role="tooltip">{description}</span>
             </label>
           );
         })}
@@ -75,9 +64,11 @@ export function FilterBar({ request, onToggleKind, onToggleGenerated, onQueryCha
             onChange={onToggleGenerated}
           />
           Generated
-          <span className="chip__tooltip" id="flavor-tooltip-generated" role="tooltip">{GENERATED_DESCRIPTION}</span>
+          <span className="tooltip" id="flavor-tooltip-generated" role="tooltip">{GENERATED_DESCRIPTION}</span>
         </label>
       </div>
+
+      <MeasureSwitch measure={request.measure} onChange={onMeasureChange} />
     </section>
   );
 }

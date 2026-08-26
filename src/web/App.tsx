@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { FileKind, TreeRow, ViewRequest, ViewResponse } from "../shared/api.ts";
+import type { FileKind, Measure, TreeRow, ViewRequest, ViewResponse } from "../shared/api.ts";
+import { MEASURES } from "../shared/api.ts";
 import { fetchView, openRoot, rescan } from "./api.ts";
 import { readPreferences, readTreePanelRatio, writePreferences, writeTreePanelRatio } from "./preferences.ts";
 import { readRequest, selectionKey, writeRequest } from "./urlState.ts";
@@ -83,7 +84,7 @@ export function App(): React.JSX.Element {
     } catch {
       // Accessing localStorage itself can be denied in locked-down contexts.
     }
-  }, [request.kinds, request.showGenerated, request.treeSort]);
+  }, [request.kinds, request.showGenerated, request.treeSort, request.measure]);
 
   useEffect(() => {
     writeTreePanelRatio(window.localStorage, treePanelRatio);
@@ -240,6 +241,31 @@ export function App(): React.JSX.Element {
     setRequest((previous) => ({ ...previous, rank: { ...previous.rank, ...change } }));
   }, []);
 
+  /**
+   * Switch the unit every figure is expressed in.
+   *
+   * The ranking follows, because a page counting code lines that ranks its
+   * files by tokens reads as a bug. A ranking on a metric outside the measures,
+   * such as comment lines, is a deliberate choice and stays where it is. The
+   * threshold resets, since a floor of 2,000 tokens is not a floor of 2,000
+   * lines and carrying the number across would silently empty the list.
+   */
+  const setMeasure = useCallback((measure: Measure) => {
+    setRequest((previous) => {
+      if (previous.measure === measure) return previous;
+      const followsMeasure = MEASURES.some((candidate) => candidate === previous.rank.metric);
+      return {
+        ...previous,
+        measure,
+        rank: {
+          ...previous.rank,
+          metric: followsMeasure ? measure : previous.rank.metric,
+          minWeight: 0,
+        },
+      };
+    });
+  }, []);
+
   if (error && !view) {
     return (
       <main className="app app--error">
@@ -266,10 +292,12 @@ export function App(): React.JSX.Element {
         onToggleKind={toggleKind}
         onToggleGenerated={() => patch({ showGenerated: !request.showGenerated })}
         onQueryChange={(query) => patch({ query })}
+        onMeasureChange={setMeasure}
       />
 
       <MassRibbon
         summary={view?.summary ?? null}
+        measure={view?.measure ?? request.measure}
         selectedPath={request.selected.rowKind === "folder" ? request.selected.path : null}
         onSelect={(path) => select("folder", path)}
       />
@@ -289,6 +317,7 @@ export function App(): React.JSX.Element {
         <SourceTree
           rows={view?.tree ?? []}
           sort={request.treeSort}
+          measure={view?.measure ?? request.measure}
           onSelect={select}
           onDrill={drill}
           onSortChange={(treeSort) => patch({ treeSort })}
@@ -301,6 +330,7 @@ export function App(): React.JSX.Element {
         <WorkspaceSplitter ratio={treePanelRatio} onRatioChange={setTreePanelRatio} />
         <FolderDetail
           detail={view?.detail ?? null}
+          measure={view?.measure ?? request.measure}
           path={request.selected.path}
           onSelectFolder={(path) => select("folder", path)}
           canDrill={request.selected.rowKind === "folder" && request.selected.path !== request.drillPath}
@@ -312,6 +342,7 @@ export function App(): React.JSX.Element {
 
       <LargestFiles
         files={view?.ranked ?? []}
+        measure={view?.measure ?? request.measure}
         total={view?.rankedTotal ?? 0}
         scopePath={request.selected.path}
         directFilesOnly={request.selected.rowKind === "files"}

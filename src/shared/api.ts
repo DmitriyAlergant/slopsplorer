@@ -15,9 +15,20 @@ export const FILE_KINDS: readonly FileKind[] = ["code", "test", "text", "i18n", 
 
 export const FLAVORS: readonly Flavor[] = [...FILE_KINDS, "generated"];
 
-export type TreeSort = "name" | "tokens";
+export type TreeSort = "name" | "weight";
 
-export const TREE_SORTS: readonly TreeSort[] = ["name", "tokens"];
+export const TREE_SORTS: readonly TreeSort[] = ["name", "weight"];
+
+/**
+ * The quantity every total, bar, and ranking is expressed in.
+ *
+ * This is orthogonal to the filters: it changes the unit, never which files are
+ * counted. Each name is also a numeric `FileRow` field, so a measure is applied
+ * by indexing a row rather than by a switch statement.
+ */
+export type Measure = "tokens" | "lines" | "codeLines";
+
+export const MEASURES: readonly Measure[] = ["tokens", "lines", "codeLines"];
 
 export type RankMetric =
   | "tokens"
@@ -61,8 +72,9 @@ export interface TreeRow {
   depth: number;
   /** `files` is the pseudo-row grouping files sitting directly in a folder. */
   rowKind: "folder" | "files";
-  tokens: number;
-  /** 0-1 share of the active drill scope's unfiltered tokens. */
+  /** Subtree total in the active measure. */
+  weight: number;
+  /** 0-1 share of the active drill scope's unfiltered weight. */
   shareOfScope: number;
   hasChildren: boolean;
   expanded: boolean;
@@ -77,29 +89,32 @@ export interface FolderCard {
   /** null marks the aggregate tile, which is not navigable. */
   path: string | null;
   name: string;
-  tokens: number;
+  /** Folder total in the active measure. */
+  weight: number;
   files: number;
   shareOfProject: number;
-  /** 0-1 share of the active drill scope's unfiltered tokens. */
+  /** 0-1 share of the active drill scope's unfiltered weight. */
   shareOfScope: number;
   flavors: FlavorSlice[];
 }
 
 export interface FlavorSlice {
   flavor: Flavor;
-  tokens: number;
+  weight: number;
 }
 
 export interface DetailView {
   title: string;
   breadcrumb: string;
-  tokens: number;
+  /** Folder total in the active measure. */
+  weight: number;
   files: number;
+  tokens: number;
   lines: number;
   codeLines: number;
   commentLines: number;
   shareOfProject: number;
-  /** 0-1 share of the active drill scope's unfiltered tokens. */
+  /** 0-1 share of the active drill scope's unfiltered weight. */
   shareOfScope: number;
   cards: FolderCard[];
   /** Fixed column capacity measured from the panel width. */
@@ -109,10 +124,11 @@ export interface DetailView {
 
 export interface SummaryView {
   /** Unfiltered weight of the whole scanned tree, the fixed percentage baseline. */
-  projectTokens: number;
+  projectWeight: number;
   /** Whole-project weight under the active visibility and inclusion switches. */
-  selectedTokens: number;
+  selectedWeight: number;
   selectedFiles: number;
+  selectedTokens: number;
   selectedLines: number;
   selectedCodeLines: number;
   selectedCommentLines: number;
@@ -142,6 +158,8 @@ export interface ScanMeta {
 /** Everything the client controls, sent on every view request. */
 export interface ViewRequest {
   kinds: FileKind[];
+  /** Unit every aggregation is expressed in. Independent of every filter. */
+  measure: Measure;
   showGenerated: boolean;
   query: string;
   excludedFolders: string[];
@@ -151,7 +169,8 @@ export interface ViewRequest {
   /** Folder that replaces the project root in the main workspace widgets. */
   drillPath: string;
   selected: { rowKind: "folder" | "files"; path: string };
-  rank: { metric: RankMetric; minTokens: number; limit: number };
+  /** `minWeight` is a floor in the active measure, not always in tokens. */
+  rank: { metric: RankMetric; minWeight: number; limit: number };
   /**
    * How many tiles fit across the panel at its current width.
    *
@@ -164,6 +183,13 @@ export interface ViewRequest {
 
 export interface ViewResponse {
   meta: ScanMeta;
+  /**
+   * The measure these figures are in.
+   *
+   * Echoed rather than assumed, so a label never disagrees with the numbers
+   * beside it while a newer request is still in flight.
+   */
+  measure: Measure;
   summary: SummaryView;
   tree: TreeRow[];
   detail: DetailView;

@@ -1,10 +1,12 @@
 import { useEffect, useRef } from "react";
-import type { TreeRow, TreeSort } from "../../shared/api.ts";
-import { count } from "../format.ts";
+import type { Measure, TreeRow, TreeSort } from "../../shared/api.ts";
+import { count, measureHeading } from "../format.ts";
 
 interface Props {
   rows: readonly TreeRow[];
   sort: TreeSort;
+  /** Names the sort control and the numbers column. */
+  measure: Measure;
   onSelect: (rowKind: "folder" | "files", path: string) => void;
   onDrill: (path: string) => void;
   onSortChange: (sort: TreeSort) => void;
@@ -45,7 +47,7 @@ function ScopeCheckbox({ row, onChange }: { row: TreeRow; onChange: () => void }
 
 /** The folder hierarchy, with every row measured against the active scope root. */
 export function SourceTree({
-  rows, sort, onSelect, onDrill, onSortChange, onToggleExpanded, onToggleFolder, onToggleDirectFiles, onExpandAll, onCollapseAll,
+  rows, sort, measure, onSelect, onDrill, onSortChange, onToggleExpanded, onToggleFolder, onToggleDirectFiles, onExpandAll, onCollapseAll,
 }: Props): React.JSX.Element {
   const expandableRows = rows.filter((row) => row.rowKind === "folder" && row.hasChildren);
   const allExpanded = expandableRows.length > 0 && expandableRows.every((row) => row.expanded);
@@ -57,7 +59,7 @@ export function SourceTree({
           <div className="tree__sort" role="group" aria-label="Sort source tree">
             <button type="button" aria-pressed={sort === "name"} onClick={() => onSortChange("name")}>Name</button>
             <span aria-hidden="true">|</span>
-            <button type="button" aria-pressed={sort === "tokens"} onClick={() => onSortChange("tokens")}>Tokens</button>
+            <button type="button" aria-pressed={sort === "weight"} onClick={() => onSortChange("weight")}>{measureHeading(measure)}</button>
           </div>
           <button
             type="button"
@@ -113,11 +115,11 @@ export function SourceTree({
                 {row.name}
               </button>
 
-              <span className="tree__tokens">
+              <span className="tree__weight">
                 {row.included ? (
                   <>
                     <span className="tree__mass" aria-hidden="true" />
-                    <span className="tree__count">{count(row.tokens)}</span>
+                    <span className="tree__count">{count(row.weight)}</span>
                   </>
                 ) : null}
               </span>

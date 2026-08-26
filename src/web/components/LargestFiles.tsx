@@ -1,10 +1,12 @@
-import type { FileRow, RankMetric, ViewRequest } from "../../shared/api.ts";
+import type { FileRow, Measure, RankMetric, ViewRequest } from "../../shared/api.ts";
 import { pathRelativeTo } from "../displayPath.ts";
-import { count } from "../format.ts";
+import { count, measureName } from "../format.ts";
 import { FileTable } from "./FileTable.tsx";
 
 interface Props {
   files: readonly FileRow[];
+  /** The measure the threshold is applied in, and the column the table highlights. */
+  measure: Measure;
   total: number;
   /** Project-relative folder the ranking covers. */
   scopePath: string;
@@ -20,15 +22,18 @@ interface Props {
 const METRIC_LABELS: ReadonlyArray<{ metric: RankMetric; label: string }> = [
   { metric: "tokens", label: "Tokens" },
   { metric: "lines", label: "Lines" },
-  { metric: "codeLines", label: "Code lines" },
+  { metric: "codeLines", label: "LOC" },
   { metric: "commentLines", label: "Comment lines" },
   { metric: "functions", label: "Functions" },
   { metric: "classes", label: "Classes" },
   { metric: "branches", label: "Branch nodes" },
 ];
 
+/** A round step for each measure, so the spinner moves by a useful amount. */
+const THRESHOLD_STEPS: Record<Measure, number> = { tokens: 500, lines: 50, codeLines: 50 };
+
 /** The ranked file list for whatever scope the tree currently describes. */
-export function LargestFiles({ files, total, scopePath, directFilesOnly, displayRoot, rank, onRankChange, onOpenSource }: Props): React.JSX.Element {
+export function LargestFiles({ files, measure, total, scopePath, directFilesOnly, displayRoot, rank, onRankChange, onOpenSource }: Props): React.JSX.Element {
   const relativeScope = pathRelativeTo(scopePath, displayRoot);
   const relativeScopeLabel = relativeScope === "." || relativeScope === "" ? "./" : `./${relativeScope}`;
   const scopeLabel = directFilesOnly ? `${relativeScopeLabel} files only` : relativeScopeLabel;
@@ -53,13 +58,13 @@ export function LargestFiles({ files, total, scopePath, directFilesOnly, display
             </select>
           </label>
           <label>
-            <span>Minimum tokens</span>
+            <span>Minimum {measureName(measure)}</span>
             <input
               type="number"
               min={0}
-              step={500}
-              value={rank.minTokens}
-              onChange={(event) => onRankChange({ minTokens: Math.max(0, Number(event.target.value) || 0) })}
+              step={THRESHOLD_STEPS[measure]}
+              value={rank.minWeight}
+              onChange={(event) => onRankChange({ minWeight: Math.max(0, Number(event.target.value) || 0) })}
             />
           </label>
         </div>
@@ -70,10 +75,11 @@ export function LargestFiles({ files, total, scopePath, directFilesOnly, display
       </p>
       <FileTable
         files={files}
+        measure={measure}
         displayRoot={displayRoot}
         prefixRelativePaths
         onOpenSource={onOpenSource}
-        emptyMessage="No files match the current filters, scope, and minimum-token threshold."
+        emptyMessage={`No files match the current filters, scope, and minimum ${measureName(measure)} threshold.`}
       />
     </section>
   );

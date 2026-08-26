@@ -108,7 +108,8 @@ function request(overrides: Partial<ViewRequest> = {}): ViewRequest {
     treeSort: "name",
     drillPath: "",
     selected: { rowKind: "folder", path: "" },
-    rank: { metric: "tokens", minTokens: 0, limit: 100 },
+    rank: { metric: "tokens", minWeight: 0, limit: 100 },
+    measure: "tokens",
     ...overrides,
   });
 }
@@ -133,56 +134,56 @@ describe("folder aggregation", () => {
   it("reports a folder's weight as exactly the sum of the files beneath it", () => {
     const view = buildView(index, request());
     const src = folderRow(view.tree, "src")!;
-    expect(src.tokens).toBe(tokensOf("src/main.ts", "src/util.ts", "src/deep/helper.ts"));
+    expect(src.weight).toBe(tokensOf("src/main.ts", "src/util.ts", "src/deep/helper.ts"));
     const deep = folderRow(view.tree, "src/deep")!;
-    expect(deep.tokens).toBe(tokensOf("src/deep/helper.ts"));
-    expect(filesRow(view.tree, "src")!.tokens).toBe(tokensOf("src/main.ts", "src/util.ts"));
+    expect(deep.weight).toBe(tokensOf("src/deep/helper.ts"));
+    expect(filesRow(view.tree, "src")!.weight).toBe(tokensOf("src/main.ts", "src/util.ts"));
   });
 
   it("adds the top-level folders and the root's loose files back up to the selected total", () => {
     const view = buildView(index, request());
-    expect(view.summary.selectedTokens).toBe(
+    expect(view.summary.selectedWeight).toBe(
       tokensOf("README.md", "src/main.ts", "src/util.ts", "src/deep/helper.ts", "tests/main.test.ts"),
     );
-    const ribbonTotal = view.summary.ribbon.reduce((total, card) => total + card.tokens, 0);
-    expect(ribbonTotal).toBe(view.summary.selectedTokens);
+    const ribbonTotal = view.summary.ribbon.reduce((total, card) => total + card.weight, 0);
+    expect(ribbonTotal).toBe(view.summary.selectedWeight);
     expect(view.summary.selectedFiles).toBe(5);
   });
 
-  it("sorts each source-tree level by name or descending token weight", () => {
+  it("sorts each source-tree level by name or descending weight", () => {
     const nameRows = buildView(index, request({ expanded: [""], treeSort: "name" })).tree
       .filter((row) => row.depth === 1);
     expect(nameRows.map((row) => row.name)).toEqual(
       nameRows.map((row) => row.name).sort((left, right) => left.localeCompare(right)),
     );
 
-    const tokenRows = buildView(index, request({ expanded: [""], treeSort: "tokens" })).tree
+    const weightRows = buildView(index, request({ expanded: [""], treeSort: "weight" })).tree
       .filter((row) => row.depth === 1);
-    expect(tokenRows.map((row) => row.tokens)).toEqual(
-      tokenRows.map((row) => row.tokens).sort((left, right) => right - left),
+    expect(weightRows.map((row) => row.weight)).toEqual(
+      weightRows.map((row) => row.weight).sort((left, right) => right - left),
     );
   });
 
-  it("keeps token-sorted rows in place when their scope checkbox is cleared", () => {
+  it("keeps weight-sorted rows in place when their scope checkbox is cleared", () => {
     const order = (view: ReturnType<typeof buildView>): string[] => view.tree
       .filter((row) => row.depth === 1)
       .map((row) => `${row.rowKind}:${row.path}`);
-    const included = buildView(index, request({ expanded: [""], treeSort: "tokens" }));
+    const included = buildView(index, request({ expanded: [""], treeSort: "weight" }));
     const folderExcluded = buildView(index, request({
       expanded: [""],
-      treeSort: "tokens",
+      treeSort: "weight",
       excludedFolders: ["src"],
     }));
     const directFilesExcluded = buildView(index, request({
       expanded: [""],
-      treeSort: "tokens",
+      treeSort: "weight",
       excludedDirectFiles: [""],
     }));
 
     expect(order(folderExcluded)).toEqual(order(included));
     expect(order(directFilesExcluded)).toEqual(order(included));
-    expect(folderRow(folderExcluded.tree, "src")!.tokens).toBe(0);
-    expect(filesRow(directFilesExcluded.tree, "")!.tokens).toBe(0);
+    expect(folderRow(folderExcluded.tree, "src")!.weight).toBe(0);
+    expect(filesRow(directFilesExcluded.tree, "")!.weight).toBe(0);
   });
 });
 
@@ -190,8 +191,8 @@ describe("visibility switches", () => {
   it("hiding a file kind removes its weight from the totals and its folder from the tree", () => {
     const withTests = buildView(index, request());
     const withoutTests = buildView(index, request({ kinds: ["code", "text", "i18n", "data", "other"] }));
-    expect(withoutTests.summary.selectedTokens).toBe(
-      withTests.summary.selectedTokens - tokensOf("tests/main.test.ts"),
+    expect(withoutTests.summary.selectedWeight).toBe(
+      withTests.summary.selectedWeight - tokensOf("tests/main.test.ts"),
     );
     expect(folderRow(withTests.tree, "tests")).toBeDefined();
     expect(folderRow(withoutTests.tree, "tests")).toBeUndefined();
@@ -201,8 +202,8 @@ describe("visibility switches", () => {
     const hidden = buildView(index, request());
     const shown = buildView(index, request({ showGenerated: true }));
     expect(folderRow(hidden.tree, "dist")).toBeUndefined();
-    expect(folderRow(shown.tree, "dist")!.tokens).toBe(tokensOf("dist/bundle.js"));
-    expect(shown.summary.selectedTokens).toBe(hidden.summary.selectedTokens + tokensOf("dist/bundle.js"));
+    expect(folderRow(shown.tree, "dist")!.weight).toBe(tokensOf("dist/bundle.js"));
+    expect(shown.summary.selectedWeight).toBe(hidden.summary.selectedWeight + tokensOf("dist/bundle.js"));
   });
 
   it("keeps the project baseline fixed at the unfiltered total, so percentages stay comparable across filters", () => {
@@ -211,9 +212,9 @@ describe("visibility switches", () => {
     const withGenerated = buildView(index, request({ showGenerated: true }));
 
     const unfilteredTotal = index.files.reduce((total, file) => total + file.tokens, 0);
-    expect(everything.summary.projectTokens).toBe(unfilteredTotal);
-    expect(codeOnly.summary.projectTokens).toBe(unfilteredTotal);
-    expect(withGenerated.summary.projectTokens).toBe(unfilteredTotal);
+    expect(everything.summary.projectWeight).toBe(unfilteredTotal);
+    expect(codeOnly.summary.projectWeight).toBe(unfilteredTotal);
+    expect(withGenerated.summary.projectWeight).toBe(unfilteredTotal);
   });
 });
 
@@ -221,27 +222,27 @@ describe("scope exclusions", () => {
   it("excluding a folder zeroes it, disables its descendants, and leaves the ancestor partially selected", () => {
     const view = buildView(index, request({ excludedFolders: ["src"] }));
     const src = folderRow(view.tree, "src")!;
-    expect(src.tokens).toBe(0);
+    expect(src.weight).toBe(0);
     expect(src.included).toBe(false);
     expect(src.disabled).toBe(false);
 
     const deep = folderRow(view.tree, "src/deep")!;
     expect(deep.disabled).toBe(true);
-    expect(deep.tokens).toBe(0);
+    expect(deep.weight).toBe(0);
     expect(filesRow(view.tree, "src")!.disabled).toBe(true);
 
     const projectRoot = folderRow(view.tree, "")!;
     expect(projectRoot.indeterminate).toBe(true);
     expect(projectRoot.included).toBe(true);
-    expect(view.summary.selectedTokens).toBe(tokensOf("README.md", "tests/main.test.ts"));
+    expect(view.summary.selectedWeight).toBe(tokensOf("README.md", "tests/main.test.ts"));
   });
 
   it("excluding a folder's loose files leaves its subfolders counted", () => {
     const view = buildView(index, request({ excludedDirectFiles: ["src"] }));
-    expect(folderRow(view.tree, "src")!.tokens).toBe(tokensOf("src/deep/helper.ts"));
+    expect(folderRow(view.tree, "src")!.weight).toBe(tokensOf("src/deep/helper.ts"));
     expect(filesRow(view.tree, "src")!.included).toBe(false);
     expect(folderRow(view.tree, "src")!.indeterminate).toBe(true);
-    expect(view.summary.selectedTokens).toBe(
+    expect(view.summary.selectedWeight).toBe(
       tokensOf("README.md", "src/deep/helper.ts", "tests/main.test.ts"),
     );
   });
@@ -251,7 +252,7 @@ describe("search", () => {
   it("narrows the tree to matching paths and opens it up so the matches are visible without clicking", () => {
     const view = buildView(index, request({ query: "helper", expanded: [] }));
     expect(view.ranked.map((file) => file.path)).toEqual(["src/deep/helper.ts"]);
-    expect(view.summary.selectedTokens).toBe(tokensOf("src/deep/helper.ts"));
+    expect(view.summary.selectedWeight).toBe(tokensOf("src/deep/helper.ts"));
     expect(folderRow(view.tree, "tests")).toBeUndefined();
     expect(folderRow(view.tree, "src/deep")).toBeDefined();
     for (const row of view.tree.filter((candidate) => candidate.rowKind === "folder")) {
@@ -269,10 +270,10 @@ describe("search", () => {
 
 describe("file ranking", () => {
   it("ranks by the chosen metric, so a comment-heavy file can top the list a token ranking would bury", () => {
-    const byTokens = buildView(index, request({ rank: { metric: "tokens", minTokens: 0, limit: 100 } }));
+    const byTokens = buildView(index, request({ rank: { metric: "tokens", minWeight: 0, limit: 100 } }));
     expect(byTokens.ranked[0]!.path).toBe("src/main.ts");
 
-    const byComments = buildView(index, request({ rank: { metric: "commentLines", minTokens: 0, limit: 100 } }));
+    const byComments = buildView(index, request({ rank: { metric: "commentLines", minWeight: 0, limit: 100 } }));
     expect(byComments.ranked[0]!.path).toBe("src/util.ts");
     expect(byComments.ranked[0]!.commentLines).toBe(10);
   });
@@ -280,7 +281,7 @@ describe("file ranking", () => {
   it("drops files below the token floor so a long tail of tiny files does not crowd out the real weight", () => {
     const helper = index.files.find((file) => file.path === "src/deep/helper.ts")!;
     const view = buildView(index, request({
-      rank: { metric: "tokens", minTokens: helper.tokens + 1, limit: 100 },
+      rank: { metric: "tokens", minWeight: helper.tokens + 1, limit: 100 },
     }));
     expect(view.ranked.map((file) => file.path)).not.toContain("src/deep/helper.ts");
     expect(view.ranked.map((file) => file.path)).toContain("src/main.ts");
@@ -288,7 +289,7 @@ describe("file ranking", () => {
   });
 
   it("truncates the list but still reports how many files matched, so the count is not a lie", () => {
-    const view = buildView(index, request({ rank: { metric: "tokens", minTokens: 0, limit: 2 } }));
+    const view = buildView(index, request({ rank: { metric: "tokens", minWeight: 0, limit: 2 } }));
     expect(view.ranked).toHaveLength(2);
     expect(view.rankedTotal).toBe(5);
   });
@@ -311,7 +312,8 @@ describe("request parsing", () => {
     expect(parsed.treeSort).toBe("name");
     expect(parsed.drillPath).toBe("");
     expect(parsed.selected).toEqual({ rowKind: "folder", path: "" });
-    expect(parsed.rank).toEqual({ metric: "tokens", minTokens: 0, limit: 100 });
+    expect(parsed.measure).toBe("tokens");
+    expect(parsed.rank).toEqual({ metric: "tokens", minWeight: 0, limit: 100 });
     expect(() => buildView(index, parsed)).not.toThrow();
   });
 
@@ -322,8 +324,14 @@ describe("request parsing", () => {
   });
 
   it("accepts only known source-tree sort orders", () => {
-    expect(parseViewRequest({ treeSort: "tokens" }).treeSort).toBe("tokens");
+    expect(parseViewRequest({ treeSort: "weight" }).treeSort).toBe("weight");
     expect(parseViewRequest({ treeSort: "__proto__" }).treeSort).toBe("name");
+  });
+
+  it("accepts only known measures, so a request cannot choose which property gets summed", () => {
+    expect(parseViewRequest({ measure: "codeLines" }).measure).toBe("codeLines");
+    expect(parseViewRequest({ measure: "blankLines" }).measure).toBe("tokens");
+    expect(parseViewRequest({ measure: "__proto__" }).measure).toBe("tokens");
   });
 
   it("keeps only known file kinds, in the canonical order", () => {
@@ -348,7 +356,82 @@ describe("request parsing", () => {
     expect(parseViewRequest({ rank: { limit: -5 } }).rank.limit).toBe(1);
     expect(parseViewRequest({ rank: { limit: Number.NaN } }).rank.limit).toBe(100);
     expect(parseViewRequest({ rank: { limit: "many" } }).rank.limit).toBe(100);
-    expect(parseViewRequest({ rank: { minTokens: -42 } }).rank.minTokens).toBe(0);
+    expect(parseViewRequest({ rank: { minWeight: -42 } }).rank.minWeight).toBe(0);
+  });
+});
+
+describe("primary measure", () => {
+  /** Sums one measure over the named fixture files, the way the aggregator should. */
+  function measured(measure: "tokens" | "lines" | "codeLines", ...paths: string[]): number {
+    return paths.reduce((total, filePath) => {
+      const file = index.files.find((row) => row.path === filePath);
+      expect(file, `fixture file ${filePath}`).toBeDefined();
+      return total + file![measure];
+    }, 0);
+  }
+
+  it("expresses every folder total in the chosen measure", () => {
+    const byCodeLines = buildView(index, request({ measure: "codeLines" }));
+    const src = folderRow(byCodeLines.tree, "src")!;
+
+    expect(byCodeLines.measure).toBe("codeLines");
+    expect(src.weight).toBe(measured("codeLines", "src/main.ts", "src/util.ts", "src/deep/helper.ts"));
+    expect(byCodeLines.summary.selectedWeight).toBe(
+      measured("codeLines", "README.md", "src/main.ts", "src/util.ts", "src/deep/helper.ts", "tests/main.test.ts"),
+    );
+    expect(byCodeLines.summary.projectWeight).toBe(
+      index.files.reduce((total, file) => total + file.codeLines, 0),
+    );
+  });
+
+  it("leaves the file set untouched, so only the unit moves", () => {
+    const byTokens = buildView(index, request());
+    const byLines = buildView(index, request({ measure: "lines" }));
+
+    expect(byLines.tree.map((row) => `${row.rowKind}:${row.path}`))
+      .toEqual(byTokens.tree.map((row) => `${row.rowKind}:${row.path}`));
+    expect(byLines.summary.selectedFiles).toBe(byTokens.summary.selectedFiles);
+    expect(byLines.ranked.map((file) => file.path).sort())
+      .toEqual(byTokens.ranked.map((file) => file.path).sort());
+  });
+
+  it("shifts a comment-heavy file's share between the measures, which is the point of the switch", () => {
+    // util.ts is ten comment lines over two of code, so it carries real weight
+    // by lines and almost none by code lines.
+    const shareOfSrcFiles = (measure: "tokens" | "lines" | "codeLines"): number => {
+      const view = buildView(index, request({ measure, selected: { rowKind: "files", path: "src" } }));
+      const util = view.detail.directFiles.find((file) => file.path === "src/util.ts")!;
+      return util[measure] / view.detail.weight;
+    };
+
+    expect(shareOfSrcFiles("lines")).toBeGreaterThan(shareOfSrcFiles("codeLines"));
+  });
+
+  it("applies the ranking floor in the active measure rather than always in tokens", () => {
+    const helper = index.files.find((file) => file.path === "src/deep/helper.ts")!;
+    const view = buildView(index, request({
+      measure: "lines",
+      rank: { metric: "lines", minWeight: helper.lines + 1, limit: 100 },
+    }));
+
+    expect(helper.lines).toBeLessThan(helper.tokens);
+    expect(view.ranked.map((file) => file.path)).not.toContain("src/deep/helper.ts");
+    expect(view.ranked.map((file) => file.path)).toContain("src/util.ts");
+  });
+
+  it("still reports every measure on a folder, so the headline unit is not the only figure", () => {
+    const view = buildView(index, request({ measure: "codeLines", selected: { rowKind: "folder", path: "src" } }));
+    expect(view.detail.weight).toBe(view.detail.codeLines);
+    expect(view.detail.tokens).toBe(measured("tokens", "src/main.ts", "src/util.ts", "src/deep/helper.ts"));
+    expect(view.detail.lines).toBe(view.detail.codeLines + view.detail.commentLines);
+  });
+
+  it("splits a tile's flavor bar in the active measure, so the slices still add up to the tile", () => {
+    const view = buildView(index, request({ measure: "lines", showGenerated: true }));
+    for (const card of view.detail.cards) {
+      const sliceTotal = card.flavors.reduce((total, slice) => total + slice.weight, 0);
+      expect(sliceTotal).toBe(card.weight);
+    }
   });
 });
 
@@ -424,9 +507,9 @@ describe("bar normalisation", () => {
     const deep = folderRow(view.tree, "src/deep")!;
     const deepFiles = filesRow(view.tree, "src/deep")!;
 
-    expect(deep.tokens).toBe(deepFiles.tokens);
+    expect(deep.weight).toBe(deepFiles.weight);
     expect(deep.shareOfScope).toBeCloseTo(deepFiles.shareOfScope, 10);
-    expect(deep.shareOfScope).toBeCloseTo(deep.tokens / view.summary.projectTokens, 10);
+    expect(deep.shareOfScope).toBeCloseTo(deep.weight / view.summary.projectWeight, 10);
   });
 });
 
@@ -441,14 +524,14 @@ describe("drill scope", () => {
 
     expect(drilled.tree[0]).toMatchObject({ rowKind: "folder", path: "src", depth: 0 });
     expect(drilled.tree.every((row) => row.path === "src" || row.path.startsWith("src/"))).toBe(true);
-    expect(drilled.summary.projectTokens).toBe(project.summary.projectTokens);
+    expect(drilled.summary.projectWeight).toBe(project.summary.projectWeight);
     expect(drilled.summary.ribbon).toEqual(project.summary.ribbon);
 
     const scopeTokens = tokensOf("src/main.ts", "src/util.ts", "src/deep/helper.ts");
     const deep = folderRow(drilled.tree, "src/deep")!;
-    expect(deep.shareOfScope).toBeCloseTo(deep.tokens / scopeTokens, 10);
-    expect(drilled.detail.shareOfScope).toBeCloseTo(deep.tokens / scopeTokens, 10);
-    expect(drilled.detail.shareOfProject).toBeCloseTo(deep.tokens / project.summary.projectTokens, 10);
+    expect(deep.shareOfScope).toBeCloseTo(deep.weight / scopeTokens, 10);
+    expect(drilled.detail.shareOfScope).toBeCloseTo(deep.weight / scopeTokens, 10);
+    expect(drilled.detail.shareOfProject).toBeCloseTo(deep.weight / project.summary.projectWeight, 10);
   });
 
   it("falls back to the drill root when a stale selection lies outside the scope", () => {
@@ -510,8 +593,8 @@ describe("headline figures", () => {
       selected: { rowKind: "folder", path: "src/deep" },
     }));
 
-    expect(view.detail.tokens).toBe(0);
-    expect(view.summary.selectedTokens).toBe(tokensOf("README.md"));
+    expect(view.detail.weight).toBe(0);
+    expect(view.summary.selectedWeight).toBe(tokensOf("README.md"));
     expect(view.summary.selectedFiles).toBe(1);
   });
 
@@ -521,9 +604,9 @@ describe("headline figures", () => {
     const srcCode = buildView(index, request({ selected: { rowKind: "folder", path: "src" }, kinds: ["code"] }));
     const deepCode = buildView(index, request({ selected: { rowKind: "folder", path: "src/deep" }, kinds: ["code"] }));
 
-    expect(rootCode.summary.selectedTokens).toBeLessThan(rootAll.summary.selectedTokens);
-    expect(srcCode.summary.selectedTokens).toBe(rootCode.summary.selectedTokens);
-    expect(deepCode.summary.selectedTokens).toBe(rootCode.summary.selectedTokens);
+    expect(rootCode.summary.selectedWeight).toBeLessThan(rootAll.summary.selectedWeight);
+    expect(srcCode.summary.selectedWeight).toBe(rootCode.summary.selectedWeight);
+    expect(deepCode.summary.selectedWeight).toBe(rootCode.summary.selectedWeight);
   });
 });
 
@@ -548,8 +631,8 @@ describe("folder tile grid", () => {
   it("keeps every folder's weight in the totals even when tiles are collapsed", () => {
     const wide = buildView(index, request({ cardColumns: 6, showGenerated: true }));
     const narrow = buildView(index, request({ cardColumns: 2, showGenerated: true }));
-    const sum = (cards: readonly { tokens: number }[]): number =>
-      cards.reduce((total, card) => total + card.tokens, 0);
+    const sum = (cards: readonly { weight: number }[]): number =>
+      cards.reduce((total, card) => total + card.weight, 0);
     expect(sum(narrow.detail.cards)).toBe(sum(wide.detail.cards));
   });
 });

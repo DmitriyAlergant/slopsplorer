@@ -21,15 +21,16 @@ class MemoryStorage implements PreferenceStorage {
 }
 
 describe("view preferences", () => {
-  it("persists only flavor selection and source-tree sorting", () => {
+  it("persists only flavor selection, source-tree sorting, and the primary measure", () => {
     const storage = new MemoryStorage();
-    const request = readRequest("?tree=tokens&kinds=other%2Ccode&gen=1&path=src&q=worker");
+    const request = readRequest("?tree=weight&measure=codeLines&kinds=other%2Ccode&gen=1&path=src&q=worker");
     writePreferences(storage, request);
 
     expect(readPreferences(storage)).toEqual({
       kinds: ["code", "other"],
       showGenerated: true,
-      treeSort: "tokens",
+      treeSort: "weight",
+      measure: "codeLines",
     });
   });
 
@@ -38,7 +39,13 @@ describe("view preferences", () => {
     storage.value = "{broken";
     expect(readPreferences(storage)).toBeNull();
 
-    storage.value = JSON.stringify({ kinds: "code", showGenerated: true, treeSort: "tokens" });
+    storage.value = JSON.stringify({ kinds: "code", showGenerated: true, treeSort: "weight", measure: "tokens" });
+    expect(readPreferences(storage)).toBeNull();
+  });
+
+  it("discards a stored payload naming a measure this build does not know", () => {
+    const storage = new MemoryStorage();
+    storage.value = JSON.stringify({ kinds: ["code"], showGenerated: false, treeSort: "name", measure: "bytes" });
     expect(readPreferences(storage)).toBeNull();
   });
 
