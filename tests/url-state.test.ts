@@ -12,3 +12,15 @@ describe("source-tree sort URL state", () => {
     expect(writeRequest(byName)).not.toContain("tree=");
   });
 });
+
+describe("drill scope URL state", () => {
+  it("round-trips the scope independently of ordinary folder selection", () => {
+    const request = readRequest("?drill=src%2Fweb&path=src%2Fweb%2Fcomponents");
+    expect(request.drillPath).toBe("src/web");
+    expect(request.selected.path).toBe("src/web/components");
+
+    const written = writeRequest(request);
+    expect(written).toContain("drill=src%2Fweb");
+    expect(written).toContain("path=src%2Fweb%2Fcomponents");
+  });
+});

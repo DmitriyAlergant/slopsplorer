@@ -7,6 +7,8 @@ import { FlavorBar } from "./FlavorBar.tsx";
 interface Props {
   detail: DetailView | null;
   onSelectFolder: (path: string) => void;
+  canDrill: boolean;
+  onDrill: () => void;
   onOpenSource: (path: string) => void;
   /** Reports how many tiles fit across the panel, so the server can plan the grid. */
   onCapacityChange: (cardColumns: number) => void;
@@ -19,7 +21,7 @@ const CARD_PADDING = 40;
 const MAX_COLUMNS = 6;
 
 /** The selected folder: its weight, how its children divide it, and its own files. */
-export function FolderDetail({ detail, onSelectFolder, onOpenSource, onCapacityChange }: Props): React.JSX.Element {
+export function FolderDetail({ detail, onSelectFolder, canDrill, onDrill, onOpenSource, onCapacityChange }: Props): React.JSX.Element {
   const panelRef = useRef<HTMLElement>(null);
   const [columns, setColumns] = useState(3);
 
@@ -58,9 +60,14 @@ export function FolderDetail({ detail, onSelectFolder, onOpenSource, onCapacityC
             {percent(commentShare)} comment
           </p>
         </div>
-        <p className="detail__share" title="Share of the whole scanned tree, measured before any filter">
-          {percent(detail.shareOfProject)}
-        </p>
+        <div className="detail__actions">
+          <p className="detail__share" title="Share of the current scope, measured before any filter">
+            {percent(detail.shareOfScope)}
+          </p>
+          {canDrill ? (
+            <button type="button" className="button button--tiny" onClick={onDrill}>Drill down</button>
+          ) : null}
+        </div>
       </header>
 
       {detail.cards.length > 0 ? (
@@ -70,9 +77,9 @@ export function FolderDetail({ detail, onSelectFolder, onOpenSource, onCapacityC
               <>
                 <span className="card__name">{card.name}</span>
                 <span className="card__meta">
-                  {count(card.tokens)} tok · {count(card.files)} files · {percent(card.shareOfParent)} here
+                  {count(card.tokens)} tok · {count(card.files)} files · {percent(card.shareOfScope)} of current scope
                 </span>
-                <FlavorBar slices={card.flavors} scale={card.shareOfParent} />
+                <FlavorBar slices={card.flavors} scale={card.shareOfScope} />
               </>
             );
             return card.path === null ? (

@@ -62,8 +62,8 @@ export interface TreeRow {
   /** `files` is the pseudo-row grouping files sitting directly in a folder. */
   rowKind: "folder" | "files";
   tokens: number;
-  /** 0–1 share of the parent row's tokens, for the inline mass bar. */
-  shareOfParent: number;
+  /** 0-1 share of the active drill scope's unfiltered tokens. */
+  shareOfScope: number;
   hasChildren: boolean;
   expanded: boolean;
   included: boolean;
@@ -80,15 +80,8 @@ export interface FolderCard {
   tokens: number;
   files: number;
   shareOfProject: number;
-  /**
-   * 0-1 share of the selected folder's total weight.
-   *
-   * The denominator is the folder's full contents, ignoring the visibility
-   * switches, so the tile bars are comparable across filter changes and adding
-   * a file kind never shortens one. With filters active the tiles sum to less
-   * than the whole, which is the point: the gap is what you filtered out.
-   */
-  shareOfParent: number;
+  /** 0-1 share of the active drill scope's unfiltered tokens. */
+  shareOfScope: number;
   flavors: FlavorSlice[];
 }
 
@@ -106,8 +99,10 @@ export interface DetailView {
   codeLines: number;
   commentLines: number;
   shareOfProject: number;
+  /** 0-1 share of the active drill scope's unfiltered tokens. */
+  shareOfScope: number;
   cards: FolderCard[];
-  /** Columns the client should render, chosen so the last row is never ragged. */
+  /** Fixed column capacity measured from the panel width. */
   cardColumns: number;
   directFiles: FileRow[];
 }
@@ -115,7 +110,7 @@ export interface DetailView {
 export interface SummaryView {
   /** Unfiltered weight of the whole scanned tree, the fixed percentage baseline. */
   projectTokens: number;
-  /** Weight of the selected folder under the active visibility switches. */
+  /** Whole-project weight under the active visibility and inclusion switches. */
   selectedTokens: number;
   selectedFiles: number;
   selectedLines: number;
@@ -153,6 +148,8 @@ export interface ViewRequest {
   excludedDirectFiles: string[];
   expanded: string[];
   treeSort: TreeSort;
+  /** Folder that replaces the project root in the main workspace widgets. */
+  drillPath: string;
   selected: { rowKind: "folder" | "files"; path: string };
   rank: { metric: RankMetric; minTokens: number; limit: number };
   /**

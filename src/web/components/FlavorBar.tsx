@@ -10,10 +10,10 @@ interface Props {
 /**
  * A folder's token mass, drawn as length and split by flavor.
  *
- * The filled width is the folder's share of its parent and the internal
+ * The filled width is the folder's share of the active scope and the internal
  * divisions are its composition, so one bar answers "how big" and "made of
- * what" at once. Scaling to the parent rather than to the project keeps the
- * bar legible for a folder holding one percent of the repository.
+ * what" at once. A drill scope changes the common baseline without making
+ * siblings or descendants use different scales.
  */
 export function FlavorBar({ slices, scale = 1 }: Props): React.JSX.Element {
   const total = slices.reduce((sum, slice) => sum + slice.tokens, 0);

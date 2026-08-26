@@ -6,6 +6,7 @@ interface Props {
   rows: readonly TreeRow[];
   sort: TreeSort;
   onSelect: (rowKind: "folder" | "files", path: string) => void;
+  onDrill: (path: string) => void;
   onSortChange: (sort: TreeSort) => void;
   onToggleExpanded: (path: string) => void;
   onToggleFolder: (row: TreeRow) => void;
@@ -42,9 +43,9 @@ function ScopeCheckbox({ row, onChange }: { row: TreeRow; onChange: () => void }
   );
 }
 
-/** The folder hierarchy, with each row's bar showing its share of its parent. */
+/** The folder hierarchy, with every row measured against the active scope root. */
 export function SourceTree({
-  rows, sort, onSelect, onSortChange, onToggleExpanded, onToggleFolder, onToggleDirectFiles, onExpandAll, onCollapseAll,
+  rows, sort, onSelect, onDrill, onSortChange, onToggleExpanded, onToggleFolder, onToggleDirectFiles, onExpandAll, onCollapseAll,
 }: Props): React.JSX.Element {
   const expandableRows = rows.filter((row) => row.rowKind === "folder" && row.hasChildren);
   const allExpanded = expandableRows.length > 0 && expandableRows.every((row) => row.expanded);
@@ -79,7 +80,7 @@ export function SourceTree({
               data-kind={row.rowKind}
               data-selected={row.selected}
               data-muted={!row.included}
-              style={{ "--indent": row.depth, "--mass": Math.min(1, Math.max(0, row.shareOfParent)) } as React.CSSProperties}
+              style={{ "--indent": row.depth, "--mass": Math.min(1, Math.max(0, row.shareOfScope)) } as React.CSSProperties}
             >
               {row.rowKind === "folder" && row.hasChildren ? (
                 <button
@@ -104,7 +105,10 @@ export function SourceTree({
                 type="button"
                 className="tree__label"
                 onClick={() => onSelect(row.rowKind, row.path)}
-                title={row.path || row.name}
+                onDoubleClick={() => {
+                  if (row.rowKind === "folder") onDrill(row.path);
+                }}
+                title={row.rowKind === "folder" ? `${row.path || row.name} - double-click to drill down` : row.path || row.name}
               >
                 {row.name}
               </button>

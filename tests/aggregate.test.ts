@@ -106,6 +106,7 @@ function request(overrides: Partial<ViewRequest> = {}): ViewRequest {
     excludedDirectFiles: [],
     expanded: ["", "src", "src/deep", "tests", "dist"],
     treeSort: "name",
+    drillPath: "",
     selected: { rowKind: "folder", path: "" },
     rank: { metric: "tokens", minTokens: 0, limit: 100 },
     ...overrides,
@@ -160,6 +161,28 @@ describe("folder aggregation", () => {
     expect(tokenRows.map((row) => row.tokens)).toEqual(
       tokenRows.map((row) => row.tokens).sort((left, right) => right - left),
     );
+  });
+
+  it("keeps token-sorted rows in place when their scope checkbox is cleared", () => {
+    const order = (view: ReturnType<typeof buildView>): string[] => view.tree
+      .filter((row) => row.depth === 1)
+      .map((row) => `${row.rowKind}:${row.path}`);
+    const included = buildView(index, request({ expanded: [""], treeSort: "tokens" }));
+    const folderExcluded = buildView(index, request({
+      expanded: [""],
+      treeSort: "tokens",
+      excludedFolders: ["src"],
+    }));
+    const directFilesExcluded = buildView(index, request({
+      expanded: [""],
+      treeSort: "tokens",
+      excludedDirectFiles: [""],
+    }));
+
+    expect(order(folderExcluded)).toEqual(order(included));
+    expect(order(directFilesExcluded)).toEqual(order(included));
+    expect(folderRow(folderExcluded.tree, "src")!.tokens).toBe(0);
+    expect(filesRow(directFilesExcluded.tree, "")!.tokens).toBe(0);
   });
 });
 
@@ -286,6 +309,7 @@ describe("request parsing", () => {
     expect(parsed.excludedDirectFiles).toEqual([]);
     expect(parsed.expanded).toEqual([]);
     expect(parsed.treeSort).toBe("name");
+    expect(parsed.drillPath).toBe("");
     expect(parsed.selected).toEqual({ rowKind: "folder", path: "" });
     expect(parsed.rank).toEqual({ metric: "tokens", minTokens: 0, limit: 100 });
     expect(() => buildView(index, parsed)).not.toThrow();
@@ -352,7 +376,7 @@ describe("bar normalisation", () => {
         const key = card.path ?? card.name;
         const earlier = previousCards.get(key);
         if (earlier !== undefined) {
-          expect(card.shareOfParent, `tile ${key} shrank after enabling a kind`)
+          expect(card.shareOfScope, `tile ${key} shrank after enabling a kind`)
             .toBeGreaterThanOrEqual(earlier - 1e-9);
         }
       }
@@ -361,22 +385,22 @@ describe("bar normalisation", () => {
         const key = `${row.rowKind}:${row.path}`;
         const earlier = previousRows.get(key);
         if (earlier !== undefined) {
-          expect(row.shareOfParent, `tree row ${key} shrank after enabling a kind`)
+          expect(row.shareOfScope, `tree row ${key} shrank after enabling a kind`)
             .toBeGreaterThanOrEqual(earlier - 1e-9);
         }
       }
 
-      previousCards = new Map(view.detail.cards.map((card) => [card.path ?? card.name, card.shareOfParent]));
-      previousRows = new Map(view.tree.map((row) => [`${row.rowKind}:${row.path}`, row.shareOfParent]));
+      previousCards = new Map(view.detail.cards.map((card) => [card.path ?? card.name, card.shareOfScope]));
+      previousRows = new Map(view.tree.map((row) => [`${row.rowKind}:${row.path}`, row.shareOfScope]));
     }
   });
 
-  it("measures a tile against the whole folder, so filtered tiles sum to less than one", () => {
+  it("measures a tile against the whole scope, so filtered tiles sum to less than one", () => {
     const everything = buildView(index, request());
     const codeOnly = buildView(index, request({ kinds: ["code"] }));
 
-    const sum = (cards: readonly { shareOfParent: number }[]): number =>
-      cards.reduce((total, card) => total + card.shareOfParent, 0);
+    const sum = (cards: readonly { shareOfScope: number }[]): number =>
+      cards.reduce((total, card) => total + card.shareOfScope, 0);
 
     expect(sum(everything.detail.cards)).toBeGreaterThan(sum(codeOnly.detail.cards));
     expect(sum(everything.detail.cards)).toBeLessThanOrEqual(1 + 1e-9);
@@ -392,7 +416,51 @@ describe("bar normalisation", () => {
 
     expect(deepBefore).toBeDefined();
     expect(deepAfter).toBeDefined();
-    expect(deepAfter!.shareOfParent).toBeCloseTo(deepBefore!.shareOfParent, 10);
+    expect(deepAfter!.shareOfScope).toBeCloseTo(deepBefore!.shareOfScope, 10);
+  });
+
+  it("uses one absolute baseline for every source-tree row", () => {
+    const view = buildView(index, request());
+    const deep = folderRow(view.tree, "src/deep")!;
+    const deepFiles = filesRow(view.tree, "src/deep")!;
+
+    expect(deep.tokens).toBe(deepFiles.tokens);
+    expect(deep.shareOfScope).toBeCloseTo(deepFiles.shareOfScope, 10);
+    expect(deep.shareOfScope).toBeCloseTo(deep.tokens / view.summary.projectTokens, 10);
+  });
+});
+
+describe("drill scope", () => {
+  it("makes a folder the common baseline for the main widgets without changing the project ribbon", () => {
+    const project = buildView(index, request());
+    const drilled = buildView(index, request({
+      drillPath: "src",
+      selected: { rowKind: "folder", path: "src/deep" },
+      expanded: ["src", "src/deep"],
+    }));
+
+    expect(drilled.tree[0]).toMatchObject({ rowKind: "folder", path: "src", depth: 0 });
+    expect(drilled.tree.every((row) => row.path === "src" || row.path.startsWith("src/"))).toBe(true);
+    expect(drilled.summary.projectTokens).toBe(project.summary.projectTokens);
+    expect(drilled.summary.ribbon).toEqual(project.summary.ribbon);
+
+    const scopeTokens = tokensOf("src/main.ts", "src/util.ts", "src/deep/helper.ts");
+    const deep = folderRow(drilled.tree, "src/deep")!;
+    expect(deep.shareOfScope).toBeCloseTo(deep.tokens / scopeTokens, 10);
+    expect(drilled.detail.shareOfScope).toBeCloseTo(deep.tokens / scopeTokens, 10);
+    expect(drilled.detail.shareOfProject).toBeCloseTo(deep.tokens / project.summary.projectTokens, 10);
+  });
+
+  it("falls back to the drill root when a stale selection lies outside the scope", () => {
+    const view = buildView(index, request({
+      drillPath: "src",
+      selected: { rowKind: "folder", path: "tests" },
+      expanded: ["src"],
+    }));
+
+    expect(view.detail.title).toBe("src");
+    expect(view.rankScope).toBe("src");
+    expect(view.tree[0]!.selected).toBe(true);
   });
 });
 
@@ -427,54 +495,53 @@ describe("ranking scope", () => {
 });
 
 describe("headline figures", () => {
-  it("follows the tree selection as well as the visibility switches", () => {
+  it("stays project-level when an ordinary folder or direct-files row is selected", () => {
     const whole = buildView(index, request());
     const srcOnly = buildView(index, request({ selected: { rowKind: "folder", path: "src" } }));
+    const directOnly = buildView(index, request({ selected: { rowKind: "files", path: "src" } }));
 
-    expect(whole.summary.selectedTokens).toBeGreaterThan(srcOnly.summary.selectedTokens);
-    expect(srcOnly.summary.selectedTokens).toBe(tokensOf("src/main.ts", "src/util.ts", "src/deep/helper.ts"));
-    expect(srcOnly.summary.selectedFiles).toBe(3);
+    expect(srcOnly.summary).toEqual(whole.summary);
+    expect(directOnly.summary).toEqual(whole.summary);
   });
 
-  it("narrows to a folder's own files when the (files) row is selected", () => {
-    const subtree = buildView(index, request({ selected: { rowKind: "folder", path: "src" } }));
-    const direct = buildView(index, request({ selected: { rowKind: "files", path: "src" } }));
+  it("counts a selected flavor project-wide even when the detail folder contains none of it", () => {
+    const view = buildView(index, request({
+      kinds: ["text"],
+      selected: { rowKind: "folder", path: "src/deep" },
+    }));
 
-    expect(direct.summary.selectedTokens).toBe(tokensOf("src/main.ts", "src/util.ts"));
-    expect(direct.summary.selectedTokens).toBeLessThan(subtree.summary.selectedTokens);
+    expect(view.detail.tokens).toBe(0);
+    expect(view.summary.selectedTokens).toBe(tokensOf("README.md"));
+    expect(view.summary.selectedFiles).toBe(1);
   });
 
-  it("combines the folder and the switches rather than applying only one", () => {
+  it("follows visibility switches without following ordinary folder navigation", () => {
     const rootAll = buildView(index, request());
     const rootCode = buildView(index, request({ kinds: ["code"] }));
     const srcCode = buildView(index, request({ selected: { rowKind: "folder", path: "src" }, kinds: ["code"] }));
     const deepCode = buildView(index, request({ selected: { rowKind: "folder", path: "src/deep" }, kinds: ["code"] }));
 
-    // The flavour switch alone drops the docs and the test file.
     expect(rootCode.summary.selectedTokens).toBeLessThan(rootAll.summary.selectedTokens);
-    // The folder alone drops everything outside the subtree, on the same filter.
-    expect(deepCode.summary.selectedTokens).toBeLessThan(srcCode.summary.selectedTokens);
-    expect(deepCode.summary.selectedTokens).toBe(tokensOf("src/deep/helper.ts"));
+    expect(srcCode.summary.selectedTokens).toBe(rootCode.summary.selectedTokens);
+    expect(deepCode.summary.selectedTokens).toBe(rootCode.summary.selectedTokens);
   });
 });
 
 describe("folder tile grid", () => {
   /** The fixture root holds src, tests, dist plus loose files. */
-  it("never ends on a ragged row, using the aggregate tile to absorb the remainder", () => {
+  it("keeps the measured column capacity when fewer folders are present", () => {
     for (const cardColumns of [1, 2, 3, 4, 5, 6]) {
       const view = buildView(index, request({ cardColumns, showGenerated: true }));
-      const { cards, cardColumns: rendered } = view.detail;
-      if (cards.length === 0) continue;
-      expect(cards.length % rendered, `columns=${cardColumns} left a ragged row`).toBe(0);
-      expect(rendered).toBeLessThanOrEqual(cardColumns);
-      expect(rendered).toBeGreaterThanOrEqual(1);
+      expect(view.detail.cardColumns).toBe(cardColumns);
+      expect(view.detail.cards.length).toBeLessThanOrEqual(cardColumns * 2);
     }
   });
 
-  it("narrows the grid rather than stranding a tile when there are few folders", () => {
+  it("does not stretch a few cards to fill the panel", () => {
     // The root has three child folders once generated output is shown.
     const view = buildView(index, request({ cardColumns: 6, showGenerated: true }));
-    expect(view.detail.cards.length).toBe(view.detail.cardColumns);
+    expect(view.detail.cardColumns).toBe(6);
+    expect(view.detail.cards.length).toBe(3);
     expect(view.detail.cards.some((card) => card.path === null)).toBe(false);
   });
 

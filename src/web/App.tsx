@@ -3,6 +3,7 @@ import type { FileKind, TreeRow, ViewRequest, ViewResponse } from "../shared/api
 import { fetchView, openRoot, rescan } from "./api.ts";
 import { readRequest, selectionKey, writeRequest } from "./urlState.ts";
 import { FilterBar } from "./components/FilterBar.tsx";
+import { DrillBreadcrumbs } from "./components/DrillBreadcrumbs.tsx";
 import { FolderDetail } from "./components/FolderDetail.tsx";
 import { InstrumentBar } from "./components/InstrumentBar.tsx";
 import { LargestFiles } from "./components/LargestFiles.tsx";
@@ -101,6 +102,7 @@ export function App(): React.JSX.Element {
       excludedFolders: [],
       excludedDirectFiles: [],
       expanded: [""],
+      drillPath: "",
       selected: { rowKind: "folder", path: "" },
     };
     setOpening(true);
@@ -142,8 +144,24 @@ export function App(): React.JSX.Element {
       for (let depth = 0; depth < segments.length; depth += 1) {
         ancestors.add(segments.slice(0, depth + 1).join("/"));
       }
-      return { ...previous, selected: { rowKind, path }, expanded: [...ancestors] };
+      const drillPrefix = previous.drillPath ? `${previous.drillPath}/` : "";
+      const insideDrill = previous.drillPath === "" || path === previous.drillPath || path.startsWith(drillPrefix);
+      return {
+        ...previous,
+        drillPath: insideDrill ? previous.drillPath : "",
+        selected: { rowKind, path },
+        expanded: [...ancestors],
+      };
     });
+  }, []);
+
+  const drill = useCallback((path: string) => {
+    setRequest((previous) => ({
+      ...previous,
+      drillPath: path,
+      selected: { rowKind: "folder", path },
+      expanded: [path],
+    }));
   }, []);
 
   /**
@@ -212,17 +230,23 @@ export function App(): React.JSX.Element {
         onInstallSkill={() => setSkillOpen(true)}
       />
 
+      <FilterBar
+        request={request}
+        onToggleKind={toggleKind}
+        onToggleGenerated={() => patch({ showGenerated: !request.showGenerated })}
+        onQueryChange={(query) => patch({ query })}
+      />
+
       <MassRibbon
         summary={view?.summary ?? null}
         selectedPath={request.selected.rowKind === "folder" ? request.selected.path : null}
         onSelect={(path) => select("folder", path)}
       />
 
-      <FilterBar
-        request={request}
-        onToggleKind={toggleKind}
-        onToggleGenerated={() => patch({ showGenerated: !request.showGenerated })}
-        onQueryChange={(query) => patch({ query })}
+      <DrillBreadcrumbs
+        rootName={view?.meta.rootName ?? "Project"}
+        drillPath={request.drillPath}
+        onDrill={drill}
       />
 
       {error ? <p className="error-banner" role="status">{error}</p> : null}
@@ -232,6 +256,7 @@ export function App(): React.JSX.Element {
           rows={view?.tree ?? []}
           sort={request.treeSort}
           onSelect={select}
+          onDrill={drill}
           onSortChange={(treeSort) => patch({ treeSort })}
           onToggleExpanded={toggleExpanded}
           onToggleFolder={toggleFolder}
@@ -242,6 +267,8 @@ export function App(): React.JSX.Element {
         <FolderDetail
           detail={view?.detail ?? null}
           onSelectFolder={(path) => select("folder", path)}
+          canDrill={request.selected.rowKind === "folder" && request.selected.path !== request.drillPath}
+          onDrill={() => drill(request.selected.path)}
           onOpenSource={setSourcePath}
           onCapacityChange={setCardColumns}
         />

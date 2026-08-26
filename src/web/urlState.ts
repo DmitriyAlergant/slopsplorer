@@ -29,6 +29,7 @@ function isFileKind(value: string): value is FileKind {
 export function readRequest(search: string): ViewRequest {
   const params = new URLSearchParams(search);
   const path = params.get("path") ?? "";
+  const drillPath = params.get("drill") ?? "";
   const rawKinds = params.get("kinds");
   const metric = RANK_METRICS.find((candidate) => candidate === params.get("rank"));
   const treeSort = TREE_SORTS.find((candidate) => candidate === params.get("tree"));
@@ -40,6 +41,7 @@ export function readRequest(search: string): ViewRequest {
     excludedDirectFiles: params.getAll("xf"),
     expanded: ancestorsOf(path),
     treeSort: treeSort ?? "name",
+    drillPath,
     selected: { rowKind: params.get("sel") === "files" ? "files" : "folder", path },
     rank: {
       metric: metric ?? "tokens",
@@ -60,6 +62,7 @@ export function readRequest(search: string): ViewRequest {
 export function writeRequest(request: ViewRequest): string {
   const params = new URLSearchParams();
   if (request.selected.path) params.set("path", request.selected.path);
+  if (request.drillPath) params.set("drill", request.drillPath);
   if (request.selected.rowKind === "files") params.set("sel", "files");
   if (request.kinds.length !== FILE_KINDS.length) {
     params.set("kinds", FILE_KINDS.filter((kind) => request.kinds.includes(kind)).join(","));
@@ -76,5 +79,5 @@ export function writeRequest(request: ViewRequest): string {
 
 /** Identifies what counts as a navigation, so only these push a history entry. */
 export function selectionKey(request: ViewRequest): string {
-  return `${request.selected.rowKind}:${request.selected.path}`;
+  return `${request.drillPath}|${request.selected.rowKind}:${request.selected.path}`;
 }
