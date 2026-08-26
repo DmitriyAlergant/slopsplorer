@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { FileKind, TreeRow, ViewRequest, ViewResponse } from "../shared/api.ts";
 import { fetchView, openRoot, rescan } from "./api.ts";
+import { readPreferences, writePreferences } from "./preferences.ts";
 import { readRequest, selectionKey, writeRequest } from "./urlState.ts";
 import { FilterBar } from "./components/FilterBar.tsx";
 import { DrillBreadcrumbs } from "./components/DrillBreadcrumbs.tsx";
@@ -15,8 +16,16 @@ import { SourceTree } from "./components/SourceTree.tsx";
 /** Long enough to coalesce a burst of typing, short enough to feel immediate. */
 const REQUEST_DEBOUNCE_MS = 80;
 
+function requestFromLocation(): ViewRequest {
+  try {
+    return readRequest(window.location.search, readPreferences(window.localStorage));
+  } catch {
+    return readRequest(window.location.search);
+  }
+}
+
 export function App(): React.JSX.Element {
-  const [request, setRequest] = useState<ViewRequest>(() => readRequest(window.location.search));
+  const [request, setRequest] = useState<ViewRequest>(requestFromLocation);
   const [view, setView] = useState<ViewResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -50,13 +59,21 @@ export function App(): React.JSX.Element {
 
   useEffect(() => {
     const restore = (): void => {
-      const restored = readRequest(window.location.search);
+      const restored = requestFromLocation();
       lastSelectionRef.current = selectionKey(restored);
       setRequest(restored);
     };
     window.addEventListener("popstate", restore);
     return () => window.removeEventListener("popstate", restore);
   }, []);
+
+  useEffect(() => {
+    try {
+      writePreferences(window.localStorage, request);
+    } catch {
+      // Accessing localStorage itself can be denied in locked-down contexts.
+    }
+  }, [request.kinds, request.showGenerated, request.treeSort]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -266,6 +283,7 @@ export function App(): React.JSX.Element {
         />
         <FolderDetail
           detail={view?.detail ?? null}
+          filePathRoot={request.selected.path}
           onSelectFolder={(path) => select("folder", path)}
           canDrill={request.selected.rowKind === "folder" && request.selected.path !== request.drillPath}
           onDrill={() => drill(request.selected.path)}
@@ -278,6 +296,7 @@ export function App(): React.JSX.Element {
         files={view?.ranked ?? []}
         total={view?.rankedTotal ?? 0}
         scope={view?.rankScope ?? ""}
+        displayRoot={request.drillPath}
         rank={request.rank}
         onRankChange={setRank}
         onOpenSource={setSourcePath}

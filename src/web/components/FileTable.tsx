@@ -1,14 +1,17 @@
 import type { FileRow } from "../../shared/api.ts";
+import { pathRelativeTo } from "../displayPath.ts";
 import { count, percent } from "../format.ts";
 
 interface Props {
   files: readonly FileRow[];
+  /** Project-relative folder that displayed file names should be relative to. */
+  displayRoot: string;
   onOpenSource: (path: string) => void;
   emptyMessage: string;
 }
 
 /** The shared metrics table, used for a folder's own files and for the ranking. */
-export function FileTable({ files, onOpenSource, emptyMessage }: Props): React.JSX.Element {
+export function FileTable({ files, displayRoot, onOpenSource, emptyMessage }: Props): React.JSX.Element {
   if (files.length === 0) return <p className="empty">{emptyMessage}</p>;
   return (
     <div className="table-scroll">
@@ -37,7 +40,7 @@ export function FileTable({ files, onOpenSource, emptyMessage }: Props): React.J
                 </td>
                 <td className="metrics__path">
                   <button type="button" className="link" onClick={() => onOpenSource(file.path)}>
-                    {file.path}
+                    {pathRelativeTo(file.path, displayRoot)}
                   </button>
                 </td>
                 <td>{count(file.tokens)}</td>

@@ -1,5 +1,6 @@
 import type { FileKind, RankMetric, ViewRequest } from "../shared/api.ts";
 import { FILE_KINDS, RANK_METRICS, TREE_SORTS } from "../shared/api.ts";
+import type { ViewPreferences } from "./preferences.ts";
 
 /** Matches the server's own ceiling on how many ranked rows it will return. */
 const RANK_LIMIT = 100;
@@ -26,21 +27,26 @@ function isFileKind(value: string): value is FileKind {
 }
 
 /** Rebuild the view state from a query string, falling back to the defaults. */
-export function readRequest(search: string): ViewRequest {
+export function readRequest(search: string, stored: ViewPreferences | null = null): ViewRequest {
   const params = new URLSearchParams(search);
+  const embeddedPreferences = params.get("prefs") === "1";
   const path = params.get("path") ?? "";
   const drillPath = params.get("drill") ?? "";
   const rawKinds = params.get("kinds");
   const metric = RANK_METRICS.find((candidate) => candidate === params.get("rank"));
   const treeSort = TREE_SORTS.find((candidate) => candidate === params.get("tree"));
   return {
-    kinds: rawKinds === null ? [...FILE_KINDS] : rawKinds.split(",").filter(isFileKind),
-    showGenerated: params.get("gen") === "1",
+    kinds: rawKinds !== null
+      ? rawKinds.split(",").filter(isFileKind)
+      : !embeddedPreferences && stored !== null ? stored.kinds : [...FILE_KINDS],
+    showGenerated: params.has("gen")
+      ? params.get("gen") === "1"
+      : !embeddedPreferences && stored !== null ? stored.showGenerated : false,
     query: params.get("q") ?? "",
     excludedFolders: params.getAll("x"),
     excludedDirectFiles: params.getAll("xf"),
     expanded: ancestorsOf(path),
-    treeSort: treeSort ?? "name",
+    treeSort: treeSort ?? (!embeddedPreferences && stored !== null ? stored.treeSort : "name"),
     drillPath,
     selected: { rowKind: params.get("sel") === "files" ? "files" : "folder", path },
     rank: {
@@ -61,6 +67,9 @@ export function readRequest(search: string): ViewRequest {
  */
 export function writeRequest(request: ViewRequest): string {
   const params = new URLSearchParams();
+  const preferencesDifferFromDefaults =
+    request.kinds.length !== FILE_KINDS.length || request.showGenerated || request.treeSort !== "name";
+  if (preferencesDifferFromDefaults) params.set("prefs", "1");
   if (request.selected.path) params.set("path", request.selected.path);
   if (request.drillPath) params.set("drill", request.drillPath);
   if (request.selected.rowKind === "files") params.set("sel", "files");

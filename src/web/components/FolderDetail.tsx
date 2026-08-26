@@ -6,6 +6,7 @@ import { FlavorBar } from "./FlavorBar.tsx";
 
 interface Props {
   detail: DetailView | null;
+  filePathRoot: string;
   onSelectFolder: (path: string) => void;
   canDrill: boolean;
   onDrill: () => void;
@@ -21,7 +22,7 @@ const CARD_PADDING = 40;
 const MAX_COLUMNS = 6;
 
 /** The selected folder: its weight, how its children divide it, and its own files. */
-export function FolderDetail({ detail, onSelectFolder, canDrill, onDrill, onOpenSource, onCapacityChange }: Props): React.JSX.Element {
+export function FolderDetail({ detail, filePathRoot, onSelectFolder, canDrill, onDrill, onOpenSource, onCapacityChange }: Props): React.JSX.Element {
   const panelRef = useRef<HTMLElement>(null);
   const [columns, setColumns] = useState(3);
 
@@ -98,6 +99,7 @@ export function FolderDetail({ detail, onSelectFolder, canDrill, onDrill, onOpen
       </p>
       <FileTable
         files={detail.directFiles}
+        displayRoot={filePathRoot}
         onOpenSource={onOpenSource}
         emptyMessage="No files sit directly in this folder under the current filters."
       />

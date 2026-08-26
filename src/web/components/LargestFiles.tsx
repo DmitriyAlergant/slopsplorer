@@ -1,4 +1,5 @@
 import type { FileRow, RankMetric, ViewRequest } from "../../shared/api.ts";
+import { pathRelativeTo } from "../displayPath.ts";
 import { count } from "../format.ts";
 import { FileTable } from "./FileTable.tsx";
 
@@ -7,6 +8,8 @@ interface Props {
   total: number;
   /** The folder the ranking covers, shown so the panel cannot mislead. */
   scope: string;
+  /** Drill root that file names and the scope label should be relative to. */
+  displayRoot: string;
   rank: ViewRequest["rank"];
   onRankChange: (change: Partial<ViewRequest["rank"]>) => void;
   onOpenSource: (path: string) => void;
@@ -23,12 +26,14 @@ const METRIC_LABELS: ReadonlyArray<{ metric: RankMetric; label: string }> = [
 ];
 
 /** The ranked file list for whatever scope the tree currently describes. */
-export function LargestFiles({ files, total, scope, rank, onRankChange, onOpenSource }: Props): React.JSX.Element {
+export function LargestFiles({ files, total, scope, displayRoot, rank, onRankChange, onOpenSource }: Props): React.JSX.Element {
+  const relativeScope = pathRelativeTo(scope, displayRoot);
+  const scopeLabel = relativeScope === "." ? "current drill root" : relativeScope || "the selected folder";
   return (
     <section className="panel ranking" aria-label="Heaviest files in scope">
       <div className="panel__head">
         <div>
-          <p className="eyebrow">Within {scope || "the selected folder"}</p>
+          <p className="eyebrow">Within {scopeLabel}</p>
           <h2>Heaviest files</h2>
         </div>
         <div className="ranking__controls">
@@ -61,6 +66,7 @@ export function LargestFiles({ files, total, scope, rank, onRankChange, onOpenSo
       </p>
       <FileTable
         files={files}
+        displayRoot={displayRoot}
         onOpenSource={onOpenSource}
         emptyMessage="No files match the current filters, scope, and minimum-token threshold."
       />
