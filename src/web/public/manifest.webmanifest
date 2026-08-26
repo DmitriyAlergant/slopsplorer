@@ -1,0 +1,14 @@
+{
+  "name": "Slopsplorer",
+  "short_name": "Slopsplorer",
+  "description": "Local, token-weighted source tree explorer.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#252E40",
+  "theme_color": "#252E40",
+  "icons": [
+    { "src": "/icon-192.png", "type": "image/png", "sizes": "192x192" },
+    { "src": "/icon-mask.png", "type": "image/png", "sizes": "512x512", "purpose": "maskable" },
+    { "src": "/icon-512.png", "type": "image/png", "sizes": "512x512" }
+  ]
+}
