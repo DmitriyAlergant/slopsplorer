@@ -6,6 +6,10 @@ Point it at a repository.
 It measures every file by tokenizer weight, line composition, and structure.
 You then narrow the tree until the total matches what you can hold in a review, or in an agent's context window.
 
+![Slopsplorer reading its own repository: a mass ribbon split by top-level folder, a source tree where every row carries its share of its parent, folder cards, and a ranked file table.](https://raw.githubusercontent.com/DmitriyAlergant/slopsplorer/main/docs/screenshot.png)
+
+*Slopsplorer reading its own source tree.*
+
 ```bash
 npx slopsplorer /path/to/repository
 ```
