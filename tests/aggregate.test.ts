@@ -105,6 +105,7 @@ function request(overrides: Partial<ViewRequest> = {}): ViewRequest {
     excludedFolders: [],
     excludedDirectFiles: [],
     expanded: ["", "src", "src/deep", "tests", "dist"],
+    treeSort: "name",
     selected: { rowKind: "folder", path: "" },
     rank: { metric: "tokens", minTokens: 0, limit: 100 },
     ...overrides,
@@ -145,6 +146,20 @@ describe("folder aggregation", () => {
     const ribbonTotal = view.summary.ribbon.reduce((total, card) => total + card.tokens, 0);
     expect(ribbonTotal).toBe(view.summary.selectedTokens);
     expect(view.summary.selectedFiles).toBe(5);
+  });
+
+  it("sorts each source-tree level by name or descending token weight", () => {
+    const nameRows = buildView(index, request({ expanded: [""], treeSort: "name" })).tree
+      .filter((row) => row.depth === 1);
+    expect(nameRows.map((row) => row.name)).toEqual(
+      nameRows.map((row) => row.name).sort((left, right) => left.localeCompare(right)),
+    );
+
+    const tokenRows = buildView(index, request({ expanded: [""], treeSort: "tokens" })).tree
+      .filter((row) => row.depth === 1);
+    expect(tokenRows.map((row) => row.tokens)).toEqual(
+      tokenRows.map((row) => row.tokens).sort((left, right) => right - left),
+    );
   });
 });
 
@@ -270,6 +285,7 @@ describe("request parsing", () => {
     expect(parsed.excludedFolders).toEqual([]);
     expect(parsed.excludedDirectFiles).toEqual([]);
     expect(parsed.expanded).toEqual([]);
+    expect(parsed.treeSort).toBe("name");
     expect(parsed.selected).toEqual({ rowKind: "folder", path: "" });
     expect(parsed.rank).toEqual({ metric: "tokens", minTokens: 0, limit: 100 });
     expect(() => buildView(index, parsed)).not.toThrow();
@@ -279,6 +295,11 @@ describe("request parsing", () => {
     expect(parseViewRequest({ rank: { metric: "; DROP TABLE" } }).rank.metric).toBe("tokens");
     expect(parseViewRequest({ rank: { metric: "__proto__" } }).rank.metric).toBe("tokens");
     expect(parseViewRequest({ rank: { metric: "commentLines" } }).rank.metric).toBe("commentLines");
+  });
+
+  it("accepts only known source-tree sort orders", () => {
+    expect(parseViewRequest({ treeSort: "tokens" }).treeSort).toBe("tokens");
+    expect(parseViewRequest({ treeSort: "__proto__" }).treeSort).toBe("name");
   });
 
   it("keeps only known file kinds, in the canonical order", () => {

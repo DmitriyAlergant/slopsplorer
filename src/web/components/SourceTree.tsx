@@ -1,11 +1,12 @@
 import { useEffect, useRef } from "react";
-import type { TreeRow } from "../../shared/api.ts";
+import type { TreeRow, TreeSort } from "../../shared/api.ts";
 import { count } from "../format.ts";
 
 interface Props {
   rows: readonly TreeRow[];
-  totalTokens: number;
+  sort: TreeSort;
   onSelect: (rowKind: "folder" | "files", path: string) => void;
+  onSortChange: (sort: TreeSort) => void;
   onToggleExpanded: (path: string) => void;
   onToggleFolder: (row: TreeRow) => void;
   onToggleDirectFiles: (row: TreeRow) => void;
@@ -43,16 +44,27 @@ function ScopeCheckbox({ row, onChange }: { row: TreeRow; onChange: () => void }
 
 /** The folder hierarchy, with each row's bar showing its share of its parent. */
 export function SourceTree({
-  rows, totalTokens, onSelect, onToggleExpanded, onToggleFolder, onToggleDirectFiles, onExpandAll, onCollapseAll,
+  rows, sort, onSelect, onSortChange, onToggleExpanded, onToggleFolder, onToggleDirectFiles, onExpandAll, onCollapseAll,
 }: Props): React.JSX.Element {
+  const expandableRows = rows.filter((row) => row.rowKind === "folder" && row.hasChildren);
+  const allExpanded = expandableRows.length > 0 && expandableRows.every((row) => row.expanded);
   return (
     <section className="panel tree" aria-label="Source tree">
       <div className="panel__head">
         <h2>Source tree</h2>
         <div className="panel__tools">
-          <span className="muted mono">{count(totalTokens)} tok</span>
-          <button type="button" className="button button--tiny" onClick={onCollapseAll}>Collapse</button>
-          <button type="button" className="button button--tiny" onClick={onExpandAll}>Expand</button>
+          <div className="tree__sort" role="group" aria-label="Sort source tree">
+            <button type="button" aria-pressed={sort === "name"} onClick={() => onSortChange("name")}>Name</button>
+            <span aria-hidden="true">|</span>
+            <button type="button" aria-pressed={sort === "tokens"} onClick={() => onSortChange("tokens")}>Tokens</button>
+          </div>
+          <button
+            type="button"
+            className="button button--tiny"
+            onClick={allExpanded ? onCollapseAll : onExpandAll}
+          >
+            {allExpanded ? "Collapse" : "Expand"}
+          </button>
         </div>
       </div>
 

@@ -230,8 +230,9 @@ export function App(): React.JSX.Element {
       <div className="workspace">
         <SourceTree
           rows={view?.tree ?? []}
-          totalTokens={view?.summary.selectedTokens ?? 0}
+          sort={request.treeSort}
           onSelect={select}
+          onSortChange={(treeSort) => patch({ treeSort })}
           onToggleExpanded={toggleExpanded}
           onToggleFolder={toggleFolder}
           onToggleDirectFiles={toggleDirectFiles}

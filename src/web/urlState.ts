@@ -1,5 +1,5 @@
 import type { FileKind, RankMetric, ViewRequest } from "../shared/api.ts";
-import { FILE_KINDS, RANK_METRICS } from "../shared/api.ts";
+import { FILE_KINDS, RANK_METRICS, TREE_SORTS } from "../shared/api.ts";
 
 /** Matches the server's own ceiling on how many ranked rows it will return. */
 const RANK_LIMIT = 100;
@@ -31,6 +31,7 @@ export function readRequest(search: string): ViewRequest {
   const path = params.get("path") ?? "";
   const rawKinds = params.get("kinds");
   const metric = RANK_METRICS.find((candidate) => candidate === params.get("rank"));
+  const treeSort = TREE_SORTS.find((candidate) => candidate === params.get("tree"));
   return {
     kinds: rawKinds === null ? [...FILE_KINDS] : rawKinds.split(",").filter(isFileKind),
     showGenerated: params.get("gen") === "1",
@@ -38,6 +39,7 @@ export function readRequest(search: string): ViewRequest {
     excludedFolders: params.getAll("x"),
     excludedDirectFiles: params.getAll("xf"),
     expanded: ancestorsOf(path),
+    treeSort: treeSort ?? "name",
     selected: { rowKind: params.get("sel") === "files" ? "files" : "folder", path },
     rank: {
       metric: metric ?? "tokens",
@@ -66,6 +68,7 @@ export function writeRequest(request: ViewRequest): string {
   if (request.query) params.set("q", request.query);
   for (const folder of request.excludedFolders) params.append("x", folder);
   for (const folder of request.excludedDirectFiles) params.append("xf", folder);
+  if (request.treeSort !== "name") params.set("tree", request.treeSort);
   if (request.rank.metric !== "tokens") params.set("rank", request.rank.metric);
   if (request.rank.minTokens > 0) params.set("min", String(request.rank.minTokens));
   return params.toString();
@@ -75,4 +78,3 @@ export function writeRequest(request: ViewRequest): string {
 export function selectionKey(request: ViewRequest): string {
   return `${request.selected.rowKind}:${request.selected.path}`;
 }
-

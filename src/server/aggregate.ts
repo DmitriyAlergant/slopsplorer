@@ -3,7 +3,7 @@ import type {
   DetailView, FileRow, Flavor, FlavorSlice, FolderCard, RankMetric,
   SummaryView, TreeRow, ViewRequest, ViewResponse,
 } from "../shared/api.ts";
-import { FILE_KINDS, FLAVORS, RANK_METRICS } from "../shared/api.ts";
+import { FILE_KINDS, FLAVORS, RANK_METRICS, TREE_SORTS } from "../shared/api.ts";
 import type { FolderNode, ScanIndex } from "../scanner/scan.ts";
 
 /** Bounds on the column count the client may ask for. */
@@ -241,6 +241,18 @@ function buildTree(
       .filter((child): child is FolderNode => child !== undefined)
       .filter((child) => (aggregation.categoryCount.get(child.path) ?? 0) > 0);
     const hasVisibleDirectFiles = folder.directFileIndices.some((fileIndex) => aggregation.categoryVisible[fileIndex] === 1);
+    const children: ({ rowKind: "folder"; folder: FolderNode; name: string; tokens: number } | {
+      rowKind: "files"; name: string; tokens: number;
+    })[] = childFolders.map((child) => ({
+      rowKind: "folder",
+      folder: child,
+      name: child.name,
+      tokens: (aggregation.subtree.get(child.path) ?? emptyTotals()).tokens,
+    }));
+    if (hasVisibleDirectFiles) children.push({ rowKind: "files", name: "(files)", tokens: directTotals.tokens });
+    children.sort((left, right) => request.treeSort === "tokens"
+      ? right.tokens - left.tokens || left.name.localeCompare(right.name)
+      : left.name.localeCompare(right.name));
     const isExpanded = queryActive || expanded.has(folder.path);
     const folderTotal = unfilteredTokens(index, folder.path);
 
@@ -251,7 +263,7 @@ function buildTree(
       rowKind: "folder",
       tokens: totals.tokens,
       shareOfParent: parentTotal > 0 ? Math.min(1, totals.tokens / parentTotal) : 0,
-      hasChildren: childFolders.length > 0 || hasVisibleDirectFiles,
+      hasChildren: children.length > 0,
       expanded: isExpanded,
       included: !exclusions.excluded.has(folder.path),
       indeterminate: exclusions.indeterminate.has(folder.path),
@@ -261,15 +273,19 @@ function buildTree(
 
     if (!isExpanded) return;
 
-    if (hasVisibleDirectFiles) {
+    for (const child of children) {
+      if (child.rowKind === "folder") {
+        walk(child.folder, depth + 1, folderTotal);
+        continue;
+      }
       const folderExcluded = exclusions.excluded.has(folder.path);
       rows.push({
         path: folder.path,
-        name: "(files)",
+        name: child.name,
         depth: depth + 1,
-        rowKind: "files",
-        tokens: directTotals.tokens,
-        shareOfParent: folderTotal > 0 ? Math.min(1, directTotals.tokens / folderTotal) : 0,
+        rowKind: child.rowKind,
+        tokens: child.tokens,
+        shareOfParent: folderTotal > 0 ? Math.min(1, child.tokens / folderTotal) : 0,
         hasChildren: false,
         expanded: false,
         included: !folderExcluded && !excludedDirectFiles.has(folder.path),
@@ -278,8 +294,6 @@ function buildTree(
         selected: request.selected.rowKind === "files" && request.selected.path === folder.path,
       });
     }
-
-    for (const child of childFolders) walk(child, depth + 1, folderTotal);
   };
 
   const root = index.folderByPath.get("");
@@ -483,6 +497,7 @@ export function parseViewRequest(body: unknown): ViewRequest {
   const rank = (typeof raw["rank"] === "object" && raw["rank"] !== null ? raw["rank"] : {}) as Record<string, unknown>;
   const selected = (typeof raw["selected"] === "object" && raw["selected"] !== null ? raw["selected"] : {}) as Record<string, unknown>;
   const metric = RANK_METRICS.find((candidate) => candidate === rank["metric"]) ?? "tokens";
+  const treeSort = TREE_SORTS.find((candidate) => candidate === raw["treeSort"]) ?? "name";
   return {
     kinds: FILE_KINDS.filter((kind) => stringArray(raw["kinds"]).includes(kind)),
     showGenerated: raw["showGenerated"] === true,
@@ -490,6 +505,7 @@ export function parseViewRequest(body: unknown): ViewRequest {
     excludedFolders: stringArray(raw["excludedFolders"]),
     excludedDirectFiles: stringArray(raw["excludedDirectFiles"]),
     expanded: stringArray(raw["expanded"]),
+    treeSort,
     selected: {
       rowKind: selected["rowKind"] === "files" ? "files" : "folder",
       path: typeof selected["path"] === "string" ? selected["path"] : "",

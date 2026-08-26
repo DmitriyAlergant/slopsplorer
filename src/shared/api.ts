@@ -15,6 +15,10 @@ export const FILE_KINDS: readonly FileKind[] = ["code", "test", "text", "i18n", 
 
 export const FLAVORS: readonly Flavor[] = [...FILE_KINDS, "generated"];
 
+export type TreeSort = "name" | "tokens";
+
+export const TREE_SORTS: readonly TreeSort[] = ["name", "tokens"];
+
 export type RankMetric =
   | "tokens"
   | "lines"
@@ -148,6 +152,7 @@ export interface ViewRequest {
   excludedFolders: string[];
   excludedDirectFiles: string[];
   expanded: string[];
+  treeSort: TreeSort;
   selected: { rowKind: "folder" | "files"; path: string };
   rank: { metric: RankMetric; minTokens: number; limit: number };
   /**

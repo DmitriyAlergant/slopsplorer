@@ -353,6 +353,17 @@ button { cursor: pointer; }
 /* ---- Source tree ------------------------------------------------------- */
 
 .tree__scroll { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 6px; }
+.tree__sort { display: flex; align-items: center; gap: 4px; color: var(--ink-faint); font-size: 11px; }
+.tree__sort button {
+  padding: 2px 1px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+}
+.tree__sort button:hover { color: var(--ink); }
+.tree__sort button[aria-pressed="true"] { color: var(--ink); }
 .tree__row {
   position: relative;
   display: grid;
