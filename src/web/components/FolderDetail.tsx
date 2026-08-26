@@ -112,8 +112,9 @@ export function FolderDetail({ detail, measure, sort, onSortChange, path, onSele
           <p className="detail__stats">{stats.join(" · ")}</p>
         </div>
         <div className="detail__actions">
-          <p className="detail__share" title="Share of the current scope, measured before any filter">
+          <p className="detail__share" {...tooltipHandlers}>
             {percent(detail.shareOfScope)}
+            <Tooltip>Share of the current scope, measured before any filter</Tooltip>
           </p>
         </div>
       </header>

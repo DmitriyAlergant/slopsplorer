@@ -507,27 +507,27 @@ button { cursor: pointer; }
   content: "";
   position: absolute;
 }
-.workspace__splitter span {
+.workspace__splitter .splitter__grip {
   border-radius: 2px;
   background: var(--rule-firm);
   transition: width 120ms ease, height 120ms ease, background 120ms ease;
 }
-.workspace__splitter:hover span,
-.workspace__splitter:focus-visible span { background: var(--signal); }
+.workspace__splitter:hover .splitter__grip,
+.workspace__splitter:focus-visible .splitter__grip { background: var(--signal); }
 
 .workspace__splitter--column { width: 8px; cursor: col-resize; }
 .workspace__splitter--column::before { inset: 0 -4px; }
-.workspace__splitter--column span { width: 2px; height: 48px; }
-.workspace__splitter--column:hover span,
-.workspace__splitter--column:focus-visible span { height: 72px; }
+.workspace__splitter--column .splitter__grip { width: 2px; height: 48px; }
+.workspace__splitter--column:hover .splitter__grip,
+.workspace__splitter--column:focus-visible .splitter__grip { height: 72px; }
 
 /* The bottom edge of both panels at once, so it spans them rather than
    dividing them, and it sits outside the workspace grid. */
 .workspace__splitter--row { height: 14px; margin-top: 4px; cursor: row-resize; }
 .workspace__splitter--row::before { inset: -4px 0; }
-.workspace__splitter--row span { width: 48px; height: 2px; }
-.workspace__splitter--row:hover span,
-.workspace__splitter--row:focus-visible span { width: 72px; }
+.workspace__splitter--row .splitter__grip { width: 48px; height: 2px; }
+.workspace__splitter--row:hover .splitter__grip,
+.workspace__splitter--row:focus-visible .splitter__grip { width: 72px; }
 /*
  * Both panels stand the same height and scroll internally, so opening a folder
  * or selecting one with hundreds of files never changes the page layout.
