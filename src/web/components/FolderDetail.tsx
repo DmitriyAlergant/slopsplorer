@@ -6,7 +6,8 @@ import { FlavorBar } from "./FlavorBar.tsx";
 
 interface Props {
   detail: DetailView | null;
-  filePathRoot: string;
+  /** The selected folder: the path the copy control hands over, and the root that file names shorten against. */
+  path: string;
   onSelectFolder: (path: string) => void;
   canDrill: boolean;
   onDrill: () => void;
@@ -22,9 +23,10 @@ const CARD_PADDING = 40;
 const MAX_COLUMNS = 6;
 
 /** The selected folder: its weight, how its children divide it, and its own files. */
-export function FolderDetail({ detail, filePathRoot, onSelectFolder, canDrill, onDrill, onOpenSource, onCapacityChange }: Props): React.JSX.Element {
+export function FolderDetail({ detail, path, onSelectFolder, canDrill, onDrill, onOpenSource, onCapacityChange }: Props): React.JSX.Element {
   const panelRef = useRef<HTMLElement>(null);
   const [columns, setColumns] = useState(3);
+  const [copied, setCopied] = useState(false);
 
   // Measure rather than guess: the panel is a fraction of a resizable window,
   // so the number of tiles that fit is not knowable from a breakpoint.
@@ -45,6 +47,19 @@ export function FolderDetail({ detail, filePathRoot, onSelectFolder, canDrill, o
     onCapacityChange(columns);
   }, [columns, onCapacityChange]);
 
+  // The confirmation lives on the button itself, so it has to reset when the
+  // selection moves on rather than linger over a different folder's path.
+  useEffect(() => {
+    setCopied(false);
+  }, [path]);
+
+  const copyPath = (): void => {
+    void navigator.clipboard.writeText(path).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1600);
+    });
+  };
+
   if (!detail) return <section ref={panelRef} className="panel detail" aria-label="Folder detail" />;
 
   const commentShare = detail.lines > 0 ? detail.commentLines / detail.lines : 0;
@@ -57,14 +72,37 @@ export function FolderDetail({ detail, filePathRoot, onSelectFolder, canDrill, o
           {detail.breadcrumb ? <p className="crumb">{detail.breadcrumb}</p> : null}
           <div className="detail__title-row">
             {canDrill ? (
-              <button type="button" className="detail__drill" onClick={onDrill} aria-label="Drill down" aria-describedby="drill-tooltip">
+              <button type="button" className="detail__tool detail__tool--drill" onClick={onDrill} aria-label="Drill down" aria-describedby="drill-tooltip">
                 <svg viewBox="0 0 20 20" width="13" height="13" aria-hidden="true">
                   <path d="M4 4v4.5A3.5 3.5 0 0 0 7.5 12H16m-4-4 4 4-4 4" />
                 </svg>
-                <span className="detail__drill-tooltip" id="drill-tooltip" role="tooltip">Drill down</span>
+                <span className="detail__tooltip" id="drill-tooltip" role="tooltip">Drill down</span>
               </button>
             ) : null}
             <h2>{detail.title}</h2>
+            {path ? (
+              <button
+                type="button"
+                className="detail__tool detail__tool--copy"
+                onClick={copyPath}
+                aria-label={copied ? "Path copied" : "Copy path"}
+                aria-describedby="copy-path-tooltip"
+              >
+                <svg viewBox="0 0 20 20" width="13" height="13" aria-hidden="true">
+                  {copied ? (
+                    <path d="m4 10.5 4 4 8-9" />
+                  ) : (
+                    <>
+                      <rect x="7" y="7" width="9.5" height="9.5" rx="1.8" />
+                      <path d="M4.6 12.5H4A1.5 1.5 0 0 1 2.5 11V5A1.5 1.5 0 0 1 4 3.5h6A1.5 1.5 0 0 1 11.5 5v.6" />
+                    </>
+                  )}
+                </svg>
+                <span className="detail__tooltip" id="copy-path-tooltip" role="tooltip">
+                  {copied ? "Copied" : "Copy path"}
+                </span>
+              </button>
+            ) : null}
           </div>
           <p className="detail__stats">
             {count(detail.tokens)} tokens · {count(detail.files)} files · {count(detail.lines)} lines ·{" "}
@@ -106,7 +144,7 @@ export function FolderDetail({ detail, filePathRoot, onSelectFolder, canDrill, o
       </p>
       <FileTable
         files={detail.directFiles}
-        displayRoot={filePathRoot}
+        displayRoot={path}
         onOpenSource={onOpenSource}
         emptyMessage="No files sit directly in this folder under the current filters."
       />

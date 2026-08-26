@@ -557,18 +557,22 @@ button { cursor: pointer; }
 .crumb { margin: 0 0 4px; color: var(--ink-faint); font-size: 11px; word-break: break-all; }
 .detail__title-row { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .detail__head h2 { margin: 0; font-size: 20px; font-weight: 700; letter-spacing: -0.02em; }
-.detail__drill {
+.detail__tool {
   position: relative;
   display: inline-grid; place-items: center;
   flex: none;
   width: 20px; height: 20px; padding: 0;
   border: 0; border-radius: 4px;
-  background: transparent; color: var(--signal);
+  background: transparent;
   transition: background 120ms ease, color 120ms ease;
 }
-.detail__drill svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
-.detail__drill:hover { background: var(--signal-wash); }
-.detail__drill-tooltip {
+.detail__tool svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.detail__tool--drill { color: var(--signal); }
+.detail__tool--drill:hover { background: var(--signal-wash); }
+/* Secondary to the drill arrow: a utility beside the name, not a way through it. */
+.detail__tool--copy { color: var(--ink-faint); }
+.detail__tool--copy:hover { background: var(--sunk); color: var(--ink); }
+.detail__tooltip {
   position: absolute;
   top: calc(100% + 8px);
   left: 50%;
@@ -591,7 +595,7 @@ button { cursor: pointer; }
   visibility: hidden;
   transition: opacity 120ms ease, transform 120ms ease, visibility 0s linear 120ms;
 }
-.detail__drill-tooltip::before {
+.detail__tooltip::before {
   content: "";
   position: absolute;
   bottom: 100%;
@@ -603,8 +607,8 @@ button { cursor: pointer; }
   background: inherit;
   transform: translate(-50%, 5px) rotate(45deg);
 }
-.detail__drill:hover .detail__drill-tooltip,
-.detail__drill:focus-visible .detail__drill-tooltip {
+.detail__tool:hover .detail__tooltip,
+.detail__tool:focus-visible .detail__tooltip {
   opacity: 1;
   transform: translate(-50%, 0);
   visibility: visible;

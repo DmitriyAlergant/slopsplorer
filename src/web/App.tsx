@@ -283,7 +283,7 @@ export function App(): React.JSX.Element {
         />
         <FolderDetail
           detail={view?.detail ?? null}
-          filePathRoot={request.selected.path}
+          path={request.selected.path}
           onSelectFolder={(path) => select("folder", path)}
           canDrill={request.selected.rowKind === "folder" && request.selected.path !== request.drillPath}
           onDrill={() => drill(request.selected.path)}
