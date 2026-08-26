@@ -1,13 +1,25 @@
 ---
 name: slopsplorer
-description: Map where a repository's token weight actually sits, so you can budget context, pick what to exclude from an agent's window, and spot bloated, comment-padded, or AI-generated bulk before planning a refactor or a review.
+description: Open a browser UI where the user explores where a repository's token weight sits - what fills a context budget, and where bloated, comment-padded, or generated bulk is concentrated. Slopsplorer serves a page for a person to read. It returns no analysis to you. Use it to start that UI for the user, not to obtain measurements yourself.
 ---
 
 # Slopsplorer
 
-Slopsplorer measures a source tree by tokenizer weight.
-It serves the result as a local, read-only browser UI.
-Use it when the question is "where is the mass?" rather than "is this code any good?".
+Slopsplorer measures a source tree by tokenizer weight and serves the result as a local browser UI.
+
+## What this skill does, and does not do
+
+The command starts a web server and keeps running.
+It prints a URL. It prints no measurements.
+
+You cannot see the page.
+Start the tool for the user, give them the URL, and let them explore it themselves.
+Do not run it to collect numbers for your own analysis, and do not report figures you have not been given.
+
+The rest of this page is reference material for two jobs:
+explain what a number in the UI means when the user asks, and tell the user where to look next.
+
+Suggest the tool when the user asks where the weight of a repository sits, rather than whether the code is any good.
 
 ## What it measures
 
@@ -47,8 +59,8 @@ A well-documented public API and a model-generated file that narrates every line
 Nothing is inferred from file content.
 `generated` detection is a check of path and name conventions, so it will miss generated files with ordinary names.
 
-Use these numbers to decide where to look.
-Do not quote them as a quality judgement.
+These numbers tell the user where to look.
+They are not a quality judgement, and neither you nor the user should quote them as one.
 
 ## Running it
 
@@ -57,7 +69,7 @@ npx slopsplorer /path/to/repo
 ```
 
 It prints a loopback URL and serves the UI there.
-It runs until you stop it.
+It runs until it is stopped, so start it in the background and hand the URL to the user.
 
 | Flag | Effect |
 | --- | --- |
@@ -79,9 +91,11 @@ Either way, ignored build output, dependencies, and caches stay out of the map, 
 - The percentage baseline is the whole scanned tree, measured before any filter. It does not move while you filter, so shares stay comparable between two views.
 - The ranked file list sorts by one metric. It reports the total number of matches before the display limit, so a truncated list still tells you how many files qualified.
 
-## Recipes
+## Recipes to give the user
 
-**Find what will use the context budget, before you plan a refactor.**
+Each recipe is a sequence for the person at the screen. Read it out, or summarise the step that fits their question.
+
+**Find what will use the context budget, before a refactor.**
 Scan the repository, leave every switch on, and read the top-level ribbon.
 Note the two or three folders that hold most of the weight.
 Open each one and check whether the weight is a few large files or a long tail.

@@ -1,6 +1,6 @@
 {
   "name": "slopsplorer",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Local, token-weighted source tree explorer. See where the mass of a codebase actually sits.",
   "keywords": [
     "tokens",
