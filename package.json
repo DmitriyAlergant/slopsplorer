@@ -1,0 +1,46 @@
+{
+  "name": "slopsplorer",
+  "version": "0.2.0",
+  "description": "Local, token-weighted source tree explorer. See where the mass of a codebase actually sits.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "slopsplorer": "dist/node/cli.js"
+  },
+  "files": [
+    "dist",
+    "skill",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20.19"
+  },
+  "scripts": {
+    "dev": "npm run build:node && node dist/node/cli.js . --dev",
+    "build": "npm run build:web && npm run build:node",
+    "build:web": "vite build",
+    "build:node": "tsc -p tsconfig.node.json",
+    "typecheck": "tsc -p tsconfig.web.json --noEmit && tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.test.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prepack": "npm run build"
+  },
+  "dependencies": {
+    "@vscode/tree-sitter-wasm": "0.3.1",
+    "gpt-tokenizer": "4.0.0",
+    "ignore": "7.0.6",
+    "web-tree-sitter": "0.26.12"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.4",
+    "@vitejs/plugin-react": "6.1.0",
+    "highlight.js": "11.12.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "typescript": "7.0.2",
+    "vite": "8.2.2",
+    "vitest": "4.1.11"
+  }
+}
