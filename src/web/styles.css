@@ -321,33 +321,33 @@ button { cursor: pointer; }
 
 /* ---- Source tree ------------------------------------------------------- */
 
-.tree__scroll { max-height: 640px; overflow: auto; padding: 6px; }
+.tree__scroll { height: 620px; overflow: auto; padding: 6px; }
 .tree__row {
   position: relative;
   display: grid;
-  grid-template-columns: 20px 16px minmax(0, 1fr) auto;
+  grid-template-columns: 28px 16px minmax(0, 1fr) 108px;
   align-items: center;
   gap: 4px;
-  min-height: 28px;
+  min-height: 30px;
   padding-left: calc(var(--indent) * 13px);
   border-radius: var(--radius-sm);
 }
 /*
- * The bar sits behind the row so weight is felt while the label stays legible.
- * Its width is measured from the indented left edge rather than from the row,
- * so a deeply nested folder at full share still stops at the right margin.
+ * The bar is confined to the numbers column and grows left to right from a
+ * shared origin, so lengths are comparable down the column and no bar washes
+ * over a folder name.
  */
 .tree__mass {
   position: absolute;
-  inset-block: 3px;
-  left: calc(var(--indent) * 13px);
-  width: calc((100% - var(--indent) * 13px) * var(--mass));
-  z-index: 0;
-  border-radius: 3px;
-  background: color-mix(in oklab, var(--flavor-code) 17%, transparent);
+  inset-block: 4px;
+  left: 0;
+  width: calc(var(--mass) * 100%);
+  min-width: 2px;
+  border-radius: 2px;
+  background: color-mix(in oklab, var(--flavor-code) 20%, transparent);
   pointer-events: none;
 }
-.tree__row > *:not(.tree__mass) { position: relative; z-index: 1; }
+.tree__count { position: relative; }
 .tree__row:hover { background: var(--sunk); }
 .tree__row[data-selected="true"] { background: var(--signal-wash); }
 .tree__row[data-selected="true"]::before {
@@ -365,10 +365,13 @@ button { cursor: pointer; }
 .tree__row[data-kind="files"] .tree__label { font-style: italic; color: var(--ink-soft); }
 
 .tree__disclose {
-  width: 20px; height: 22px; padding: 0;
-  border: 0; border-radius: 4px; background: transparent;
-  color: var(--ink-faint); font-size: 10px; line-height: 1;
+  display: grid; place-items: center;
+  width: 28px; height: 28px; padding: 0;
+  border: 0; border-radius: 6px; background: transparent;
+  color: var(--ink-soft);
 }
+.chevron { transition: transform 120ms ease; }
+.chevron[data-open="true"] { transform: rotate(90deg); }
 .tree__disclose:hover { background: var(--rule); color: var(--ink); }
 .tree__disclose--leaf { visibility: hidden; }
 .tree__check { width: 13px; height: 13px; margin: 0; accent-color: var(--signal); }
@@ -378,7 +381,13 @@ button { cursor: pointer; }
   font-family: var(--font-mono); font-size: 12px;
   text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.tree__tokens { padding-right: 6px; color: var(--ink-soft); font-size: 11px; }
+.tree__tokens {
+  position: relative;
+  padding: 2px 7px 2px 0;
+  color: var(--ink-soft);
+  font-size: 11px;
+  text-align: right;
+}
 
 /* ---- Folder detail ----------------------------------------------------- */
 
@@ -585,7 +594,7 @@ button { cursor: pointer; }
   .instrument { grid-template-columns: 1fr; gap: 14px; }
   .instrument__facts { flex-wrap: wrap; gap: 18px; }
   .workspace { grid-template-columns: 1fr; }
-  .tree__scroll { max-height: 340px; }
+  .tree__scroll { height: 340px; }
   .filters { grid-template-columns: 1fr; }
   .chips { justify-content: flex-start; }
 }

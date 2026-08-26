@@ -177,6 +177,20 @@ function mergeTotals(target: Totals, source: Totals): void {
   }
 }
 
+/**
+ * A folder's complete token weight, ignoring every active filter.
+ *
+ * Bars are normalised against this rather than against the visible total so
+ * that switching a file kind on can only lengthen a bar. Normalising against
+ * the filtered total would grow the denominator too, and a tile holding none
+ * of the newly enabled kind would visibly shrink.
+ */
+function unfilteredTokens(index: ScanIndex, folderPath: string): number {
+  const folder = index.folderByPath.get(folderPath);
+  if (!folder) return 0;
+  return index.tokenPrefix[folder.end]! - index.tokenPrefix[folder.start]!;
+}
+
 /** Token baseline the percentages are measured against: everything not generated. */
 function projectBaseline(index: ScanIndex): number {
   let total = 0;
@@ -195,7 +209,7 @@ function buildTree(
   const excludedDirectFiles = new Set(request.excludedDirectFiles);
   const rows: TreeRow[] = [];
 
-  const walk = (folder: FolderNode, depth: number, parentTokens: number): void => {
+  const walk = (folder: FolderNode, depth: number, parentTotal: number): void => {
     if ((aggregation.categoryCount.get(folder.path) ?? 0) === 0) return;
     const totals = aggregation.subtree.get(folder.path) ?? emptyTotals();
     const directTotals = aggregation.direct.get(folder.path) ?? emptyTotals();
@@ -205,6 +219,7 @@ function buildTree(
       .filter((child) => (aggregation.categoryCount.get(child.path) ?? 0) > 0);
     const hasVisibleDirectFiles = folder.directFileIndices.some((fileIndex) => aggregation.categoryVisible[fileIndex] === 1);
     const isExpanded = queryActive || expanded.has(folder.path);
+    const folderTotal = unfilteredTokens(index, folder.path);
 
     rows.push({
       path: folder.path,
@@ -212,7 +227,7 @@ function buildTree(
       depth,
       rowKind: "folder",
       tokens: totals.tokens,
-      shareOfParent: parentTokens > 0 ? totals.tokens / parentTokens : 0,
+      shareOfParent: parentTotal > 0 ? Math.min(1, totals.tokens / parentTotal) : 0,
       hasChildren: childFolders.length > 0 || hasVisibleDirectFiles,
       expanded: isExpanded,
       included: !exclusions.excluded.has(folder.path),
@@ -231,7 +246,7 @@ function buildTree(
         depth: depth + 1,
         rowKind: "files",
         tokens: directTotals.tokens,
-        shareOfParent: totals.tokens > 0 ? directTotals.tokens / totals.tokens : 0,
+        shareOfParent: folderTotal > 0 ? Math.min(1, directTotals.tokens / folderTotal) : 0,
         hasChildren: false,
         expanded: false,
         included: !folderExcluded && !excludedDirectFiles.has(folder.path),
@@ -241,11 +256,11 @@ function buildTree(
       });
     }
 
-    for (const child of childFolders) walk(child, depth + 1, totals.tokens);
+    for (const child of childFolders) walk(child, depth + 1, folderTotal);
   };
 
   const root = index.folderByPath.get("");
-  if (root) walk(root, 0, aggregation.subtree.get("")?.tokens ?? 0);
+  if (root) walk(root, 0, unfilteredTokens(index, ""));
   return rows;
 }
 
@@ -254,7 +269,7 @@ function buildFolderCard(
   folderPath: string | null,
   totals: Totals,
   baseline: number,
-  parentTokens: number,
+  scopeTotal: number,
 ): FolderCard {
   return {
     path: folderPath,
@@ -262,7 +277,7 @@ function buildFolderCard(
     tokens: totals.tokens,
     files: totals.files,
     shareOfProject: baseline > 0 ? totals.tokens / baseline : 0,
-    shareOfParent: parentTokens > 0 ? totals.tokens / parentTokens : 0,
+    shareOfParent: scopeTotal > 0 ? Math.min(1, totals.tokens / scopeTotal) : 0,
     flavors: flavorSlices(totals),
   };
 }
@@ -279,6 +294,7 @@ function buildDetail(
     ? aggregation.direct.get(folder.path) ?? emptyTotals()
     : aggregation.subtree.get(folder.path) ?? emptyTotals();
 
+  const scopeTotal = unfilteredTokens(index, folder.path);
   const cards: FolderCard[] = [];
   if (!directFilesOnly) {
     const children = folder.childPaths
@@ -289,14 +305,14 @@ function buildDetail(
 
     if (children.length > MAX_FOLDER_CARDS + 1) {
       for (const entry of children.slice(0, MAX_FOLDER_CARDS)) {
-        cards.push(buildFolderCard(entry.node.name, entry.node.path, entry.totals, baseline, totals.tokens));
+        cards.push(buildFolderCard(entry.node.name, entry.node.path, entry.totals, baseline, scopeTotal));
       }
       const rest = emptyTotals();
       for (const entry of children.slice(MAX_FOLDER_CARDS)) mergeTotals(rest, entry.totals);
-      cards.push(buildFolderCard(`${children.length - MAX_FOLDER_CARDS} more folders`, null, rest, baseline, totals.tokens));
+      cards.push(buildFolderCard(`${children.length - MAX_FOLDER_CARDS} more folders`, null, rest, baseline, scopeTotal));
     } else {
       for (const entry of children) {
-        cards.push(buildFolderCard(entry.node.name, entry.node.path, entry.totals, baseline, totals.tokens));
+        cards.push(buildFolderCard(entry.node.name, entry.node.path, entry.totals, baseline, scopeTotal));
       }
     }
   }
@@ -349,11 +365,11 @@ function buildSummary(index: ScanIndex, aggregation: Aggregation, baseline: numb
       .filter((entry) => entry.totals.tokens > 0)
       .sort((left, right) => right.totals.tokens - left.totals.tokens);
     for (const entry of children) {
-      ribbon.push(buildFolderCard(entry.node.name, entry.node.path, entry.totals, baseline, rootTotals.tokens));
+      ribbon.push(buildFolderCard(entry.node.name, entry.node.path, entry.totals, baseline, unfilteredTokens(index, "")));
     }
     const rootDirect = aggregation.direct.get("") ?? emptyTotals();
     if (rootDirect.tokens > 0) {
-      ribbon.push(buildFolderCard("(files)", null, rootDirect, baseline, rootTotals.tokens));
+      ribbon.push(buildFolderCard("(files)", null, rootDirect, baseline, unfilteredTokens(index, "")));
     }
   }
   return {

@@ -303,3 +303,71 @@ describe("request parsing", () => {
     expect(parseViewRequest({ rank: { minTokens: -42 } }).rank.minTokens).toBe(0);
   });
 });
+
+describe("bar normalisation", () => {
+  /**
+   * The bars are normalised against unfiltered totals precisely so that this
+   * holds. Normalising against the visible total grows the denominator when a
+   * kind is enabled, which visibly shrinks any tile that holds none of it.
+   */
+  it("never shortens a bar when a file kind is switched on", () => {
+    const progression: FileKind[][] = [
+      ["code"],
+      ["code", "test"],
+      ["code", "test", "text"],
+      ALL_KINDS,
+    ];
+
+    let previousCards = new Map<string, number>();
+    let previousRows = new Map<string, number>();
+
+    for (const kinds of progression) {
+      const view = buildView(index, request({ kinds }));
+
+      for (const card of view.detail.cards) {
+        const key = card.path ?? card.name;
+        const earlier = previousCards.get(key);
+        if (earlier !== undefined) {
+          expect(card.shareOfParent, `tile ${key} shrank after enabling a kind`)
+            .toBeGreaterThanOrEqual(earlier - 1e-9);
+        }
+      }
+
+      for (const row of view.tree) {
+        const key = `${row.rowKind}:${row.path}`;
+        const earlier = previousRows.get(key);
+        if (earlier !== undefined) {
+          expect(row.shareOfParent, `tree row ${key} shrank after enabling a kind`)
+            .toBeGreaterThanOrEqual(earlier - 1e-9);
+        }
+      }
+
+      previousCards = new Map(view.detail.cards.map((card) => [card.path ?? card.name, card.shareOfParent]));
+      previousRows = new Map(view.tree.map((row) => [`${row.rowKind}:${row.path}`, row.shareOfParent]));
+    }
+  });
+
+  it("measures a tile against the whole folder, so filtered tiles sum to less than one", () => {
+    const everything = buildView(index, request());
+    const codeOnly = buildView(index, request({ kinds: ["code"] }));
+
+    const sum = (cards: readonly { shareOfParent: number }[]): number =>
+      cards.reduce((total, card) => total + card.shareOfParent, 0);
+
+    expect(sum(everything.detail.cards)).toBeGreaterThan(sum(codeOnly.detail.cards));
+    expect(sum(everything.detail.cards)).toBeLessThanOrEqual(1 + 1e-9);
+  });
+
+  it("keeps a tile's bar fixed when a kind it does not contain is switched on", () => {
+    // `src/deep` holds only TypeScript, so enabling docs must not move it.
+    const codeOnly = buildView(index, request({ selected: { rowKind: "folder", path: "src" }, kinds: ["code"] }));
+    const withDocs = buildView(index, request({ selected: { rowKind: "folder", path: "src" }, kinds: ["code", "text"] }));
+
+    const deepBefore = codeOnly.detail.cards.find((card) => card.path === "src/deep");
+    const deepAfter = withDocs.detail.cards.find((card) => card.path === "src/deep");
+
+    expect(deepBefore).toBeDefined();
+    expect(deepAfter).toBeDefined();
+    expect(deepAfter!.shareOfParent).toBeCloseTo(deepBefore!.shareOfParent, 10);
+  });
+});

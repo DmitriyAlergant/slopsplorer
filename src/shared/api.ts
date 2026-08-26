@@ -77,6 +77,14 @@ export interface FolderCard {
   tokens: number;
   files: number;
   shareOfProject: number;
+  /**
+   * 0-1 share of the selected folder's total weight.
+   *
+   * The denominator is the folder's full contents, ignoring the visibility
+   * switches, so the tile bars are comparable across filter changes and adding
+   * a file kind never shortens one. With filters active the tiles sum to less
+   * than the whole, which is the point: the gap is what you filtered out.
+   */
   shareOfParent: number;
   flavors: FlavorSlice[];
 }

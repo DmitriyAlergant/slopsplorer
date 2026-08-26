@@ -13,6 +13,15 @@ interface Props {
   onCollapseAll: () => void;
 }
 
+/** Drawn rather than typed: the Unicode triangles render far too small to hit. */
+function Chevron({ open }: { open: boolean }): React.JSX.Element {
+  return (
+    <svg className="chevron" data-open={open} viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+      <path d="M6 3.5L10.5 8L6 12.5" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 /** Native checkboxes cannot express "partially selected" from markup alone. */
 function ScopeCheckbox({ row, onChange }: { row: TreeRow; onChange: () => void }): React.JSX.Element {
   const ref = useRef<HTMLInputElement>(null);
@@ -59,7 +68,6 @@ export function SourceTree(props: Props): React.JSX.Element {
               data-muted={!row.included}
               style={{ "--indent": row.depth, "--mass": Math.min(1, Math.max(0, row.shareOfParent)) } as React.CSSProperties}
             >
-              <span className="tree__mass" aria-hidden="true" />
               {row.rowKind === "folder" && row.hasChildren ? (
                 <button
                   type="button"
@@ -68,7 +76,7 @@ export function SourceTree(props: Props): React.JSX.Element {
                   aria-label={`${row.expanded ? "Collapse" : "Expand"} ${row.name}`}
                   onClick={() => onToggleExpanded(row.path)}
                 >
-                  {row.expanded ? "▾" : "▸"}
+                  <Chevron open={row.expanded} />
                 </button>
               ) : (
                 <span className="tree__disclose tree__disclose--leaf" aria-hidden="true" />
@@ -88,7 +96,10 @@ export function SourceTree(props: Props): React.JSX.Element {
                 {row.name}
               </button>
 
-              <span className="tree__tokens">{count(row.tokens)}</span>
+              <span className="tree__tokens">
+                <span className="tree__mass" aria-hidden="true" />
+                <span className="tree__count">{count(row.tokens)}</span>
+              </span>
             </div>
           ))
         )}

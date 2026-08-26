@@ -29,6 +29,12 @@ export interface ScanIndex {
   meta: ScanMeta;
   /** Sorted by path. */
   files: FileRow[];
+  /**
+   * Running token totals over `files`, where `tokenPrefix[n]` is the sum of the
+   * first `n` files. Because a folder's descendants are contiguous, its total
+   * unfiltered weight is one subtraction, independent of any active filter.
+   */
+  tokenPrefix: Float64Array;
   /** Sorted by path, so a parent always precedes its children. */
   folders: FolderNode[];
   folderByPath: Map<string, FolderNode>;
@@ -153,9 +159,15 @@ export async function scanSourceTree(options: ScanOptions): Promise<ScanIndex> {
     languages,
   };
 
+  const tokenPrefix = new Float64Array(files.length + 1);
+  for (const [position, file] of files.entries()) {
+    tokenPrefix[position + 1] = tokenPrefix[position]! + file.tokens;
+  }
+
   return {
     meta,
     files,
+    tokenPrefix,
     folders,
     folderByPath: new Map(folders.map((folder) => [folder.path, folder])),
     fileIndexByPath: new Map(files.map((file, index) => [file.path, index])),
