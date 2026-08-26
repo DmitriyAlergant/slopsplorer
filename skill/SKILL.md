@@ -81,7 +81,7 @@ It runs until it is stopped, so start it in the background and hand the URL to t
 | `--port <n>` | Bind a specific port instead of the default 8765. |
 | `--all-files` | Walk the filesystem and ignore `.gitignore` completely. Use it to see what the default view hides. |
 | `--exclude <dir>` | Skip a directory by name, anywhere in the tree. Repeatable. |
-| `--tokenizer cl100k_base\|o200k_base` | `cl100k_base` is the default and is a reasonable proxy for Claude's context cost. `o200k_base` matches GPT-4o. |
+| `--tokenizer o200k_base\|cl100k_base` | `o200k_base` is the default and is a reasonable proxy for Claude's context cost. `cl100k_base` matches GPT-4 and GPT-3.5. |
 | `--dev` | Development mode, for work on Slopsplorer itself. It does not help when you analyse another repository. |
 
 Inside a Git worktree, the default file list is the Git index plus untracked files that no ignore rule covers.

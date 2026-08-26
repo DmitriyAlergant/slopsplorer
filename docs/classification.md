@@ -155,6 +155,6 @@ A file whose split differs from `cloc` must carry a written reason, and a file w
 
 The token count covers the whole file, including comments and whitespace, because that is what an agent pays to read it.
 
-`cl100k_base` is the default. It matches GPT-4 and GPT-3.5 and is close enough to Claude's tokenizer to be useful for an estimate of context cost.
-`--tokenizer o200k_base` selects the GPT-4o encoding instead.
+`o200k_base` is the default. It matches the current OpenAI models and is close enough to Claude's tokenizer to be useful for an estimate of context cost.
+`--tokenizer cl100k_base` selects the older GPT-4 and GPT-3.5 encoding instead.
 Text that spells a tokenizer control token is counted as ordinary text, so one source file cannot stop a scan.

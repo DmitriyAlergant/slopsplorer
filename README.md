@@ -28,7 +28,7 @@ Per file:
 
 | Metric | Notes |
 | --- | --- |
-| `tokens` | `cl100k_base` by default, or `o200k_base` |
+| `tokens` | `o200k_base` by default, or `cl100k_base` |
 | `lines` | Non-blank lines only, so `lines = codeLines + commentLines` |
 | `codeLines` / `commentLines` | Mutually exclusive. Code with a trailing comment counts as code |
 | `functions` / `classes` / `branches` | From tree-sitter, across 13 languages |
@@ -93,7 +93,7 @@ slopsplorer <path>              # defaults to the current folder
   --host 0.0.0.0                # default 127.0.0.1
   --all-files                   # walk the filesystem and ignore .gitignore
   --exclude vendor              # exclude a directory name, repeatable
-  --tokenizer o200k_base        # default cl100k_base
+  --tokenizer cl100k_base       # default o200k_base
   --no-open                     # do not open a browser on start
   --dev                         # Vite hot reload, for work on Slopsplorer itself
 ```
