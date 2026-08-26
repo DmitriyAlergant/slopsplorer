@@ -1,6 +1,8 @@
 import type { FileRow, Measure, RankMetric, ViewRequest } from "../../shared/api.ts";
+import { DEFAULT_RANKING_HEIGHT, MAX_RANKING_HEIGHT, MIN_RANKING_HEIGHT } from "../preferences.ts";
 import { count, measureName } from "../format.ts";
 import { FileTable } from "./FileTable.tsx";
+import { HeightSplitter } from "./Splitter.tsx";
 
 interface Props {
   files: readonly FileRow[];
@@ -16,6 +18,9 @@ interface Props {
   /** Drill root that file names and the scope label should be relative to. */
   displayRoot: string;
   rank: ViewRequest["rank"];
+  /** Height the list is capped at, dragged from the boundary under it. */
+  height: number;
+  onHeightChange: (height: number) => void;
   onRankChange: (change: Partial<ViewRequest["rank"]>) => void;
   /** Ranking order, chosen by sorting a column rather than by a control of its own. */
   onSortChange: (metric: RankMetric) => void;
@@ -26,14 +31,18 @@ interface Props {
 const THRESHOLD_STEPS: Record<Measure, number> = { tokens: 500, lines: 50, codeLines: 50 };
 
 /** The ranked file list for whatever scope the tree currently describes. */
-export function LargestFiles({ files, measure, total, scopePath, directFilesOnly, rootName, displayRoot, rank, onRankChange, onSortChange, onOpenSource }: Props): React.JSX.Element {
+export function LargestFiles({ files, measure, total, scopePath, directFilesOnly, rootName, displayRoot, rank, height, onHeightChange, onRankChange, onSortChange, onOpenSource }: Props): React.JSX.Element {
   // The whole path from the scan root, so the heading names a place rather than
   // an offset from one. The rows below stay relative, which the caption states.
   const scopeSegments = scopePath ? scopePath.split("/") : [];
   const scopeLabel = [rootName, ...scopeSegments].join("/") + (directFilesOnly ? "/." : "");
   const truncated = files.length < total;
   return (
-    <section className="panel ranking" aria-label="Heaviest files in scope">
+    <section
+      className="panel ranking"
+      aria-label="Heaviest files in scope"
+      style={{ "--ranking-height": `${height}px` } as React.CSSProperties}
+    >
       <div className="panel__head">
         {/* The scope qualifies the heading, so it reads after it, the way the
             folder panel puts its figures under the name they describe. */}
@@ -70,6 +79,19 @@ export function LargestFiles({ files, measure, total, scopePath, directFilesOnly
         onOpenSource={onOpenSource}
         emptyMessage={`No files match the current filters, scope, and minimum ${measureName(measure)} threshold.`}
       />
+      {/* Directly after the table, because the boundary sizes the box before it.
+          An empty list has no rows to curtail, so it has no boundary either. */}
+      {files.length > 0 ? (
+        <HeightSplitter
+          height={height}
+          onHeightChange={onHeightChange}
+          label="Resize the file list"
+          hint="Drag to resize the file list. Double-click to reset."
+          minimum={MIN_RANKING_HEIGHT}
+          maximum={MAX_RANKING_HEIGHT}
+          defaultHeight={DEFAULT_RANKING_HEIGHT}
+        />
+      ) : null}
     </section>
   );
 }

@@ -3,8 +3,9 @@ import type { FileKind, Measure, RankMetric, TreeRow, ViewRequest, ViewResponse 
 import { MEASURES } from "../shared/api.ts";
 import { fetchView, openRoot, rescan } from "./api.ts";
 import {
-  DEFAULT_WORKSPACE_HEIGHT, readPreferences, readTreePanelRatio, readWorkspaceHeight,
-  writePreferences, writeTreePanelRatio, writeWorkspaceHeight,
+  DEFAULT_RANKING_HEIGHT, DEFAULT_WORKSPACE_HEIGHT, MAX_WORKSPACE_HEIGHT, MIN_WORKSPACE_HEIGHT,
+  readPreferences, readRankingHeight, readTreePanelRatio, readWorkspaceHeight,
+  writePreferences, writeRankingHeight, writeTreePanelRatio, writeWorkspaceHeight,
 } from "./preferences.ts";
 import { closeTooltip } from "./tooltip.ts";
 import { readRequest, selectionKey, writeRequest } from "./urlState.ts";
@@ -17,9 +18,7 @@ import { MassRibbon } from "./components/MassRibbon.tsx";
 import { SkillInstallDialog } from "./components/SkillInstallDialog.tsx";
 import { SourceDialog } from "./components/SourceDialog.tsx";
 import { SourceTree } from "./components/SourceTree.tsx";
-import {
-  DEFAULT_TREE_PANEL_RATIO, WorkspaceHeightSplitter, WorkspaceSplitter,
-} from "./components/WorkspaceSplitter.tsx";
+import { DEFAULT_TREE_PANEL_RATIO, HeightSplitter, WorkspaceSplitter } from "./components/Splitter.tsx";
 
 /** Long enough to coalesce a burst of typing, short enough to feel immediate. */
 const REQUEST_DEBOUNCE_MS = 80;
@@ -48,6 +47,14 @@ function workspaceHeightFromStorage(): number {
   }
 }
 
+function rankingHeightFromStorage(): number {
+  try {
+    return readRankingHeight(window.localStorage, DEFAULT_RANKING_HEIGHT);
+  } catch {
+    return DEFAULT_RANKING_HEIGHT;
+  }
+}
+
 export function App(): React.JSX.Element {
   const [request, setRequest] = useState<ViewRequest>(requestFromLocation);
   const [view, setView] = useState<ViewResponse | null>(null);
@@ -59,6 +66,7 @@ export function App(): React.JSX.Element {
   const [skillOpen, setSkillOpen] = useState(false);
   const [treePanelRatio, setTreePanelRatio] = useState(treePanelRatioFromStorage);
   const [workspaceHeight, setWorkspaceHeight] = useState(workspaceHeightFromStorage);
+  const [rankingHeight, setRankingHeight] = useState(rankingHeightFromStorage);
   const requestRef = useRef(request);
   requestRef.current = request;
   const lastSelectionRef = useRef(selectionKey(request));
@@ -108,6 +116,10 @@ export function App(): React.JSX.Element {
   useEffect(() => {
     writeWorkspaceHeight(window.localStorage, workspaceHeight);
   }, [workspaceHeight]);
+
+  useEffect(() => {
+    writeRankingHeight(window.localStorage, rankingHeight);
+  }, [rankingHeight]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -395,7 +407,15 @@ export function App(): React.JSX.Element {
         />
       </div>
 
-      <WorkspaceHeightSplitter height={workspaceHeight} onHeightChange={setWorkspaceHeight} />
+      <HeightSplitter
+        height={workspaceHeight}
+        onHeightChange={setWorkspaceHeight}
+        label="Resize both workspace panels"
+        hint="Drag to resize both panels. Double-click to reset."
+        minimum={MIN_WORKSPACE_HEIGHT}
+        maximum={MAX_WORKSPACE_HEIGHT}
+        defaultHeight={DEFAULT_WORKSPACE_HEIGHT}
+      />
 
       {/* Below the workspace, because the page reads downstream: the filters and
           the tree decide what is counted, and every figure here is the result. */}
@@ -415,6 +435,8 @@ export function App(): React.JSX.Element {
         rootName={view?.meta.rootName ?? ""}
         displayRoot={request.drillPath}
         rank={request.rank}
+        height={rankingHeight}
+        onHeightChange={setRankingHeight}
         onRankChange={setRank}
         onSortChange={setRankMetric}
         onOpenSource={setSourcePath}

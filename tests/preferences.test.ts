@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   readPreferences,
+  readRankingHeight,
   readTreePanelRatio,
   readWorkspaceHeight,
   writePreferences,
+  writeRankingHeight,
   writeTreePanelRatio,
   writeWorkspaceHeight,
   type PreferenceStorage,
@@ -88,5 +90,19 @@ describe("view preferences", () => {
     expect(readWorkspaceHeight(storage, 660)).toBe(660);
     storage.value = "9000";
     expect(readWorkspaceHeight(storage, 660)).toBe(660);
+  });
+
+  it("persists a dragged ranking height", () => {
+    const storage = new MemoryStorage();
+    writeRankingHeight(storage, 260);
+    expect(readRankingHeight(storage, 480)).toBe(260);
+  });
+
+  it("rejects ranking heights outside useful list bounds", () => {
+    const storage = new MemoryStorage();
+    storage.value = "20";
+    expect(readRankingHeight(storage, 480)).toBe(480);
+    storage.value = "9000";
+    expect(readRankingHeight(storage, 480)).toBe(480);
   });
 });

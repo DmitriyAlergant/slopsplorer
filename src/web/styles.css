@@ -874,6 +874,11 @@ button { cursor: pointer; }
 /* ---- Ranking ----------------------------------------------------------- */
 
 .ranking { margin-top: 28px; }
+/* The cap the boundary below the table drags. The panel stays content-sized
+   under it, so a short list does not leave an empty box behind. */
+.ranking .table-scroll { max-height: var(--ranking-height, 480px); }
+/* Inside the panel rather than under it: it is the list's own bottom edge. */
+.ranking .workspace__splitter--row { margin: 0; height: 16px; }
 .ranking__controls { display: flex; gap: 14px; align-items: flex-end; }
 .ranking__controls label { display: flex; flex-direction: column; gap: 3px; }
 .ranking__controls span {
