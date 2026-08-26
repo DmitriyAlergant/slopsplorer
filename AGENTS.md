@@ -26,6 +26,9 @@ Vite bundles a TypeScript config into a temporary file beside it on every start,
 
 ## Architecture
 
+Two longer documents sit in `docs/`: [architecture.md](docs/architecture.md) for how the parts fit together, and [classification.md](docs/classification.md) for the scanning heuristics in detail.
+This section is the short version.
+
 The data flows one way, and every aggregation happens on the server.
 
 ```
