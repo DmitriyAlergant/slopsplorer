@@ -148,6 +148,14 @@ export interface ViewRequest {
   expanded: string[];
   selected: { rowKind: "folder" | "files"; path: string };
   rank: { metric: RankMetric; minTokens: number; limit: number };
+  /**
+   * How many folder tiles to return.
+   *
+   * The client measures how many tiles fit a row and asks for whole rows, so
+   * the grid never ends in a ragged half-row. Purely a layout concern, so it
+   * is not part of the linkable state.
+   */
+  cardLimit: number;
 }
 
 export interface ViewResponse {

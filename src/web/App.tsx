@@ -161,6 +161,11 @@ export function App(): React.JSX.Element {
     }));
   }, []);
 
+  /** Ignore an unchanged value so the measurement cannot drive a render loop. */
+  const setCardLimit = useCallback((cardLimit: number) => {
+    setRequest((previous) => (previous.cardLimit === cardLimit ? previous : { ...previous, cardLimit }));
+  }, []);
+
   const setRank = useCallback((change: Partial<ViewRequest["rank"]>) => {
     setRequest((previous) => ({ ...previous, rank: { ...previous.rank, ...change } }));
   }, []);
@@ -214,6 +219,7 @@ export function App(): React.JSX.Element {
           detail={view?.detail ?? null}
           onSelectFolder={(path) => select("folder", path)}
           onOpenSource={setSourcePath}
+          onCapacityChange={setCardLimit}
         />
       </div>
 

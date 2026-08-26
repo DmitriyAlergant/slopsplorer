@@ -34,6 +34,7 @@
   --font-mono: ui-monospace, "SF Mono", SFMono-Regular, "JetBrains Mono", Menlo, Consolas, monospace;
   --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 
+  --workspace-height: 660px;
   --radius: 10px;
   --radius-sm: 6px;
   --gap: 16px;
@@ -289,8 +290,15 @@ button { cursor: pointer; }
   display: grid;
   grid-template-columns: minmax(300px, 0.62fr) minmax(0, 1.7fr);
   gap: var(--gap);
-  align-items: start;
+  align-items: stretch;
 }
+/*
+ * Both panels stand the same height and scroll internally, so opening a folder
+ * or selecting one with hundreds of files never changes the page layout.
+ */
+.tree, .detail { display: flex; flex-direction: column; height: var(--workspace-height); }
+.panel__head { flex: none; }
+.detail .table-scroll { flex: 1 1 auto; min-height: 0; max-height: none; }
 .panel {
   border: 1px solid var(--rule);
   border-radius: var(--radius);
@@ -321,7 +329,7 @@ button { cursor: pointer; }
 
 /* ---- Source tree ------------------------------------------------------- */
 
-.tree__scroll { height: 620px; overflow: auto; padding: 6px; }
+.tree__scroll { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 6px; }
 .tree__row {
   position: relative;
   display: grid;
@@ -360,8 +368,7 @@ button { cursor: pointer; }
   background: var(--signal);
 }
 .tree__row[data-selected="true"] .tree__label { color: var(--signal); font-weight: 600; }
-.tree__row[data-muted="true"] .tree__label,
-.tree__row[data-muted="true"] .tree__tokens { color: var(--ink-faint); text-decoration: line-through; }
+.tree__row[data-muted="true"] .tree__label { color: var(--ink-faint); text-decoration: line-through; }
 .tree__row[data-kind="files"] .tree__label { font-style: italic; color: var(--ink-soft); }
 
 .tree__disclose {
@@ -393,6 +400,7 @@ button { cursor: pointer; }
 
 .detail { padding: 0; }
 .detail__head {
+  flex: none;
   display: flex; align-items: flex-start; justify-content: space-between; gap: 24px;
   padding: 18px 20px 0;
 }
@@ -406,14 +414,17 @@ button { cursor: pointer; }
   font-size: 30px; font-weight: 700; letter-spacing: -0.03em;
 }
 .detail__caption {
+  flex: none;
   margin: 18px 20px 8px;
   color: var(--ink-faint);
   font-size: 11px; letter-spacing: 0.05em; text-transform: uppercase;
 }
 
 .cards {
+  flex: none;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  /* Column count is measured by the panel, so rows are always complete. */
+  grid-template-columns: repeat(var(--card-columns, 3), minmax(0, 1fr));
   gap: 8px;
   padding: 18px 20px 0;
 }
@@ -531,7 +542,20 @@ button { cursor: pointer; }
   color: var(--ink);
   overflow: hidden;
 }
-.viewer--narrow { width: min(660px, calc(100% - 40px)); height: auto; max-height: 84vh; }
+/*
+ * A dialog is absolutely positioned with both block insets pinned to 0 by the
+ * user agent, and only its `height: fit-content` stops it stretching to fill
+ * that gap. Overriding the height to `auto` re-enables the stretch, so this
+ * panel must ask for fit-content explicitly to size to its own content.
+ */
+.viewer--narrow {
+  width: min(660px, calc(100% - 40px));
+  height: fit-content;
+  max-height: 84vh;
+  display: flex;
+  flex-direction: column;
+}
+.viewer--narrow .viewer__body { height: auto; flex: 0 1 auto; }
 .viewer::backdrop { background: oklch(0.15 0.02 265 / 0.55); backdrop-filter: blur(3px); }
 .viewer__head {
   display: flex; align-items: flex-start; justify-content: space-between; gap: 18px;
@@ -594,7 +618,7 @@ button { cursor: pointer; }
   .instrument { grid-template-columns: 1fr; gap: 14px; }
   .instrument__facts { flex-wrap: wrap; gap: 18px; }
   .workspace { grid-template-columns: 1fr; }
-  .tree__scroll { height: 340px; }
+  :root { --workspace-height: 460px; }
   .filters { grid-template-columns: 1fr; }
   .chips { justify-content: flex-start; }
 }

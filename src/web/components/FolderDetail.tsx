@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import type { DetailView } from "../../shared/api.ts";
 import { count, percent } from "../format.ts";
 import { FileTable } from "./FileTable.tsx";
@@ -7,16 +8,47 @@ interface Props {
   detail: DetailView | null;
   onSelectFolder: (path: string) => void;
   onOpenSource: (path: string) => void;
+  /** Reports how many tiles the panel can hold, so the server returns whole rows. */
+  onCapacityChange: (cardLimit: number) => void;
 }
 
-/** The selected folder: its weight, how its children divide it, and its own files. */
-export function FolderDetail({ detail, onSelectFolder, onOpenSource }: Props): React.JSX.Element {
-  if (!detail) return <section className="panel detail" aria-label="Folder detail" />;
+/** Narrower than this and a tile can no longer hold its name and figures. */
+const CARD_MIN_WIDTH = 210;
+const CARD_GAP = 8;
+const CARD_PADDING = 40;
+const CARD_ROWS = 2;
+const MAX_COLUMNS = 6;
 
-  const commentShare = detail.lines > 0 ? detail.commentLines / detail.lines : 0;
+/** The selected folder: its weight, how its children divide it, and its own files. */
+export function FolderDetail({ detail, onSelectFolder, onOpenSource, onCapacityChange }: Props): React.JSX.Element {
+  const panelRef = useRef<HTMLElement>(null);
+  const [columns, setColumns] = useState(3);
+
+  // Measure rather than guess: the panel is a fraction of a resizable window,
+  // so the number of tiles that fit is not knowable from a breakpoint.
+  useEffect(() => {
+    const node = panelRef.current;
+    if (!node) return;
+    const observer = new ResizeObserver((entries) => {
+      const width = entries[0]?.contentRect.width ?? 0;
+      const usable = width - CARD_PADDING + CARD_GAP;
+      const fitted = Math.floor(usable / (CARD_MIN_WIDTH + CARD_GAP));
+      setColumns(Math.max(1, Math.min(MAX_COLUMNS, fitted)));
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    onCapacityChange(columns * CARD_ROWS);
+  }, [columns, onCapacityChange]);
+
+  const commentShare = detail && detail.lines > 0 ? detail.commentLines / detail.lines : 0;
+
+  if (!detail) return <section ref={panelRef} className="panel detail" aria-label="Folder detail" />;
 
   return (
-    <section className="panel detail" aria-label="Folder detail">
+    <section ref={panelRef} className="panel detail" aria-label="Folder detail">
       <header className="detail__head">
         <div className="detail__identity">
           <p className="crumb">{detail.breadcrumb}</p>
@@ -32,7 +64,7 @@ export function FolderDetail({ detail, onSelectFolder, onOpenSource }: Props): R
       </header>
 
       {detail.cards.length > 0 ? (
-        <div className="cards">
+        <div className="cards" style={{ "--card-columns": columns } as React.CSSProperties}>
           {detail.cards.map((card, index) => {
             const body = (
               <>

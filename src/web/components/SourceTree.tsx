@@ -97,8 +97,12 @@ export function SourceTree(props: Props): React.JSX.Element {
               </button>
 
               <span className="tree__tokens">
-                <span className="tree__mass" aria-hidden="true" />
-                <span className="tree__count">{count(row.tokens)}</span>
+                {row.included ? (
+                  <>
+                    <span className="tree__mass" aria-hidden="true" />
+                    <span className="tree__count">{count(row.tokens)}</span>
+                  </>
+                ) : null}
               </span>
             </div>
           ))

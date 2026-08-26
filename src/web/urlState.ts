@@ -44,6 +44,8 @@ export function readRequest(search: string): ViewRequest {
       minTokens: Math.max(0, Number(params.get("min")) || 0),
       limit: RANK_LIMIT,
     },
+    // Layout capacity, measured by the panel rather than carried in the link.
+    cardLimit: 6,
   };
 }
 

@@ -6,8 +6,9 @@ import type {
 import { FLAVORS, RANK_METRICS } from "../shared/api.ts";
 import type { FolderNode, ScanIndex } from "../scanner/scan.ts";
 
-/** Child folders shown as cards before the remainder collapses into one tile. */
-const MAX_FOLDER_CARDS = 5;
+/** Bounds on the tile count the client may ask for. */
+const MIN_FOLDER_CARDS = 2;
+const MAX_FOLDER_CARDS = 12;
 
 function flavorOf(file: FileRow): Flavor {
   return file.generated ? "generated" : file.kind;
@@ -303,13 +304,17 @@ function buildDetail(
       .filter((entry) => entry.totals.files > 0)
       .sort((left, right) => right.totals.tokens - left.totals.tokens);
 
-    if (children.length > MAX_FOLDER_CARDS + 1) {
-      for (const entry of children.slice(0, MAX_FOLDER_CARDS)) {
+    // Showing the aggregate tile costs a slot, so it only pays for itself when
+    // it stands in for more than one folder.
+    const limit = request.cardLimit;
+    if (children.length > limit) {
+      const shown = limit - 1;
+      for (const entry of children.slice(0, shown)) {
         cards.push(buildFolderCard(entry.node.name, entry.node.path, entry.totals, baseline, scopeTotal));
       }
       const rest = emptyTotals();
-      for (const entry of children.slice(MAX_FOLDER_CARDS)) mergeTotals(rest, entry.totals);
-      cards.push(buildFolderCard(`${children.length - MAX_FOLDER_CARDS} more folders`, null, rest, baseline, scopeTotal));
+      for (const entry of children.slice(shown)) mergeTotals(rest, entry.totals);
+      cards.push(buildFolderCard(`${children.length - shown} more folders`, null, rest, baseline, scopeTotal));
     } else {
       for (const entry of children) {
         cards.push(buildFolderCard(entry.node.name, entry.node.path, entry.totals, baseline, scopeTotal));
@@ -450,5 +455,8 @@ export function parseViewRequest(body: unknown): ViewRequest {
       minTokens: Number.isFinite(rank["minTokens"]) ? Math.max(0, Number(rank["minTokens"])) : 0,
       limit: Number.isFinite(rank["limit"]) ? Math.min(1000, Math.max(1, Number(rank["limit"]))) : 100,
     },
+    cardLimit: Number.isFinite(raw["cardLimit"])
+      ? Math.min(MAX_FOLDER_CARDS, Math.max(MIN_FOLDER_CARDS, Math.trunc(Number(raw["cardLimit"]))))
+      : 6,
   };
 }
