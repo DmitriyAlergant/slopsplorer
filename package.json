@@ -16,11 +16,11 @@
   "author": "Dmitriy Alergant",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/dmitriyalergant/slopsplorer.git"
+    "url": "git+https://github.com/DmitriyAlergant/slopsplorer.git"
   },
-  "homepage": "https://github.com/dmitriyalergant/slopsplorer#readme",
+  "homepage": "https://github.com/DmitriyAlergant/slopsplorer#readme",
   "bugs": {
-    "url": "https://github.com/dmitriyalergant/slopsplorer/issues"
+    "url": "https://github.com/DmitriyAlergant/slopsplorer/issues"
   },
   "type": "module",
   "bin": {
