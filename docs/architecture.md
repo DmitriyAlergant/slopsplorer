@@ -117,6 +117,8 @@ Two places keep the request:
 The page reads in one direction, from top to bottom.
 The filters and the drill trail come first, then the workspace where the user navigates the tree, then the readouts and the proportion bar, then the ranking.
 Everything below the workspace describes what the workspace shows, so no part of the page needs a control that sits below it.
+The one deliberate exception is the proportion bar, whose segments select a folder in the detail panel above it.
+The bar is a view of the scope, so selecting from it is the same act as clicking the tree.
 
 Three controls narrow the view, and they do different things:
 
@@ -126,6 +128,22 @@ Three controls narrow the view, and they do different things:
 
 Ordinary folder selection is navigation inside the drill scope.
 It moves the detail panel and the ranking, and it leaves the headline figures alone.
+Selection is clamped to the drill scope on both sides.
+`buildView()` puts the scope root in place of a selection that falls outside it, and `readRequest()` does the same to a link, so a panel can never name a folder that its contents do not cover.
+
+A `.` row is its own subject and not a second way to name its folder.
+Selecting it reports the folder's own files: the heading reads `root/folder/.`, the child-folder cards disappear because they belong to the subtree and not to the loose files, and every figure in the panel is the loose files' own.
+
+## Where the measure is chosen
+
+The measure has no control of its own.
+It is a property of a column, so it is chosen from the columns that show it: the numbers heading of the source tree, which is a menu, and a measured column of either file table.
+A separate switch beside a per-table "rank by" list would let three widgets each claim to decide what the page counts.
+
+`ViewRequest.rank.metric` is the sorted column of both file tables, and it is coupled to the measure in one direction each way.
+Sorting on `tokens`, `lines`, or `codeLines` makes that column the measure.
+Choosing a measure moves the sort to it, unless the tables are sorted on a metric that no measure covers, such as comment lines, which is a deliberate choice and stays where it is.
+Either way the threshold resets, because a floor of 2,000 tokens is not a floor of 2,000 lines.
 
 ## Dependencies
 

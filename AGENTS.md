@@ -13,21 +13,15 @@ npm test             # vitest
 npm run typecheck    # all three TypeScript projects, no emit
 ```
 
-`npm run dev` runs `src/cli.ts` under `node --watch`, so it needs Node 22.18 or later for TypeScript type stripping.
-There is no build step in the loop.
-The server hosts Vite in middleware mode, so the API, the client, and the hot-reload channel share one port and one process.
-
-Edits under `src/web/` hot-reload in the browser.
-Edits under `src/cli.ts`, `src/scanner/`, `src/server/`, or `src/shared/` restart the process, which takes a new scan.
+`npm run dev` runs `src/cli.ts` under `node --watch`, so it needs Node 22.18 or later for type stripping.
+The published package runs on Node 20.19, which is what CI checks alongside 22 and 24.
+There is no build step in the dev loop: Vite runs in middleware mode inside the server process, so a client edit hot-reloads and a server edit restarts the process and takes a new scan.
 
 The dev server builds its Vite config inline instead of reading `vite.config.ts`.
 Vite bundles a TypeScript config into a temporary file beside it on every start, and `node --watch` would treat that file as a change and restart forever.
 `vite.config.ts` still owns the production build.
 
-## Architecture
-
-Two longer documents sit in `docs/`: [architecture.md](docs/architecture.md) for how the parts fit together, and [classification.md](docs/classification.md) for the scanning heuristics in detail.
-This section is the short version.
+## Orientation
 
 The data flows one way, and every aggregation happens on the server.
 
@@ -38,127 +32,87 @@ src/web/         ViewRequest state -> POST /api/view -> render
 src/shared/      the wire contract both sides import
 ```
 
-`src/scanner/measure.ts` is the one place that decides whether a file gets tree-sitter comment spans or marker detection.
-The scanner and the corpus test both go through it, so they cannot drift apart on which files get which treatment.
+Two design docs hold the detail, and they are the technical memory of this repository:
 
-`src/shared/api.ts` is the contract.
-Change it and both sides must change together.
-It is the only file both projects import.
+- [docs/architecture.md](docs/architecture.md) - how the parts fit together, the scan, the wire contract, the routes, the client.
+- [docs/classification.md](docs/classification.md) - which files enter a scan, flavors, grammar selection, structure counts, lines, tokens.
 
-### Why the server aggregates
+`README.md` is the user-facing page, and `skill/SKILL.md` is the agent skill that ships inside the package.
+Both describe behavior to someone outside the code, so a change in what a number means has to reach them too.
 
-An earlier version shipped the whole file list to the browser and filtered it there.
-That cost roughly 363 bytes per file on the wire, about 7 MiB for a twenty-thousand-file repository.
-It also recomputed folder totals on every keystroke.
-Now the client sends a `ViewRequest` that describes the scope it wants, and renders the `ViewResponse` it gets back.
-The browser never sees a file it is not displaying.
+Start any non-trivial task by reading the design doc that covers the area you are about to change.
 
-### Why files are sorted by path
+## Invariants
 
-`ScanIndex.files` is sorted, which makes every folder's descendants a contiguous range.
-`FolderNode.start` and `FolderNode.end` bound that range, so aggregating a subtree is a slice rather than a scan of the project.
-The trick depends on the sort: any string that begins `a/b/` sorts between `a/b/` and `a/b0`, because `0` is the next code point after `/`.
-`tests/scan.test.ts` pins this with sibling directories whose names share a prefix.
+A change that breaks one of these changes the product, and is not a refactor.
+Each is explained where it belongs; the list exists so nobody breaks one by accident.
 
-### Structure metrics
+- `src/shared/api.ts` is the contract and the only file both builds import. Change it and both sides change together.
+- `src/scanner/measure.ts` is the single place that decides whether a file gets tree-sitter comment spans or the marker table, so the scanner and the corpus test cannot drift apart.
+- `ScanIndex.files` is sorted by path, which is what makes a subtree total a slice. `tests/scan.test.ts` pins it.
+- The server aggregates. The browser never receives a file it does not display.
+- `lines === codeLines + commentLines`, non-blank lines only, buckets exclusive. Comment detection may only move a line between the two buckets, never change `lines`, never touch `tokens`.
+- Every `Measure` name is a numeric `FileRow` field, validated by `parseViewRequest` before it reaches an index expression.
+- Every `RankMetric` is a column both file tables draw, and every numeric column they draw is a `RankMetric`. Sorting is the only way to pick one, so a metric without a column could never be reached.
+- On the wire the measured quantity is `weight`, never `tokens`, and `ViewResponse` echoes the measure back.
+- In `tests/comment-corpus.test.ts` a split that differs from `cloc` carries a written reason and a split that matches does not, so neither drift passes silently.
+- `GET /api/source` serves a path only if the current scan holds it, and refuses a resolved real path outside the scan root.
 
-`src/scanner/structure.ts` holds an explicit table of tree-sitter node types per grammar.
-It is deliberately explicit rather than pattern-matched: these counts are the product's output, so a reader has to be able to check exactly what was counted.
-Grammars load on first use, so a scan of a pure-Python repository never initialises the Rust parser.
-Thirteen grammars ship prebuilt as WASM in `@vscode/tree-sitter-wasm`, which is why there is no native compilation step and `npx slopsplorer` works on any platform.
+## Agentic rules
 
-Files outside those grammars still get token and line counts.
-They report `language: null` and zero structure counts.
+TEST WHAT YOU CAN. The scanner, the aggregator, and the server are exercisable from Node, so anything assertable belongs in `tests/`.
+`npm test` and `npm run typecheck` pass before a change is done, and that is not the reviewer's job.
 
-A grammar is chosen by extension first and by `#!` line second.
-The whole Bourne family - `.sh`, `.bash`, `.ksh`, `.bats`, `.zsh`, and any script whose shebang names `sh`, `bash`, `zsh`, `ksh`, `dash`, `ash`, or `mksh` - runs through the `bash` grammar.
-Fish is deliberately not routed there: it uses `#` comments but its syntax is not Bourne shell, so it takes the marker fallback instead.
+TDD FOR BUGFIXES. Failing test first, then the fix, then the test passing. For a new feature, where practical.
 
-### Scope, selection, and drill
+FIX WHAT YOU FIND. Whoever meets a failing or flaky test fixes it, even when they did not cause it, and checks whether the same pattern sits elsewhere.
+Same for a type error or visibly broken UI beside what you were sent to change.
 
-Three controls narrow what the page shows, and they are deliberately different things.
+NO FALLBACKS unless a user asks for one. No second route to the same result, no legacy path kept alive beside the new one. Process as intended, or fail.
 
-The kind filters and the search box decide which files are counted at all.
-The tree checkboxes decide which of those count toward the totals.
-Drill decides which folder the page is looking at.
+NO SUPPRESSION OF EXCEPTIONS. Catch only where a specific failure must reach the user, and reconsider even then whether to rethrow. Catch-log-swallow is forbidden.
 
-Drill moves the whole viewport, so everything outside the workspace re-roots with the tree: the headline readouts, the proportion bar, and the percentage baselines all describe the drilled folder.
-The strip keeps one project anchor while drilled, the "of project" readout, so the global figure never disappears.
-Ordinary folder selection is navigation inside that scope and moves the detail and ranking panels only, which is what keeps the headline totals still while you click around.
+REFACTOR BY REMOVAL FIRST. Delete the old path before writing the new one, and add no abstraction the request does not need.
+The wire contract just evolves: no persisted state and no external consumer, so nothing here ever needs a compatibility shim.
 
-Selection is clamped to the drill scope on both sides.
-`buildView` substitutes the scope root for a selection that falls outside it, and `readRequest` does the same to a link, so a panel can never name a folder its contents do not cover.
+JUSTIFY NEW SURFACE. Before adding a CLI flag, a route, a `ViewRequest` field, or a control on the page, check whether an existing one already carries the meaning.
+Two widgets that can each claim to decide what the page counts is the failure this prevents.
 
-A `.` row is its own subject, not a second way to name its folder.
-Selecting it reports the folder's own files: the heading reads `root/folder/.`, the child-folder tiles disappear because they belong to the subtree rather than to the loose files, and every figure in the panel is the loose files' own.
+JUSTIFY DEFENSIVE COMPLEXITY. Prefer code that is correct by its shape over code that is correct because it guards itself.
+A sorted array with a prefix sum beats a cache with an invalidation rule.
 
-### Reading order
+WRITE GREPPABLE CODE. Agents navigate by text search, so every name worth searching for appears whole in the source.
+The measures are the example: `codeLines` is spelled out in `MEASURES`, in `FileRow`, in the aggregator, and in the column that draws it, so one search finds every place it matters.
+Indexing by a validated whole name, as `file[measure]` does, keeps that. Assembling one from fragments, as `` file[`${kind}Lines`] `` would, destroys it.
 
-The page runs one way down: the filters and the drill trail, then the workspace that navigates the tree, then the readouts and the proportion bar, then the ranking.
+BE PICKY ABOUT THE UI. This product is a page someone reads.
+Alignment, spacing, and two panels agreeing about the same number are part of the work, not polish for later.
 
-Everything below the workspace is a result of what the workspace is showing, so nothing on the page reaches back upwards to explain itself.
-That is also why the measure and the file order have no controls of their own - they belong to the columns that display them.
-The one deliberate exception is the proportion bar, whose segments select a folder in the detail panel above: the bar is a view of the scope, and selecting from it is the same act as clicking the tree.
+CONSULT AND MAINTAIN THE DOCS. `docs/` is written by agents for agents: how the thing works under the hood, so a cold reader does not re-derive it by grepping.
+  - Update the doc when behavior changes substantially, and edit the existing one rather than adding a near-duplicate.
+  - Current state only. History lives in git.
+  - Name the modules, functions, routes, and fields a reader would open, with no line numbers, and explain intent rather than restating the code.
+  - English, ASD-STE100 Simplified Technical English: short words, active voice, simple tenses, plain verbs over metaphor.
+  - Short enough to read in one go. If curtailing gets hard, split the doc.
 
-### The primary measure
+COMMENTS AND DOCSTRINGS. English, short, and only where they carry a rationale the code cannot.
+The reader is as competent as you are, so what the code or a design doc already says needs no restating.
+Trim a pre-existing comment that deviates from this rather than growing it further.
 
-`ViewRequest.measure` selects the unit every aggregation is expressed in: `tokens`, `lines`, or `codeLines`.
-It is orthogonal to the filters, which decide which files are counted rather than what counting means.
+PLANS. Keep a plan high-level and write no code inside it: its reader is as capable as you are.
+A plan in an untracked `./.plans/` folder stays uncommitted, whatever other instructions suggest.
 
-Every measure name is also a numeric `FileRow` field, so the aggregator applies one by indexing a row rather than by branching, and `parseViewRequest` validates the name against `MEASURES` before it reaches an index expression.
-`ScanIndex.weightPrefix` holds one running-total array per measure, so an unfiltered folder baseline stays a single subtraction whichever measure is active.
+## Agentic tooling
 
-On the wire the measured quantity is `weight`, never `tokens`.
-`ViewResponse` echoes the measure back, so a label in the client cannot disagree with the numbers beside it while a newer request is still in flight.
+This section is a default. A user-owned AGENTS.md with competing personal guidance wins.
 
-The measure has no control of its own.
-It is a property of a column, so it is chosen from the columns that show it: the source tree's numbers heading, which is a menu, or a measured column of either file table.
-A standalone switch alongside a per-table "rank by" list meant three widgets could each claim to decide what the page was counting.
+**Edits**: prefer the native Edit/Write tools for targeted changes, because they are reliable and a human can watch them.
+Scripted edits are fine and encouraged for a large mechanical sweep or for moving a block of existing code.
 
-`ViewRequest.rank.metric` is the sorted column of both file tables, and it is coupled to the measure in one direction each way.
-Sorting on `tokens`, `lines`, or `codeLines` makes that the measure; choosing a measure moves the sort to it, unless the tables are sorted on a metric no measure covers, such as comment lines, which is a deliberate choice and stays where it is.
-Either way the threshold resets, since a floor of 2,000 tokens is not a floor of 2,000 lines.
+**UI checking**: the page cannot be verified from a test run.
+Use the `dev-browser` CLI against the dev server on `http://127.0.0.1:8765`, and drive it from a sub-agent, because browser work consumes context fast.
 
-Every `RankMetric` is a column both tables draw, and every numeric column they draw is a `RankMetric`.
-Sorting is the only way to pick one, so a metric without a column could never be reached - which is why `classes` is not one.
-
-### Line counting
-
-Slopsplorer does its own line classification.
-It does not shell out to `cloc`, and `cloc` is not a dependency.
-
-`lines` is non-blank lines only.
-`lines === codeLines + commentLines`, and the three buckets are mutually exclusive, matching the convention `cloc` uses.
-A line that holds code plus a trailing comment counts as code.
-Comment detection may only move a line between the code bucket and the comment bucket, never in or out of `lines`, and it never touches `tokens`.
-
-Where a grammar exists, comment spans come from the grammar, so block comments and doc comments need no per-language rules.
-Python docstrings count as comment, because Python has no block-comment syntax and docstrings carry the weight that `/* */` carries elsewhere.
-That is a deliberate divergence from `cloc`, which counts a docstring as code.
-
-Everything else goes through the marker table in `src/scanner/lines.ts`.
-The table carries line markers and block delimiters per format, so `/* ... */`, `<!-- ... -->`, and `--[[ ... ]]` are read across lines rather than guessed at from the first token.
-It also tracks string literals, because one `/*` inside a quoted value would otherwise open a block comment that swallows the rest of the file.
-String state is line-local and block state is not, which bounds the cost of an unbalanced quote to the line that holds it.
-A format keys off the filename first, then the extension, then a `#!` line, so `Dockerfile` and `.env` are recognised even though they have no extension.
-
-A format with no rule reports every content line as code.
-That is the point of the fallback: a file with content must never report `0/0/0`, and misclassifying code as comment is cheaper than reporting nothing.
-Markdown and JSON stay out of the table on purpose - a Markdown paragraph is content rather than commentary, and JSON has no comment syntax at all.
-
-### Checking line counting against cloc
-
-`cloc` was read as the reference when the marker table was built, and it is run by hand against `tests/corpus/` when the table changes.
-It is not a runtime dependency, a test dependency, or a CI dependency, and nothing in the committed suite invokes it.
-
-`tests/comment-corpus.test.ts` holds one expectation per corpus file together with the numbers `cloc 2.00` reported for it.
-Every file asserts that our content total and blank count match `cloc` exactly, so a change can only ever move a line between code and comment.
-A file whose split differs from `cloc` must carry a written reason, and a file whose split matches must not, so neither drift can pass silently.
-Four reasons are recorded today: a `#!` line counts as comment for us and as code for `cloc` in the Bourne family, `#` opens an INI comment, an unterminated block comment runs to the end of the file, and a Svelte `<script>` block gets its script comments read.
-
-Several formats sit in the marker table but never reach it in a scan, because `isSourceFile` admits a file only when its extension is in `SOURCE_EXTENSIONS`.
-Terraform, INI, LESS, SVG, R, Perl, `Dockerfile`, `Makefile`, `.env`, and every extensionless script are all outside the walker today.
-Widening the scan is a separate decision about what belongs on the map; the rules are in place for when it is taken.
+**Watching CI**: long-poll. Do not iterate in fifty-second steps over a run that takes several minutes.
 
 ## Conventions
 
@@ -168,60 +122,37 @@ Widening the scan is a separate decision about what belongs on the map; the rule
 - Relative imports carry the `.ts` / `.tsx` extension. `tsc` rewrites them on emit.
 - Strict TypeScript, including `noUncheckedIndexedAccess` and `exactOptionalPropertyTypes`.
 - Descriptive names. No abbreviations.
-- Tooltips are CSS, never the native `title` attribute.
-  Render `Tooltip` from `src/web/components/Tooltip.tsx` as a direct child of the control and spread `tooltipHandlers` onto that control.
-  `title` cannot be styled, appears after a delay the page does not control, and never appears for a keyboard user.
+- Tooltips are CSS, never the native `title` attribute, which cannot be styled, appears on a delay the page does not control, and never appears for a keyboard user.
+  Render `Tooltip` from `src/web/components/Tooltip.tsx` as a direct child of the control and spread `tooltipHandlers` onto it.
   The panel is fixed-position and placed on hover, so it escapes a scrolling tree, a table cell, and a panel with hidden overflow.
 
 ## Dependencies
 
-Runtime dependencies are pinned exactly.
-They total four packages, and none of them has a transitive dependency.
+Four runtime packages, pinned exactly, none with a transitive dependency of its own.
+That is a constraint and not an accident: `npx slopsplorer` has to work on any platform with no native build, which is why the grammars ship as prebuilt WASM.
 
-| Package | Why |
-| --- | --- |
-| `gpt-tokenizer` | `cl100k_base` and `o200k_base` counting, in pure TypeScript |
-| `web-tree-sitter` | WASM parser runtime |
-| `@vscode/tree-sitter-wasm` | 13 prebuilt grammars, no native build |
-| `ignore` | `.gitignore` semantics when walking a non-Git folder |
-
-Pin every dependency to an exact version that is at least four days old.
+Pin every dependency, runtime or dev, to an exact version that is at least four days old.
 Check the registry rather than writing a version from memory.
 Do not bump a version without a reason.
+Treat an unpinned install as running unreviewed code: check the manifest before invoking the installer.
 
-## Releasing
+## Changelog and releasing
 
-A release is one tag.
-`.github/workflows/release.yml` runs the checks, publishes to npm, and opens the GitHub release.
-Towncrier owns both `CHANGELOG.md` and the GitHub release notes.
-Every user-facing change must add one file under `newsfragments/` named `<issue-or-commit>.<type>.md`.
-Use `feature`, `bugfix`, `doc`, or `misc`, and write one concise sentence for users.
-Towncrier and its runtime dependencies are pinned in `.github/workflows/release.yml`; use Towncrier 25.8.0 when building the changelog locally.
+Every user-facing change adds one file under `newsfragments/`, named `<issue-or-commit>.<type>.md`, holding one concise sentence for users.
+Types are `feature`, `bugfix`, `doc`, and `misc`.
+Do not edit `CHANGELOG.md` for unreleased work: Towncrier owns it, and the tagged workflow compiles the GitHub release notes from the same fragments.
+A fix to a feature that has not shipped yet needs no fragment of its own.
+
+A release is one tag, and `.github/workflows/release.yml` does the rest.
 
 1. Bump `version` in `package.json` and `package-lock.json`.
-2. Run `towncrier build --version X.Y.Z --keep` so `CHANGELOG.md` is updated while the fragments remain available to the tagged workflow.
+2. Run `towncrier build --version X.Y.Z --keep` so the fragments survive into the tagged commit. Towncrier 25.8.0, matching the pin in `release.yml`.
 3. Commit and push the version, changelog, and fragments.
-4. Tag that exact commit with `vX.Y.Z` and push the tag.
-5. After the release workflow succeeds, remove the consumed fragments and commit that cleanup to `main`.
+4. Tag that exact commit `vX.Y.Z` and push the tag. The workflow refuses to publish if the tag and the manifest disagree.
+5. Once it succeeds, delete the consumed fragments on `main`.
 
-The workflow refuses to publish when the tag and the manifest version disagree, so step 1 cannot be skipped.
-The workflow compiles its release body from the fragments in the tagged commit rather than from Git commit subjects.
+Publishing is npm trusted publishing over OIDC.
+No npm token exists in this repository and none may ever be added: the registry mints a short-lived one for this workflow and signs a provenance attestation with it.
 
-Authentication is npm trusted publishing over OIDC.
-No npm token exists in this repository, and none should ever be added.
-The registry mints a short-lived token for this one workflow, and it signs a provenance attestation that ties the tarball to the commit that produced it.
-The trusted publisher is configured once, in the package's npm access settings, against this repository and `release.yml`.
-
-Both workflows are written to survive a hostile pull request.
-CI triggers on `pull_request`, never `pull_request_target`, so a fork's code runs with a read-only token and no secrets.
-The release workflow triggers only on a version tag, which only an account with write access can push.
-Every action is pinned to a commit rather than to a movable tag, and `npm ci --ignore-scripts` keeps a dependency from running code during install.
-
-## Known limits
-
-Scanning is single-threaded.
-A scan of a 1,300-file repository takes about three seconds.
-A worker pool would help on very large trees, and has not been needed yet.
-
-The scan happens at startup, and again when you press Rescan.
-There is no filesystem watcher.
+Both workflows must stay safe against a hostile pull request, and the reasoning is written in the header of `.github/workflows/ci.yml`.
+Read it before changing either file.
