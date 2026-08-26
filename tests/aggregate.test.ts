@@ -432,3 +432,53 @@ describe("headline figures", () => {
     expect(deepCode.summary.selectedTokens).toBe(tokensOf("src/deep/helper.ts"));
   });
 });
+
+describe("folder tile grid", () => {
+  /** The fixture root holds src, tests, dist plus loose files. */
+  it("never ends on a ragged row, using the aggregate tile to absorb the remainder", () => {
+    for (const cardColumns of [1, 2, 3, 4, 5, 6]) {
+      const view = buildView(index, request({ cardColumns, showGenerated: true }));
+      const { cards, cardColumns: rendered } = view.detail;
+      if (cards.length === 0) continue;
+      expect(cards.length % rendered, `columns=${cardColumns} left a ragged row`).toBe(0);
+      expect(rendered).toBeLessThanOrEqual(cardColumns);
+      expect(rendered).toBeGreaterThanOrEqual(1);
+    }
+  });
+
+  it("narrows the grid rather than stranding a tile when there are few folders", () => {
+    // The root has three child folders once generated output is shown.
+    const view = buildView(index, request({ cardColumns: 6, showGenerated: true }));
+    expect(view.detail.cards.length).toBe(view.detail.cardColumns);
+    expect(view.detail.cards.some((card) => card.path === null)).toBe(false);
+  });
+
+  it("keeps every folder's weight in the totals even when tiles are collapsed", () => {
+    const wide = buildView(index, request({ cardColumns: 6, showGenerated: true }));
+    const narrow = buildView(index, request({ cardColumns: 2, showGenerated: true }));
+    const sum = (cards: readonly { tokens: number }[]): number =>
+      cards.reduce((total, card) => total + card.tokens, 0);
+    expect(sum(narrow.detail.cards)).toBe(sum(wide.detail.cards));
+  });
+});
+
+describe("folder heading", () => {
+  it("does not repeat the folder name in the trail above it", () => {
+    const nested = buildView(index, request({ selected: { rowKind: "folder", path: "src/deep" } }));
+    expect(nested.detail.title).toBe("deep");
+    expect(nested.detail.breadcrumb).toBe(`${index.meta.rootName}/src`);
+    expect(nested.detail.breadcrumb.endsWith(nested.detail.title)).toBe(false);
+  });
+
+  it("leaves the trail empty at the root, where the heading is the whole path", () => {
+    const root = buildView(index, request());
+    expect(root.detail.title).toBe(index.meta.rootName);
+    expect(root.detail.breadcrumb).toBe("");
+  });
+
+  it("keeps the full folder path in the trail when its own files are selected", () => {
+    const direct = buildView(index, request({ selected: { rowKind: "files", path: "src/deep" } }));
+    expect(direct.detail.title).toBe("(files)");
+    expect(direct.detail.breadcrumb).toBe(`${index.meta.rootName}/src/deep`);
+  });
+});

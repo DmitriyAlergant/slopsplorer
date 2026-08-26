@@ -104,6 +104,8 @@ export interface DetailView {
   commentLines: number;
   shareOfProject: number;
   cards: FolderCard[];
+  /** Columns the client should render, chosen so the last row is never ragged. */
+  cardColumns: number;
   directFiles: FileRow[];
   directFileCount: number;
 }
@@ -151,13 +153,13 @@ export interface ViewRequest {
   selected: { rowKind: "folder" | "files"; path: string };
   rank: { metric: RankMetric; minTokens: number; limit: number };
   /**
-   * How many folder tiles to return.
+   * How many tiles fit across the panel at its current width.
    *
-   * The client measures how many tiles fit a row and asks for whole rows, so
-   * the grid never ends in a ragged half-row. Purely a layout concern, so it
-   * is not part of the linkable state.
+   * The client measures this; the server decides the actual column count and
+   * tile count from it, because only the server knows how many child folders
+   * there are. Purely a layout concern, so it is not part of the linkable state.
    */
-  cardLimit: number;
+  cardColumns: number;
 }
 
 export interface ViewResponse {

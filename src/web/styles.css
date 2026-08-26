@@ -552,9 +552,14 @@ button { cursor: pointer; }
   width: min(660px, calc(100% - 40px));
   height: fit-content;
   max-height: 84vh;
-  display: flex;
   flex-direction: column;
 }
+/*
+ * Only the open dialog gets a display value. Setting one unconditionally
+ * overrides the user agent's `dialog:not([open]) { display: none }` and leaves
+ * the closed dialog rendered inline at the foot of the page.
+ */
+.viewer--narrow[open] { display: flex; }
 .viewer--narrow .viewer__body { height: auto; flex: 0 1 auto; }
 .viewer::backdrop { background: oklch(0.15 0.02 265 / 0.55); backdrop-filter: blur(3px); }
 .viewer__head {

@@ -8,15 +8,14 @@ interface Props {
   detail: DetailView | null;
   onSelectFolder: (path: string) => void;
   onOpenSource: (path: string) => void;
-  /** Reports how many tiles the panel can hold, so the server returns whole rows. */
-  onCapacityChange: (cardLimit: number) => void;
+  /** Reports how many tiles fit across the panel, so the server can plan the grid. */
+  onCapacityChange: (cardColumns: number) => void;
 }
 
 /** Narrower than this and a tile can no longer hold its name and figures. */
 const CARD_MIN_WIDTH = 210;
 const CARD_GAP = 8;
 const CARD_PADDING = 40;
-const CARD_ROWS = 2;
 const MAX_COLUMNS = 6;
 
 /** The selected folder: its weight, how its children divide it, and its own files. */
@@ -40,7 +39,7 @@ export function FolderDetail({ detail, onSelectFolder, onOpenSource, onCapacityC
   }, []);
 
   useEffect(() => {
-    onCapacityChange(columns * CARD_ROWS);
+    onCapacityChange(columns);
   }, [columns, onCapacityChange]);
 
   const commentShare = detail && detail.lines > 0 ? detail.commentLines / detail.lines : 0;
@@ -51,7 +50,7 @@ export function FolderDetail({ detail, onSelectFolder, onOpenSource, onCapacityC
     <section ref={panelRef} className="panel detail" aria-label="Folder detail">
       <header className="detail__head">
         <div className="detail__identity">
-          <p className="crumb">{detail.breadcrumb}</p>
+          {detail.breadcrumb ? <p className="crumb">{detail.breadcrumb}</p> : null}
           <h2>{detail.title}</h2>
           <p className="detail__stats">
             {count(detail.tokens)} tokens · {count(detail.files)} files · {count(detail.lines)} lines ·{" "}
@@ -64,7 +63,7 @@ export function FolderDetail({ detail, onSelectFolder, onOpenSource, onCapacityC
       </header>
 
       {detail.cards.length > 0 ? (
-        <div className="cards" style={{ "--card-columns": columns } as React.CSSProperties}>
+        <div className="cards" style={{ "--card-columns": detail.cardColumns } as React.CSSProperties}>
           {detail.cards.map((card, index) => {
             const body = (
               <>

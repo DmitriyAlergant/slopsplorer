@@ -45,7 +45,7 @@ export function readRequest(search: string): ViewRequest {
       limit: RANK_LIMIT,
     },
     // Layout capacity, measured by the panel rather than carried in the link.
-    cardLimit: 6,
+    cardColumns: 3,
   };
 }
 

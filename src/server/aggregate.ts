@@ -6,9 +6,28 @@ import type {
 import { FLAVORS, RANK_METRICS } from "../shared/api.ts";
 import type { FolderNode, ScanIndex } from "../scanner/scan.ts";
 
-/** Bounds on the tile count the client may ask for. */
-const MIN_FOLDER_CARDS = 2;
-const MAX_FOLDER_CARDS = 12;
+/** Bounds on the column count the client may ask for. */
+const MIN_CARD_COLUMNS = 1;
+const MAX_CARD_COLUMNS = 6;
+/** Tiles are capped at two rows, however wide the panel gets. */
+const CARD_ROWS = 2;
+
+/**
+ * Choose a column count and a tile count that always fill their rows.
+ *
+ * A grid that ends mid-row reads as broken, so the aggregate tile is used to
+ * absorb the remainder rather than only appearing when the folder list is long.
+ * With four columns and five children that means three folders plus a "2 more
+ * folders" tile, which is one complete row instead of a row of four and an
+ * orphan.
+ */
+function planFolderCards(childCount: number, maxColumns: number): { columns: number; tiles: number } {
+  if (childCount === 0) return { columns: maxColumns, tiles: 0 };
+  // Few enough to sit on one line: narrow the grid so that line is full.
+  if (childCount <= maxColumns) return { columns: childCount, tiles: childCount };
+  const capacity = Math.min(childCount, maxColumns * CARD_ROWS);
+  return { columns: maxColumns, tiles: Math.floor(capacity / maxColumns) * maxColumns };
+}
 
 function flavorOf(file: FileRow): Flavor {
   return file.generated ? "generated" : file.kind;
@@ -301,6 +320,7 @@ function buildDetail(
 
   const scopeTotal = unfilteredTokens(index, folder.path);
   const cards: FolderCard[] = [];
+  let cardColumns = request.cardColumns;
   if (!directFilesOnly) {
     const children = folder.childPaths
       .map((childPath) => ({ node: index.folderByPath.get(childPath), totals: aggregation.subtree.get(childPath) }))
@@ -308,11 +328,10 @@ function buildDetail(
       .filter((entry) => entry.totals.files > 0)
       .sort((left, right) => right.totals.tokens - left.totals.tokens);
 
-    // Showing the aggregate tile costs a slot, so it only pays for itself when
-    // it stands in for more than one folder.
-    const limit = request.cardLimit;
-    if (children.length > limit) {
-      const shown = limit - 1;
+    const plan = planFolderCards(children.length, request.cardColumns);
+    cardColumns = plan.columns;
+    if (plan.tiles < children.length) {
+      const shown = plan.tiles - 1;
       for (const entry of children.slice(0, shown)) {
         cards.push(buildFolderCard(entry.node.name, entry.node.path, entry.totals, baseline, scopeTotal));
       }
@@ -331,9 +350,16 @@ function buildDetail(
     .map((fileIndex) => index.files[fileIndex]!)
     .sort((left, right) => right.tokens - left.tokens);
 
+  // The heading already names the folder, so the trail stops at its parent.
+  const segments = folder.path.split("/").filter(Boolean);
+  const ancestors = directFilesOnly ? segments : segments.slice(0, -1);
+  const breadcrumb = directFilesOnly || segments.length > 0
+    ? [index.meta.rootName, ...ancestors].join("/")
+    : "";
+
   return {
     title: directFilesOnly ? "(files)" : folder.name,
-    breadcrumb: `${folder.path || index.meta.rootName}${directFilesOnly ? "/(files)" : ""}`,
+    breadcrumb,
     tokens: totals.tokens,
     files: totals.files,
     lines: totals.lines,
@@ -341,6 +367,7 @@ function buildDetail(
     commentLines: totals.commentLines,
     shareOfProject: baseline > 0 ? totals.tokens / baseline : 0,
     cards,
+    cardColumns,
     directFiles,
     directFileCount: directFiles.length,
   };
@@ -473,8 +500,8 @@ export function parseViewRequest(body: unknown): ViewRequest {
       minTokens: Number.isFinite(rank["minTokens"]) ? Math.max(0, Number(rank["minTokens"])) : 0,
       limit: Number.isFinite(rank["limit"]) ? Math.min(1000, Math.max(1, Number(rank["limit"]))) : 100,
     },
-    cardLimit: Number.isFinite(raw["cardLimit"])
-      ? Math.min(MAX_FOLDER_CARDS, Math.max(MIN_FOLDER_CARDS, Math.trunc(Number(raw["cardLimit"]))))
-      : 6,
+    cardColumns: Number.isFinite(raw["cardColumns"])
+      ? Math.min(MAX_CARD_COLUMNS, Math.max(MIN_CARD_COLUMNS, Math.trunc(Number(raw["cardColumns"]))))
+      : 3,
   };
 }
