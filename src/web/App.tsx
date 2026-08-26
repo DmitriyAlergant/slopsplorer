@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { FileKind, TreeRow, ViewRequest, ViewResponse } from "../shared/api.ts";
 import { fetchView, openRoot, rescan } from "./api.ts";
-import { readPreferences, writePreferences } from "./preferences.ts";
+import { readPreferences, readTreePanelRatio, writePreferences, writeTreePanelRatio } from "./preferences.ts";
 import { readRequest, selectionKey, writeRequest } from "./urlState.ts";
 import { FilterBar } from "./components/FilterBar.tsx";
 import { DrillBreadcrumbs } from "./components/DrillBreadcrumbs.tsx";
@@ -12,6 +12,7 @@ import { MassRibbon } from "./components/MassRibbon.tsx";
 import { SkillInstallDialog } from "./components/SkillInstallDialog.tsx";
 import { SourceDialog } from "./components/SourceDialog.tsx";
 import { SourceTree } from "./components/SourceTree.tsx";
+import { DEFAULT_TREE_PANEL_RATIO, WorkspaceSplitter } from "./components/WorkspaceSplitter.tsx";
 
 /** Long enough to coalesce a burst of typing, short enough to feel immediate. */
 const REQUEST_DEBOUNCE_MS = 80;
@@ -24,6 +25,14 @@ function requestFromLocation(): ViewRequest {
   }
 }
 
+function treePanelRatioFromStorage(): number {
+  try {
+    return readTreePanelRatio(window.localStorage, DEFAULT_TREE_PANEL_RATIO);
+  } catch {
+    return DEFAULT_TREE_PANEL_RATIO;
+  }
+}
+
 export function App(): React.JSX.Element {
   const [request, setRequest] = useState<ViewRequest>(requestFromLocation);
   const [view, setView] = useState<ViewResponse | null>(null);
@@ -33,6 +42,7 @@ export function App(): React.JSX.Element {
   const [openingRoot, setOpeningRoot] = useState<string | null>(null);
   const [sourcePath, setSourcePath] = useState<string | null>(null);
   const [skillOpen, setSkillOpen] = useState(false);
+  const [treePanelRatio, setTreePanelRatio] = useState(treePanelRatioFromStorage);
   const requestRef = useRef(request);
   requestRef.current = request;
   const lastSelectionRef = useRef(selectionKey(request));
@@ -74,6 +84,10 @@ export function App(): React.JSX.Element {
       // Accessing localStorage itself can be denied in locked-down contexts.
     }
   }, [request.kinds, request.showGenerated, request.treeSort]);
+
+  useEffect(() => {
+    writeTreePanelRatio(window.localStorage, treePanelRatio);
+  }, [treePanelRatio]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -268,7 +282,10 @@ export function App(): React.JSX.Element {
 
       {error ? <p className="error-banner" role="status">{error}</p> : null}
 
-      <div className="workspace">
+      <div
+        className="workspace"
+        style={{ "--tree-panel-width": `${treePanelRatio * 100}%` } as React.CSSProperties}
+      >
         <SourceTree
           rows={view?.tree ?? []}
           sort={request.treeSort}
@@ -281,6 +298,7 @@ export function App(): React.JSX.Element {
           onExpandAll={() => patch({ expanded: view?.expandableFolderPaths ?? [""] })}
           onCollapseAll={() => patch({ expanded: [""] })}
         />
+        <WorkspaceSplitter ratio={treePanelRatio} onRatioChange={setTreePanelRatio} />
         <FolderDetail
           detail={view?.detail ?? null}
           path={request.selected.path}
@@ -295,7 +313,8 @@ export function App(): React.JSX.Element {
       <LargestFiles
         files={view?.ranked ?? []}
         total={view?.rankedTotal ?? 0}
-        scope={view?.rankScope ?? ""}
+        scopePath={request.selected.path}
+        directFilesOnly={request.selected.rowKind === "files"}
         displayRoot={request.drillPath}
         rank={request.rank}
         onRankChange={setRank}

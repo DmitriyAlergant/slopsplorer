@@ -420,9 +420,35 @@ button { cursor: pointer; }
 
 .workspace {
   display: grid;
-  grid-template-columns: minmax(300px, 0.62fr) minmax(0, 1.7fr);
-  gap: var(--gap);
+  grid-template-columns: clamp(260px, var(--tree-panel-width, 27%), calc(100% - 380px)) 8px minmax(360px, 1fr);
+  gap: 6px;
   align-items: stretch;
+}
+.workspace__splitter {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 8px;
+  border-radius: 4px;
+  cursor: col-resize;
+  touch-action: none;
+}
+.workspace__splitter::before {
+  content: "";
+  position: absolute;
+  inset: 0 -4px;
+}
+.workspace__splitter span {
+  width: 2px;
+  height: 48px;
+  border-radius: 2px;
+  background: var(--rule-firm);
+  transition: height 120ms ease, background 120ms ease;
+}
+.workspace__splitter:hover span,
+.workspace__splitter:focus-visible span {
+  height: 72px;
+  background: var(--signal);
 }
 /*
  * Both panels stand the same height and scroll internally, so opening a folder
@@ -685,6 +711,9 @@ button { cursor: pointer; }
 .metrics th:nth-child(2), .metrics td:nth-child(2) { text-align: left; }
 .metrics tbody tr:hover { background: var(--sunk); }
 .metrics__path { width: 100%; max-width: 0; }
+.metrics__file { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.metrics__file .link { min-width: 0; }
+.metrics__file .detail__tool { width: 18px; height: 18px; }
 .link {
   padding: 0; border: 0; background: transparent;
   color: var(--ink);
@@ -779,6 +808,8 @@ button { cursor: pointer; }
   font-family: var(--font-mono); font-size: 13px; font-weight: 600;
   word-break: break-all;
 }
+.viewer__title-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.viewer__title-row h2 { min-width: 0; }
 .viewer__body { height: calc(100% - 66px); overflow: auto; }
 .viewer__body--prose { height: auto; padding: 20px; }
 .viewer__body--prose p { margin: 0 0 14px; color: var(--ink-soft); font-size: 13px; }
@@ -829,7 +860,8 @@ button { cursor: pointer; }
 @media (max-width: 1100px) {
   .instrument { grid-template-columns: 1fr; gap: 14px; }
   .instrument__facts { flex-wrap: wrap; gap: 18px; }
-  .workspace { grid-template-columns: 1fr; }
+  .workspace { grid-template-columns: 1fr; gap: var(--gap); }
+  .workspace__splitter { display: none; }
   :root { --workspace-height: 460px; }
   .filters { grid-template-columns: 1fr; }
   .chips { justify-content: flex-start; }

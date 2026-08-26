@@ -3,6 +3,7 @@ import type { SourceResponse } from "../../shared/api.ts";
 import { fetchSource } from "../api.ts";
 import { count } from "../format.ts";
 import { highlightSource } from "../highlight.ts";
+import { CopyPathButton } from "./CopyPathButton.tsx";
 
 interface Props {
   path: string | null;
@@ -37,7 +38,10 @@ export function SourceDialog({ path, onClose }: Props): React.JSX.Element {
       <header className="viewer__head">
         <div>
           <p className="eyebrow">Read-only preview</p>
-          <h2>{path ?? ""}</h2>
+          <div className="viewer__title-row">
+            <h2>{path ?? ""}</h2>
+            {path ? <CopyPathButton path={path} /> : null}
+          </div>
         </div>
         <button type="button" className="button button--quiet" onClick={onClose}>Close</button>
       </header>

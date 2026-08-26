@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { readPreferences, writePreferences, type PreferenceStorage } from "../src/web/preferences.ts";
+import {
+  readPreferences,
+  readTreePanelRatio,
+  writePreferences,
+  writeTreePanelRatio,
+  type PreferenceStorage,
+} from "../src/web/preferences.ts";
 import { readRequest } from "../src/web/urlState.ts";
 
 class MemoryStorage implements PreferenceStorage {
@@ -34,5 +40,17 @@ describe("view preferences", () => {
 
     storage.value = JSON.stringify({ kinds: "code", showGenerated: true, treeSort: "tokens" });
     expect(readPreferences(storage)).toBeNull();
+  });
+
+  it("persists a proportional source-tree width", () => {
+    const storage = new MemoryStorage();
+    writeTreePanelRatio(storage, 0.42);
+    expect(readTreePanelRatio(storage, 0.27)).toBe(0.42);
+  });
+
+  it("rejects source-tree widths outside useful panel bounds", () => {
+    const storage = new MemoryStorage();
+    storage.value = "0.9";
+    expect(readTreePanelRatio(storage, 0.27)).toBe(0.27);
   });
 });

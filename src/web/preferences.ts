@@ -2,6 +2,7 @@ import type { FileKind, TreeSort, ViewRequest } from "../shared/api.ts";
 import { FILE_KINDS, TREE_SORTS } from "../shared/api.ts";
 
 const STORAGE_KEY = "slopsplorer.view-preferences.v1";
+const TREE_PANEL_STORAGE_KEY = "slopsplorer.tree-panel-ratio.v1";
 
 export interface ViewPreferences {
   kinds: FileKind[];
@@ -12,6 +13,25 @@ export interface ViewPreferences {
 export interface PreferenceStorage {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
+}
+
+/** Read a proportional panel width so it adapts when the browser is resized. */
+export function readTreePanelRatio(storage: PreferenceStorage, fallback: number): number {
+  try {
+    const ratio = Number(storage.getItem(TREE_PANEL_STORAGE_KEY));
+    return Number.isFinite(ratio) && ratio >= 0.1 && ratio <= 0.8 ? ratio : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+/** Remember an operator's preferred source-tree width across visits. */
+export function writeTreePanelRatio(storage: PreferenceStorage, ratio: number): void {
+  try {
+    storage.setItem(TREE_PANEL_STORAGE_KEY, String(ratio));
+  } catch {
+    // Browsers may deny storage in private or locked-down contexts.
+  }
 }
 
 /** Read validated display preferences without trusting arbitrary stored JSON. */

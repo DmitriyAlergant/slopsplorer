@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { DetailView } from "../../shared/api.ts";
 import { count, percent } from "../format.ts";
+import { CopyPathButton } from "./CopyPathButton.tsx";
 import { FileTable } from "./FileTable.tsx";
 import { FlavorBar } from "./FlavorBar.tsx";
 
@@ -26,7 +27,6 @@ const MAX_COLUMNS = 6;
 export function FolderDetail({ detail, path, onSelectFolder, canDrill, onDrill, onOpenSource, onCapacityChange }: Props): React.JSX.Element {
   const panelRef = useRef<HTMLElement>(null);
   const [columns, setColumns] = useState(3);
-  const [copied, setCopied] = useState(false);
 
   // Measure rather than guess: the panel is a fraction of a resizable window,
   // so the number of tiles that fit is not knowable from a breakpoint.
@@ -46,19 +46,6 @@ export function FolderDetail({ detail, path, onSelectFolder, canDrill, onDrill, 
   useEffect(() => {
     onCapacityChange(columns);
   }, [columns, onCapacityChange]);
-
-  // The confirmation lives on the button itself, so it has to reset when the
-  // selection moves on rather than linger over a different folder's path.
-  useEffect(() => {
-    setCopied(false);
-  }, [path]);
-
-  const copyPath = (): void => {
-    void navigator.clipboard.writeText(path).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1600);
-    });
-  };
 
   if (!detail) return <section ref={panelRef} className="panel detail" aria-label="Folder detail" />;
 
@@ -80,29 +67,7 @@ export function FolderDetail({ detail, path, onSelectFolder, canDrill, onDrill, 
               </button>
             ) : null}
             <h2>{detail.title}</h2>
-            {path ? (
-              <button
-                type="button"
-                className="detail__tool detail__tool--copy"
-                onClick={copyPath}
-                aria-label={copied ? "Path copied" : "Copy path"}
-                aria-describedby="copy-path-tooltip"
-              >
-                <svg viewBox="0 0 20 20" width="13" height="13" aria-hidden="true">
-                  {copied ? (
-                    <path d="m4 10.5 4 4 8-9" />
-                  ) : (
-                    <>
-                      <rect x="7" y="7" width="9.5" height="9.5" rx="1.8" />
-                      <path d="M4.6 12.5H4A1.5 1.5 0 0 1 2.5 11V5A1.5 1.5 0 0 1 4 3.5h6A1.5 1.5 0 0 1 11.5 5v.6" />
-                    </>
-                  )}
-                </svg>
-                <span className="detail__tooltip" id="copy-path-tooltip" role="tooltip">
-                  {copied ? "Copied" : "Copy path"}
-                </span>
-              </button>
-            ) : null}
+            {path ? <CopyPathButton path={path} /> : null}
           </div>
           <p className="detail__stats">
             {count(detail.tokens)} tokens · {count(detail.files)} files · {count(detail.lines)} lines ·{" "}
@@ -145,6 +110,7 @@ export function FolderDetail({ detail, path, onSelectFolder, canDrill, onDrill, 
       <FileTable
         files={detail.directFiles}
         displayRoot={path}
+        prefixRelativePaths={false}
         onOpenSource={onOpenSource}
         emptyMessage="No files sit directly in this folder under the current filters."
       />

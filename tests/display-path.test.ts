@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { pathRelativeTo } from "../src/web/displayPath.ts";
+import { displayFilePath, pathRelativeTo } from "../src/web/displayPath.ts";
 
 describe("display paths", () => {
   it("shows direct files relative to the selected folder", () => {
@@ -18,5 +18,13 @@ describe("display paths", () => {
 
   it("leaves project-relative paths unchanged without a drill root", () => {
     expect(pathRelativeTo("src/web/App.tsx", "")).toBe("src/web/App.tsx");
+  });
+
+  it("marks ranked paths as relative to the drill root", () => {
+    expect(displayFilePath("src/web/App.tsx", "src", true)).toBe("./web/App.tsx");
+  });
+
+  it("keeps folder-level file names concise", () => {
+    expect(displayFilePath("src/web/App.tsx", "src/web", false)).toBe("App.tsx");
   });
 });
