@@ -41,6 +41,11 @@ export interface ScanIndex {
   fileIndexByPath: Map<string, number>;
 }
 
+export interface ScanProgress {
+  completedFiles: number;
+  totalFiles: number;
+}
+
 export interface ScanOptions {
   root: string;
   tokenizer: TokenizerName;
@@ -49,6 +54,8 @@ export interface ScanOptions {
   maxFileBytes: number;
   /** Files read concurrently. Reading is IO-bound. Measuring is not. */
   concurrency: number;
+  /** Called as file measurement advances. */
+  onProgress?: (progress: ScanProgress) => void;
 }
 
 export const DEFAULT_MAX_FILE_BYTES = 2 * 1024 * 1024;
@@ -69,6 +76,7 @@ async function mapWithConcurrency<In, Out>(
   items: readonly In[],
   limit: number,
   worker: (item: In, index: number) => Promise<Out>,
+  onItemCompleted?: () => void,
 ): Promise<Out[]> {
   const results = new Array<Out>(items.length);
   let next = 0;
@@ -76,7 +84,11 @@ async function mapWithConcurrency<In, Out>(
     for (;;) {
       const index = next++;
       if (index >= items.length) return;
-      results[index] = await worker(items[index]!, index);
+      try {
+        results[index] = await worker(items[index]!, index);
+      } finally {
+        onItemCompleted?.();
+      }
     }
   });
   await Promise.all(runners);
@@ -94,6 +106,8 @@ export async function scanSourceTree(options: ScanOptions): Promise<ScanIndex> {
   const countTokens = tokenCounter(options.tokenizer);
   const analyzer = new StructureAnalyzer();
   let skippedLargeFiles = 0;
+  let completedFiles = 0;
+  options.onProgress?.({ completedFiles, totalFiles: relativePaths.length });
 
   let measured: (FileRow | null)[];
   let languages: string[];
@@ -139,6 +153,9 @@ export async function scanSourceTree(options: ScanOptions): Promise<ScanIndex> {
         language: grammar,
       };
       return row;
+    }, () => {
+      completedFiles += 1;
+      options.onProgress?.({ completedFiles, totalFiles: relativePaths.length });
     });
     languages = analyzer.usedGrammars;
   } finally {

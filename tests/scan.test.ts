@@ -2,7 +2,7 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { scanSourceTree, type ScanIndex } from "../src/scanner/scan.ts";
+import { scanSourceTree, type ScanIndex, type ScanProgress } from "../src/scanner/scan.ts";
 import { TOKENIZERS, type TokenizerName } from "../src/scanner/tokenize.ts";
 
 const SCAN_TIMEOUT_MS = 60_000;
@@ -202,6 +202,34 @@ describe("scanning a source tree", () => {
       }
     } finally {
       await rm(specialTokenRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("reports monotonic file progress from discovery through completion", async () => {
+    const progressRoot = await makeTree({
+      "one.ts": "export const one = 1;\n",
+      "two.ts": "export const two = 2;\n",
+      "three.ts": "export const three = 3;\n",
+    });
+    const updates: ScanProgress[] = [];
+    try {
+      await scanSourceTree({
+        root: progressRoot,
+        tokenizer: "cl100k_base",
+        allFiles: true,
+        exclude: [],
+        maxFileBytes: 2 * 1024 * 1024,
+        concurrency: 2,
+        onProgress: (progress) => updates.push(progress),
+      });
+      expect(updates).toEqual([
+        { completedFiles: 0, totalFiles: 3 },
+        { completedFiles: 1, totalFiles: 3 },
+        { completedFiles: 2, totalFiles: 3 },
+        { completedFiles: 3, totalFiles: 3 },
+      ]);
+    } finally {
+      await rm(progressRoot, { recursive: true, force: true });
     }
   });
 });

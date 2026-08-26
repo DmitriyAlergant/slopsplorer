@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { parseArgs } from "node:util";
 import { DEFAULT_MAX_FILE_BYTES, scanSourceTree } from "./scanner/scan.ts";
-import type { ScanIndex, ScanOptions } from "./scanner/scan.ts";
+import type { ScanIndex, ScanOptions, ScanProgress } from "./scanner/scan.ts";
 import { isTokenizerName, TOKENIZERS } from "./scanner/tokenize.ts";
 import { createSlopsplorerServer, resolvePackageRoot } from "./server/server.ts";
 
@@ -77,6 +77,44 @@ function formatDuration(milliseconds: number): string {
   return milliseconds < 1000 ? `${milliseconds} ms` : `${(milliseconds / 1000).toFixed(1)} s`;
 }
 
+function createProgressReporter(): ((progress: ScanProgress) => void) | undefined {
+  if (process.stderr.isTTY !== true) return undefined;
+
+  const minimumVisibleMs = 200;
+  const minimumUpdateMs = 80;
+  let startedAt = Date.now();
+  let lastUpdateAt = 0;
+  let visible = false;
+
+  return ({ completedFiles, totalFiles }) => {
+    const now = Date.now();
+    if (completedFiles === 0) {
+      startedAt = now;
+      lastUpdateAt = 0;
+      visible = false;
+      return;
+    }
+
+    const complete = completedFiles === totalFiles;
+    if (!visible && complete) return;
+    if (!visible && now - startedAt < minimumVisibleMs) return;
+    if (!complete && now - lastUpdateAt < minimumUpdateMs) return;
+
+    const terminalColumns = process.stderr.columns ?? 80;
+    const barWidth = Math.max(10, Math.min(32, terminalColumns - 48));
+    const ratio = totalFiles === 0 ? 1 : completedFiles / totalFiles;
+    const filledWidth = complete ? barWidth : Math.floor(ratio * barWidth);
+    const bar = `${"=".repeat(filledWidth)}${" ".repeat(barWidth - filledWidth)}`;
+    const percent = Math.floor(ratio * 100).toString().padStart(3);
+    process.stderr.write(
+      `\r\u001B[2K  scanning  [${bar}] ${percent}%  ${formatCount(completedFiles)}/${formatCount(totalFiles)} files`,
+    );
+    visible = true;
+    lastUpdateAt = now;
+    if (complete) process.stderr.write("\n");
+  };
+}
+
 function printScanSummary(index: ScanIndex, options: ScanOptions): void {
   const totalTokens = index.files.reduce((sum, file) => sum + file.tokens, 0);
   const source = index.meta.gitTracked
@@ -145,6 +183,7 @@ async function main(): Promise<void> {
     fail(`unknown tokenizer "${tokenizer}". Known tokenizers: ${TOKENIZERS.join(", ")}`);
   }
 
+  const onProgress = createProgressReporter();
   const scanOptions: ScanOptions = {
     root,
     tokenizer,
@@ -156,6 +195,7 @@ async function main(): Promise<void> {
     concurrency: values.concurrency === undefined
       ? DEFAULT_CONCURRENCY
       : parseIntegerOption("concurrency", values.concurrency, 1, 1024),
+    ...(onProgress ? { onProgress } : {}),
   };
 
   const host = values.host ?? DEFAULT_HOST;
