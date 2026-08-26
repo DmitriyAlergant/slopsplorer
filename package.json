@@ -2,7 +2,26 @@
   "name": "slopsplorer",
   "version": "0.2.0",
   "description": "Local, token-weighted source tree explorer. See where the mass of a codebase actually sits.",
+  "keywords": [
+    "tokens",
+    "tokenizer",
+    "context-window",
+    "codebase",
+    "static-analysis",
+    "tree-sitter",
+    "cloc",
+    "agent"
+  ],
   "license": "MIT",
+  "author": "Dmitriy Alergant",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dmitriyalergant/slopsplorer.git"
+  },
+  "homepage": "https://github.com/dmitriyalergant/slopsplorer#readme",
+  "bugs": {
+    "url": "https://github.com/dmitriyalergant/slopsplorer/issues"
+  },
   "type": "module",
   "bin": {
     "slopsplorer": "dist/node/cli.js"
@@ -17,7 +36,7 @@
     "node": ">=20.19"
   },
   "scripts": {
-    "dev": "npm run build:node && node dist/node/cli.js . --dev",
+    "dev": "node --watch src/cli.ts . --dev",
     "build": "npm run build:web && npm run build:node",
     "build:web": "vite build",
     "build:node": "tsc -p tsconfig.node.json",
@@ -33,6 +52,7 @@
     "web-tree-sitter": "0.26.12"
   },
   "devDependencies": {
+    "@types/node": "22.20.1",
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.4",
     "@vitejs/plugin-react": "6.1.0",
