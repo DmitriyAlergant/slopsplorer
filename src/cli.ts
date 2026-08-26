@@ -6,7 +6,7 @@ import path from "node:path";
 import { parseArgs } from "node:util";
 import { DEFAULT_MAX_FILE_BYTES, scanSourceTree } from "./scanner/scan.ts";
 import type { ScanIndex, ScanOptions, ScanProgress } from "./scanner/scan.ts";
-import { isTokenizerName, TOKENIZERS } from "./scanner/tokenize.ts";
+import { DEFAULT_TOKENIZER, isTokenizerName, TOKENIZERS } from "./scanner/tokenize.ts";
 import { createSlopsplorerServer, resolvePackageRoot } from "./server/server.ts";
 
 const DEFAULT_HOST = "127.0.0.1";
@@ -27,7 +27,7 @@ Options:
   --dev                   Serve the client through Vite with hot reload on the same port.
   --all-files             Ignore Git and .gitignore. Built-in directory exclusions still apply.
   --exclude <dir>         Skip a directory name anywhere in the tree. Repeatable.
-  --tokenizer <name>      One of ${TOKENIZERS.join(", ")}. Default ${TOKENIZERS[0]}.
+  --tokenizer <name>      One of ${TOKENIZERS.join(", ")}. Default ${DEFAULT_TOKENIZER}.
   --max-file-bytes <n>    Skip files larger than this. Default ${DEFAULT_MAX_FILE_BYTES} bytes.
   --concurrency <n>       Number of files to read in parallel. Default ${DEFAULT_CONCURRENCY} on this machine.
   --open                  Open the URL in the default browser when the scan finishes. This is the default outside --dev.
@@ -178,7 +178,7 @@ async function main(): Promise<void> {
   if (rootInfo === undefined) fail(`no such directory: ${root}`);
   if (!rootInfo.isDirectory()) fail(`not a directory: ${root}`);
 
-  const tokenizer = values.tokenizer ?? TOKENIZERS[0]!;
+  const tokenizer = values.tokenizer ?? DEFAULT_TOKENIZER;
   if (!isTokenizerName(tokenizer)) {
     fail(`unknown tokenizer "${tokenizer}". Known tokenizers: ${TOKENIZERS.join(", ")}`);
   }

@@ -5,6 +5,9 @@ export const TOKENIZERS = ["o200k_base", "cl100k_base"] as const;
 
 export type TokenizerName = (typeof TOKENIZERS)[number];
 
+/** The encoding a scan uses when the command line does not name one. */
+export const DEFAULT_TOKENIZER: TokenizerName = "o200k_base";
+
 export function isTokenizerName(value: string): value is TokenizerName {
   return (TOKENIZERS as readonly string[]).includes(value);
 }
