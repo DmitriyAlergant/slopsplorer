@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { FileKind, TreeRow, ViewRequest, ViewResponse } from "../shared/api.ts";
-import { fetchView, rescan } from "./api.ts";
+import { fetchView, openRoot, rescan } from "./api.ts";
 import { readRequest, selectionKey, writeRequest } from "./urlState.ts";
 import { FilterBar } from "./components/FilterBar.tsx";
 import { FolderDetail } from "./components/FolderDetail.tsx";
@@ -20,6 +20,7 @@ export function App(): React.JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [rescanning, setRescanning] = useState(false);
+  const [opening, setOpening] = useState(false);
   const [sourcePath, setSourcePath] = useState<string | null>(null);
   const [skillOpen, setSkillOpen] = useState(false);
   const requestRef = useRef(request);
@@ -92,6 +93,26 @@ export function App(): React.JSX.Element {
       })
       .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause)))
       .finally(() => setRescanning(false));
+  }, []);
+
+  const handleOpen = useCallback((root: string) => {
+    const nextRequest: ViewRequest = {
+      ...requestRef.current,
+      excludedFolders: [],
+      excludedDirectFiles: [],
+      expanded: [""],
+      selected: { rowKind: "folder", path: "" },
+    };
+    setOpening(true);
+    openRoot(root, nextRequest)
+      .then((next) => {
+        setRequest(nextRequest);
+        setView(next);
+        setSourcePath(null);
+        setError(null);
+      })
+      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause)))
+      .finally(() => setOpening(false));
   }, []);
 
   const toggleKind = useCallback((kind: FileKind) => {
@@ -181,11 +202,13 @@ export function App(): React.JSX.Element {
   }
 
   return (
-    <main className="app" data-busy={busy || rescanning}>
+    <main className="app" data-busy={busy || rescanning || opening}>
       <InstrumentBar
         meta={view?.meta ?? null}
         rescanning={rescanning}
+        opening={opening}
         onRescan={handleRescan}
+        onOpen={handleOpen}
         onInstallSkill={() => setSkillOpen(true)}
       />
 

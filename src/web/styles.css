@@ -134,14 +134,37 @@ button { cursor: pointer; }
   letter-spacing: -0.045em;
   line-height: 1;
 }
-.instrument__path {
-  margin: 6px 0 0;
+.instrument__path, .instrument__path-input {
   color: var(--ink-faint);
   font-size: 11.5px;
+}
+.instrument__path {
+  display: block;
+  width: 100%;
+  margin: 6px 0 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.instrument__path:hover:not(:disabled) { color: var(--signal); }
+.instrument__path:disabled { cursor: default; }
+.instrument__path-form { display: flex; align-items: baseline; gap: 10px; margin-top: 4px; }
+.instrument__path-input {
+  flex: 1 1 320px;
+  width: 0;
+  max-width: 760px;
+  min-width: 0;
+  padding: 2px 5px;
+  border: 1px solid var(--rule-firm);
+  border-radius: 4px;
+  background: var(--surface);
+  font-family: var(--font-mono);
+}
+.instrument__path-hint { flex: none; color: var(--ink-faint); font-size: 9.5px; }
 .instrument__facts { display: flex; gap: 24px; margin: 0; }
 .fact dt {
   color: var(--ink-faint);
@@ -634,6 +657,7 @@ button { cursor: pointer; }
   .readout[data-emphasis="true"] .readout__value { font-size: 24px; }
   .detail__head { flex-direction: column; gap: 10px; }
   .ranking__controls { flex-wrap: wrap; }
+  .instrument__path-hint { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {

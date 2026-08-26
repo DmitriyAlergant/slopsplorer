@@ -174,6 +174,13 @@ export interface ViewResponse {
   expandableFolderPaths: string[];
 }
 
+/** Replace the scan root while retaining the caller's display preferences. */
+export interface OpenRootRequest {
+  /** Absolute directory path on the machine running the Slopsplorer server. */
+  root: string;
+  view: ViewRequest;
+}
+
 export interface SourceResponse {
   path: string;
   content: string;

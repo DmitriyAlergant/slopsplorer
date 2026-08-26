@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import type { ViteDevServer } from "vite";
 import { scanSourceTree } from "../scanner/scan.ts";
 import type { ScanIndex, ScanOptions } from "../scanner/scan.ts";
-import type { SkillInstallResponse, SourceResponse } from "../shared/api.ts";
+import type { OpenRootRequest, SkillInstallResponse, SourceResponse } from "../shared/api.ts";
 import { buildView, parseViewRequest } from "./aggregate.ts";
 
 /** Ceiling on `POST` bodies. A view request is a few kilobytes even for a huge tree. */
@@ -47,6 +47,9 @@ const STATIC_CONTENT_TYPES: Readonly<Record<string, string>> = {
 
 /** A request the client got wrong. Reported as 400 rather than logged as a fault. */
 class BadRequestError extends Error {}
+
+/** A valid request that cannot run until the active scan finishes. */
+class ConflictError extends Error {}
 
 export interface SlopsplorerServerOptions {
   /** The index the server starts with, so the CLI can report the scan before listening. */
@@ -192,46 +195,75 @@ async function sendStaticFile(response: ServerResponse, filePath: string): Promi
 /**
  * Create the local HTTP server.
  *
- * The index is held in a mutable closure variable because `POST /api/rescan`
- * replaces it in place. Every later request then aggregates over the new scan.
+ * The index and its scan options move together so source reads can never use a new index with an old root, or vice versa.
  */
 export function createSlopsplorerServer(options: SlopsplorerServerOptions): SlopsplorerServer {
   const packageRoot = resolvePackageRoot();
   const staticRoot = path.join(packageRoot, "dist", "web");
   const skillInstall = buildSkillInstall(packageRoot);
 
-  let index = options.index;
-  let rescanInFlight: Promise<ScanIndex> | null = null;
+  let scanState = { index: options.index, options: options.scanOptions };
+  let scanInFlight: { root: string; promise: Promise<ScanIndex> } | null = null;
   let vite: ViteDevServer | null = null;
 
-  /** Coalesce concurrent rescans. A second click joins the running scan. */
-  function rescan(): Promise<ScanIndex> {
-    if (rescanInFlight) return rescanInFlight;
-    const running = scanSourceTree(options.scanOptions).then((next) => {
-      index = next;
+  /** Replace the complete state only after a scan succeeds. */
+  function runScan(nextOptions: ScanOptions): Promise<ScanIndex> {
+    if (scanInFlight) {
+      if (scanInFlight.root === nextOptions.root) return scanInFlight.promise;
+      throw new ConflictError(`already scanning ${scanInFlight.root}`);
+    }
+    const running = scanSourceTree(nextOptions).then((next) => {
+      scanState = { index: next, options: nextOptions };
       return next;
     });
-    rescanInFlight = running;
+    const activeScan = { root: nextOptions.root, promise: running };
+    scanInFlight = activeScan;
     const release = (): void => {
-      if (rescanInFlight === running) rescanInFlight = null;
+      if (scanInFlight === activeScan) scanInFlight = null;
     };
     running.then(release, release);
     return running;
   }
 
+  /** Coalesce concurrent rescans of the active root. */
+  function rescan(): Promise<ScanIndex> {
+    return runScan(scanState.options);
+  }
+
+  async function parseOpenRootRequest(body: unknown): Promise<OpenRootRequest> {
+    if (typeof body !== "object" || body === null) throw new BadRequestError("request body must be an object");
+    const candidate = body as { root?: unknown; view?: unknown };
+    if (typeof candidate.root !== "string" || candidate.root.trim() === "") {
+      throw new BadRequestError("`root` must be a non-empty absolute directory path");
+    }
+    const requestedRoot = candidate.root.trim();
+    if (!path.isAbsolute(requestedRoot)) {
+      throw new BadRequestError("`root` must be an absolute directory path");
+    }
+    let rootInfo;
+    try {
+      rootInfo = await stat(requestedRoot);
+    } catch {
+      throw new BadRequestError(`directory does not exist or is not readable: ${requestedRoot}`);
+    }
+    if (!rootInfo.isDirectory()) throw new BadRequestError(`not a directory: ${requestedRoot}`);
+    return { root: path.resolve(requestedRoot), view: parseViewRequest(candidate.view) };
+  }
+
   async function handleSource(response: ServerResponse, url: URL): Promise<void> {
+    const state = scanState;
     const requestedPath = url.searchParams.get("path");
     if (requestedPath === null) throw new BadRequestError("missing `path` query parameter");
 
     // The index is the allowlist: only files the scan accepted are readable.
-    const fileIndex = index.fileIndexByPath.get(requestedPath);
+    const fileIndex = state.index.fileIndexByPath.get(requestedPath);
     if (fileIndex === undefined) {
       sendJson(response, 404, { error: "file is not part of the current scan" });
       return;
     }
-    const row = index.files[fileIndex]!;
+    const row = state.index.files[fileIndex]!;
 
-    const scanRoot = path.resolve(options.scanOptions.root);
+    const scanRoot = path.resolve(state.options.root);
     const absolutePath = path.resolve(scanRoot, requestedPath);
     let realFilePath: string;
     let realScanRoot: string;
@@ -272,7 +304,7 @@ export function createSlopsplorerServer(options: SlopsplorerServerOptions): Slop
           sendJson(response, 405, { error: "use POST" });
           return;
         }
-        sendJson(response, 200, buildView(index, parseViewRequest(await readJsonBody(request))));
+        sendJson(response, 200, buildView(scanState.index, parseViewRequest(await readJsonBody(request))));
         return;
       }
       case "/api/rescan": {
@@ -285,6 +317,17 @@ export function createSlopsplorerServer(options: SlopsplorerServerOptions): Slop
         sendJson(response, 200, buildView(rescanned, viewRequest));
         return;
       }
+      case "/api/open": {
+        if (request.method !== "POST") {
+          sendJson(response, 405, { error: "use POST" });
+          return;
+        }
+        const openRequest = await parseOpenRootRequest(await readJsonBody(request));
+        const nextOptions = { ...scanState.options, root: openRequest.root };
+        const opened = await runScan(nextOptions);
+        sendJson(response, 200, buildView(opened, openRequest.view));
+        return;
+      }
       case "/api/source": {
         await handleSource(response, url);
         return;
@@ -294,7 +337,7 @@ export function createSlopsplorerServer(options: SlopsplorerServerOptions): Slop
         return;
       }
       case "/api/health": {
-        sendJson(response, 200, { status: "ok", meta: index.meta });
+        sendJson(response, 200, { status: "ok", meta: scanState.index.meta });
         return;
       }
       default: {
@@ -342,6 +385,10 @@ export function createSlopsplorerServer(options: SlopsplorerServerOptions): Slop
         // after the reply rather than reading bytes we already refused.
         if (!request.readableEnded) response.setHeader("Connection", "close");
         sendJson(response, 400, { error: error.message });
+        return;
+      }
+      if (error instanceof ConflictError) {
+        sendJson(response, 409, { error: error.message });
         return;
       }
       // A bad request must never take the process down with it.
