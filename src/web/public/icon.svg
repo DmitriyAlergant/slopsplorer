@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Slopsplorer">
   <title>Slopsplorer</title>
   <rect width="32" height="32" rx="7" fill="#252E40"/>
-  <rect x="6" y="6" width="20" height="4" rx="2" fill="#EE9138"/>
-  <rect x="6" y="14" width="13" height="4" rx="2" fill="#F9FAFC"/>
-  <rect x="6" y="22" width="7" height="4" rx="2" fill="#808693"/>
+  <rect x="5" y="8" width="22" height="16" rx="8" fill="#F2A5A3"/>
+  <rect x="10.4" y="12.4" width="3.2" height="7.2" rx="1.6" fill="#252E40"/>
+  <rect x="18.4" y="12.4" width="3.2" height="7.2" rx="1.6" fill="#252E40"/>
 </svg>
