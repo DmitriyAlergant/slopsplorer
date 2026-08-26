@@ -27,12 +27,13 @@ export function MassRibbon({ summary, selectedPath, onSelect }: Props): React.JS
   return (
     <section className="ribbon" aria-label="Project token mass by top-level folder">
       <div className="ribbon__readouts">
+        <Readout label="project tokens" value={summary ? count(summary.projectTokens) : "-"} />
         <Readout label="selected tokens" value={summary ? count(summary.selectedTokens) : "-"} emphasis />
         <Readout
           label="of project"
           value={summary && summary.projectTokens > 0 ? percent(summary.selectedTokens / summary.projectTokens) : "-"}
         />
-        <Readout label="files" value={summary ? count(summary.selectedFiles) : "-"} />
+        <Readout label="files selected" value={summary ? count(summary.selectedFiles) : "-"} />
         <Readout label="lines of content" value={summary ? count(summary.selectedLines) : "-"} />
         <Readout label="comment share" value={summary ? percent(commentShare) : "-"} />
       </div>
@@ -40,7 +41,10 @@ export function MassRibbon({ summary, selectedPath, onSelect }: Props): React.JS
       <div className="ribbon__track">
         {segments.map((segment, rank) => {
           const share = total > 0 ? segment.tokens / total : 0;
-          const selected = segment.path !== null && segment.path === selectedPath;
+          const selected =
+            segment.path !== null &&
+            selectedPath !== null &&
+            (segment.path === selectedPath || selectedPath.startsWith(`${segment.path}/`));
           const label = `${segment.name} - ${count(segment.tokens)} tokens, ${percent(share)} of scope`;
           const shade = Math.min(rank, 7);
           if (segment.path === null) {

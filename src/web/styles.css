@@ -174,7 +174,7 @@ button { cursor: pointer; }
 /* ---- Mass ribbon: the signature element -------------------------------- */
 
 .ribbon { margin: 24px 0 20px; }
-.ribbon__readouts { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 32px; margin-bottom: 14px; }
+.ribbon__readouts { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 26px; margin-bottom: 14px; }
 .readout { display: flex; flex-direction: column; gap: 1px; }
 .readout__value { font-size: 20px; font-weight: 600; letter-spacing: -0.02em; }
 .readout[data-emphasis="true"] .readout__value { font-size: 30px; font-weight: 700; }

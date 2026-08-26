@@ -192,11 +192,15 @@ function unfilteredTokens(index: ScanIndex, folderPath: string): number {
   return index.tokenPrefix[folder.end]! - index.tokenPrefix[folder.start]!;
 }
 
-/** Token baseline the percentages are measured against: everything not generated. */
+/**
+ * The denominator every project percentage is measured against.
+ *
+ * This is the unfiltered weight of the whole tree, so it does not move when a
+ * visibility switch changes and the tile bars, the folder share, and the
+ * summary all divide by the same number.
+ */
 function projectBaseline(index: ScanIndex): number {
-  let total = 0;
-  for (const file of index.files) if (!file.generated) total += file.tokens;
-  return total;
+  return unfilteredTokens(index, "");
 }
 
 function buildTree(
@@ -375,8 +379,22 @@ function rankFiles(index: ScanIndex, request: ViewRequest, aggregation: Aggregat
   return { rows: matches.slice(0, Math.max(0, request.rank.limit)), total: matches.length };
 }
 
-function buildSummary(index: ScanIndex, aggregation: Aggregation, baseline: number): SummaryView {
+/**
+ * Headline figures for the current view.
+ *
+ * `selected` follows both the tree selection and the visibility switches, so
+ * the number describes exactly the scope the rest of the page is showing.
+ */
+function buildSummary(
+  index: ScanIndex,
+  aggregation: Aggregation,
+  baseline: number,
+  request: ViewRequest,
+): SummaryView {
   const rootTotals = aggregation.subtree.get("") ?? emptyTotals();
+  const selectedTotals = request.selected.rowKind === "files"
+    ? aggregation.direct.get(request.selected.path) ?? emptyTotals()
+    : aggregation.subtree.get(request.selected.path) ?? emptyTotals();
   const root = index.folderByPath.get("");
   const ribbon: FolderCard[] = [];
   if (root) {
@@ -395,11 +413,11 @@ function buildSummary(index: ScanIndex, aggregation: Aggregation, baseline: numb
   }
   return {
     projectTokens: baseline,
-    selectedTokens: rootTotals.tokens,
-    selectedFiles: rootTotals.files,
-    selectedLines: rootTotals.lines,
-    selectedCodeLines: rootTotals.codeLines,
-    selectedCommentLines: rootTotals.commentLines,
+    selectedTokens: selectedTotals.tokens,
+    selectedFiles: selectedTotals.files,
+    selectedLines: selectedTotals.lines,
+    selectedCodeLines: selectedTotals.codeLines,
+    selectedCommentLines: selectedTotals.commentLines,
     ribbon,
   };
 }
@@ -419,7 +437,7 @@ export function buildView(index: ScanIndex, request: ViewRequest): ViewResponse 
   const ranked = rankFiles(index, request, aggregation);
   return {
     meta: index.meta,
-    summary: buildSummary(index, aggregation, baseline),
+    summary: buildSummary(index, aggregation, baseline, request),
     tree: buildTree(index, request, aggregation, exclusions),
     detail: buildDetail(index, request, aggregation, baseline),
     ranked: ranked.rows,

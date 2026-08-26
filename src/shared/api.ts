@@ -109,7 +109,9 @@ export interface DetailView {
 }
 
 export interface SummaryView {
+  /** Unfiltered weight of the whole scanned tree, the fixed percentage baseline. */
   projectTokens: number;
+  /** Weight of the selected folder under the active visibility switches. */
   selectedTokens: number;
   selectedFiles: number;
   selectedLines: number;

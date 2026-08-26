@@ -167,16 +167,15 @@ describe("visibility switches", () => {
     expect(shown.summary.selectedTokens).toBe(hidden.summary.selectedTokens + tokensOf("dist/bundle.js"));
   });
 
-  it("keeps the project baseline fixed at the hand-written total, so percentages stay comparable across filters", () => {
-    const baseline = tokensOf("README.md", "src/main.ts", "src/util.ts", "src/deep/helper.ts", "tests/main.test.ts");
-    for (const view of [
-      buildView(index, request()),
-      buildView(index, request({ showGenerated: true })),
-      buildView(index, request({ kinds: ["code"] })),
-      buildView(index, request({ excludedFolders: ["src"] })),
-    ]) {
-      expect(view.summary.projectTokens).toBe(baseline);
-    }
+  it("keeps the project baseline fixed at the unfiltered total, so percentages stay comparable across filters", () => {
+    const everything = buildView(index, request());
+    const codeOnly = buildView(index, request({ kinds: ["code"] }));
+    const withGenerated = buildView(index, request({ showGenerated: true }));
+
+    const unfilteredTotal = index.files.reduce((total, file) => total + file.tokens, 0);
+    expect(everything.summary.projectTokens).toBe(unfilteredTotal);
+    expect(codeOnly.summary.projectTokens).toBe(unfilteredTotal);
+    expect(withGenerated.summary.projectTokens).toBe(unfilteredTotal);
   });
 });
 
@@ -399,5 +398,37 @@ describe("ranking scope", () => {
 
     expect(all.ranked.some((file) => file.path.startsWith("tests/"))).toBe(true);
     expect(noTests.ranked.some((file) => file.path.startsWith("tests/"))).toBe(false);
+  });
+});
+
+describe("headline figures", () => {
+  it("follows the tree selection as well as the visibility switches", () => {
+    const whole = buildView(index, request());
+    const srcOnly = buildView(index, request({ selected: { rowKind: "folder", path: "src" } }));
+
+    expect(whole.summary.selectedTokens).toBeGreaterThan(srcOnly.summary.selectedTokens);
+    expect(srcOnly.summary.selectedTokens).toBe(tokensOf("src/main.ts", "src/util.ts", "src/deep/helper.ts"));
+    expect(srcOnly.summary.selectedFiles).toBe(3);
+  });
+
+  it("narrows to a folder's own files when the (files) row is selected", () => {
+    const subtree = buildView(index, request({ selected: { rowKind: "folder", path: "src" } }));
+    const direct = buildView(index, request({ selected: { rowKind: "files", path: "src" } }));
+
+    expect(direct.summary.selectedTokens).toBe(tokensOf("src/main.ts", "src/util.ts"));
+    expect(direct.summary.selectedTokens).toBeLessThan(subtree.summary.selectedTokens);
+  });
+
+  it("combines the folder and the switches rather than applying only one", () => {
+    const rootAll = buildView(index, request());
+    const rootCode = buildView(index, request({ kinds: ["code"] }));
+    const srcCode = buildView(index, request({ selected: { rowKind: "folder", path: "src" }, kinds: ["code"] }));
+    const deepCode = buildView(index, request({ selected: { rowKind: "folder", path: "src/deep" }, kinds: ["code"] }));
+
+    // The flavour switch alone drops the docs and the test file.
+    expect(rootCode.summary.selectedTokens).toBeLessThan(rootAll.summary.selectedTokens);
+    // The folder alone drops everything outside the subtree, on the same filter.
+    expect(deepCode.summary.selectedTokens).toBeLessThan(srcCode.summary.selectedTokens);
+    expect(deepCode.summary.selectedTokens).toBe(tokensOf("src/deep/helper.ts"));
   });
 });
