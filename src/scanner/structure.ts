@@ -14,10 +14,39 @@ export interface StructureCounts {
   branches: number;
   /** Spans the line classifier uses to separate comment lines from code. */
   commentRanges: CommentRange[];
+  /**
+   * Non-whitespace characters inside string literals, and non-whitespace
+   * characters of everything that is not a comment.
+   *
+   * Their ratio says how much of a file is payload rather than logic, which is
+   * what separates a hand-written translation catalogue in `.ts` from code.
+   */
+  literalChars: number;
+  contentChars: number;
+  /**
+   * The largest single literal, which separates a catalogue of many strings
+   * from one embedded blob of markup, SQL, or injected script.
+   */
+  largestLiteral: number;
 }
 
 export function emptyStructure(): StructureCounts {
-  return { functions: 0, classes: 0, branches: 0, commentRanges: [] };
+  return { functions: 0, classes: 0, branches: 0, commentRanges: [], literalChars: 0, contentChars: 0, largestLiteral: 0 };
+}
+
+/**
+ * Non-whitespace characters in `text` between `start` and `end`.
+ *
+ * Whitespace is excluded so that indentation and line breaks do not decide
+ * whether a file reads as payload or as logic.
+ */
+function countNonWhitespace(text: string, start: number, end: number): number {
+  let total = 0;
+  for (let index = start; index < end; index += 1) {
+    // Everything at or below the space character is whitespace or a control code.
+    if (text.charCodeAt(index) > 32) total += 1;
+  }
+  return total;
 }
 
 /**
@@ -43,6 +72,15 @@ interface LanguageRule {
    */
   docstrings?: boolean;
 }
+
+/**
+ * Node types that carry literal text, across every grammar in `RULES`.
+ *
+ * Matching by name rather than by an exhaustive per-grammar list mirrors how
+ * comments are found, and covers `string`, `string_literal`, `template_string`,
+ * `raw_string_literal`, `concatenated_string`, and a shell heredoc body.
+ */
+const STRING_NODE = /string|heredoc_body/;
 
 /** A statement whose whole content is a string literal, i.e. a docstring. */
 function isDocstring(node: { type: string; namedChildCount: number; namedChild(index: number): { type: string } | null } | null): boolean {
@@ -252,6 +290,14 @@ export class StructureAnalyzer {
     if (!tree) return emptyStructure();
     try {
       const result = emptyStructure();
+      let commentChars = 0;
+      // A pre-order walk visits nodes in non-decreasing start offset, so one
+      // watermark per span kind is enough to charge nested nodes only once: a
+      // template's embedded expressions, an escape sequence inside a literal,
+      // and a docstring's own string node are all already inside the span that
+      // was counted when the walk entered it.
+      let countedLiteralEnd = 0;
+      let countedCommentEnd = 0;
       const cursor = tree.walk();
       try {
         let descend = true;
@@ -271,6 +317,15 @@ export class StructureAnalyzer {
                 endRow: end.row,
                 endColumn: end.column,
               });
+              if (cursor.startIndex >= countedCommentEnd) {
+                commentChars += countNonWhitespace(text, cursor.startIndex, cursor.endIndex);
+                countedCommentEnd = cursor.endIndex;
+              }
+            } else if (STRING_NODE.test(type) && cursor.startIndex >= countedLiteralEnd && cursor.startIndex >= countedCommentEnd) {
+              const size = countNonWhitespace(text, cursor.startIndex, cursor.endIndex);
+              result.literalChars += size;
+              if (size > result.largestLiteral) result.largestLiteral = size;
+              countedLiteralEnd = cursor.endIndex;
             }
           }
           if (descend && cursor.gotoFirstChild()) continue;
@@ -281,6 +336,7 @@ export class StructureAnalyzer {
       } finally {
         cursor.delete();
       }
+      result.contentChars = Math.max(0, countNonWhitespace(text, 0, text.length) - commentChars);
       this.used.add(grammar);
       return result;
     } finally {

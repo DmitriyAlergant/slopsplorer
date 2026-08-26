@@ -1,5 +1,7 @@
-import { describe, expect, it } from "vitest";
-import { classifyFile, isGenerated, isSourceFile, shebangInterpreter } from "../src/scanner/classify.ts";
+import { afterAll, describe, expect, it } from "vitest";
+import { classifyFile, isGenerated, isSourceFile, refineKindByContent, shebangInterpreter } from "../src/scanner/classify.ts";
+import { measureFile } from "../src/scanner/measure.ts";
+import { StructureAnalyzer } from "../src/scanner/structure.ts";
 
 describe("file kind classification", () => {
   it("puts ordinary source, prose, and structured data in separate buckets so the visibility switches mean something", () => {
@@ -15,11 +17,25 @@ describe("file kind classification", () => {
     expect(classifyFile("spec/thing_spec.rb")).toBe("test");
   });
 
-  it("attributes a JSON fixture under tests/ to the test surface rather than to project data", () => {
-    // Test detection runs before the data-extension check on purpose: a fixture
-    // is weight belonging to the test suite, and hiding tests should hide it.
-    expect(classifyFile("tests/fixtures/events.json")).toBe("test");
-    expect(classifyFile("__tests__/fixtures/users.yaml")).toBe("test");
+  it("counts unremarkably named source under a test directory as test code", () => {
+    expect(classifyFile("tests/utils/websocket_client.py")).toBe("test");
+    expect(classifyFile("tests/conftest.py")).toBe("test");
+    expect(classifyFile("e2e/helpers.ts")).toBe("test");
+  });
+
+  it("lets a fixture keep the flavor of its own format, because a test directory is only a location", () => {
+    // Sitting in tests/ is a weaker signal than the extension: a test tree holds
+    // fixtures, corpora, and sample documents that are not test code, and calling
+    // a 12k-token HTML blob "Tests" hides what the weight actually is.
+    expect(classifyFile("tests/fixtures/events.json")).toBe("data");
+    expect(classifyFile("__tests__/fixtures/users.yaml")).toBe("data");
+    expect(classifyFile("frontend/tests/paste/msword_clipboard.html")).toBe("other");
+    expect(classifyFile("tests/README.md")).toBe("text");
+  });
+
+  it("keeps a test-shaped filename ahead of its extension, wherever it sits", () => {
+    expect(classifyFile("fixtures/test_payloads.json")).toBe("test");
+    expect(classifyFile("data/events_test.yaml")).toBe("test");
   });
 
   it("treats a real language code as a translation catalogue", () => {
@@ -101,5 +117,78 @@ describe("shebang interpreter", () => {
     expect(shebangInterpreter("# just a comment\n")).toBeNull();
     expect(shebangInterpreter("")).toBeNull();
     expect(shebangInterpreter("echo hi\n#!/bin/sh\n")).toBeNull();
+  });
+});
+
+describe("literal-heavy source re-filed by content", () => {
+  /** A code file whose shape the three thresholds are read against. */
+  function shape(overrides: Partial<Parameters<typeof refineKindByContent>[2]> = {}) {
+    return { grammar: "typescript", contentChars: 10_000, literalChars: 9_500, largestLiteral: 100, ...overrides };
+  }
+
+  it("re-files a source module that is almost entirely string literals as data", () => {
+    expect(refineKindByContent("code", "src/messages.ts", shape())).toBe("data");
+  });
+
+  it("sends a catalogue that names itself a translation table to i18n", () => {
+    expect(refineKindByContent("code", "packages/desktop-host/src/desktop-i18n.ts", shape())).toBe("i18n");
+    expect(refineKindByContent("code", "src/locale-strings.ts", shape())).toBe("i18n");
+    expect(refineKindByContent("code", "src/translations.ts", shape())).toBe("i18n");
+  });
+
+  it("leaves a file holding one large embedded blob as code", () => {
+    // An icon component's SVG path, or a template literal of injected script,
+    // reaches a near-total literal share in a file that is unambiguously code.
+    expect(refineKindByContent("code", "src/icons/Okta.tsx", shape({ largestLiteral: 9_000 }))).toBe("code");
+  });
+
+  it("exempts shell, which quotes nearly everything it touches", () => {
+    expect(refineKindByContent("code", "platform/init/26_views.sh", shape({ grammar: "bash" }))).toBe("code");
+    expect(refineKindByContent("code", "scripts/deploy.ps1", shape({ grammar: "powershell" }))).toBe("code");
+  });
+
+  it("ignores files too small or too mixed for the ratio to mean anything", () => {
+    expect(refineKindByContent("code", "src/constants.ts", shape({ contentChars: 200, literalChars: 200 }))).toBe("code");
+    expect(refineKindByContent("code", "src/service.ts", shape({ literalChars: 8_800 }))).toBe("code");
+    expect(refineKindByContent("code", "src/service.kt", shape({ grammar: null }))).toBe("code");
+  });
+
+  it("never overrides a flavor that the path already settled", () => {
+    // Content only refines code. A fixture, a doc, or a test keeps its flavor
+    // however literal it reads, so the switches stay predictable.
+    expect(refineKindByContent("test", "tests/test_messages.py", shape())).toBe("test");
+    expect(refineKindByContent("data", "config/api.json", shape())).toBe("data");
+  });
+});
+
+describe("literal measurement against real grammars", () => {
+  const analyzer = new StructureAnalyzer();
+  afterAll(() => { analyzer.dispose(); });
+
+  /** Classify a file end to end, from its path and its parsed content. */
+  async function classify(name: string, text: string): Promise<string> {
+    const { grammar, structure } = await measureFile(analyzer, name, text);
+    return refineKindByContent(classifyFile(name), name, { grammar, ...structure });
+  }
+
+  it("re-files a real translation catalogue and leaves ordinary code alone", async () => {
+    const entries = Array.from({ length: 200 }, (_, index) => `  'app.key${index}': 'A user-facing message number ${index}',`);
+    const catalogue = `export const messages = {\n${entries.join("\n")}\n};\n`;
+    expect(await classify("desktop-i18n.ts", catalogue)).toBe("i18n");
+
+    const module = Array.from({ length: 60 }, (_, index) => `export function step${index}(value: number): number {\n  if (value > ${index}) return value - ${index};\n  return value + ${index};\n}`).join("\n");
+    expect(await classify("service.ts", module)).toBe("code");
+  });
+
+  it("counts a template literal once, including the expressions inside it", async () => {
+    // The embedded script is one literal, so it dominates and the file stays code.
+    const inner = Array.from({ length: 120 }, (_, index) => `  document.body.dataset.k${index} = 'v${index}';`).join("\n");
+    const source = `const version = 3;\nexport const injected = \`\n${inner}\n  window.marker = \${version};\n\`;\n`;
+    expect(await classify("browser-script.ts", source)).toBe("code");
+  });
+
+  it("does not count a Python docstring as a literal, since it is already commentary", async () => {
+    const body = Array.from({ length: 80 }, (_, index) => `def step_${index}(value):\n    """Explain what step ${index} does at some length for the reader."""\n    return value + ${index}`).join("\n\n");
+    expect(await classify("pipeline.py", body)).toBe("code");
   });
 });

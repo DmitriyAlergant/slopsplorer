@@ -1,0 +1,1 @@
+Source files that are almost entirely string literals, such as a hand-maintained translation catalogue written as a `.ts` module, are now counted as Data & Config or as i18n rather than as code, without misfiling shell scripts, icon components, or files holding one large embedded template.

@@ -50,6 +50,13 @@ Files are sorted into flavors that you can show or hide independently: code, tes
 Generated output is tracked separately.
 Hiding the tests is usually the fastest way to find out whether a project is as large as it looks.
 
+Flavor comes from the file itself before it comes from where the file sits.
+A test folder marks the source files in it as tests, but the fixtures, corpora, and sample documents beside them keep the flavor of their own format, so a 12k-token HTML clipboard fixture is reported as what it is rather than as test code.
+A filename that names itself a test wins either way.
+
+Source files that are almost entirely string literals are re-filed as data, since a translation catalogue or a table of canned messages grows like content rather than like logic.
+The check is deliberately narrow: nearly all non-comment content has to be literal, no single literal may dominate the file, and shell scripts are exempt because they quote nearly everything they touch.
+
 ## The primary measure
 
 Tokens are the default unit, and the **Measure** switch changes it to lines.
