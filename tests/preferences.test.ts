@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   readPreferences,
   readTreePanelRatio,
+  readWorkspaceHeight,
   writePreferences,
   writeTreePanelRatio,
+  writeWorkspaceHeight,
   type PreferenceStorage,
 } from "../src/web/preferences.ts";
 import { readRequest } from "../src/web/urlState.ts";
@@ -72,5 +74,19 @@ describe("view preferences", () => {
     const storage = new MemoryStorage();
     storage.value = "0.9";
     expect(readTreePanelRatio(storage, 0.27)).toBe(0.27);
+  });
+
+  it("persists a dragged workspace height", () => {
+    const storage = new MemoryStorage();
+    writeWorkspaceHeight(storage, 420);
+    expect(readWorkspaceHeight(storage, 660)).toBe(420);
+  });
+
+  it("rejects workspace heights outside useful panel bounds", () => {
+    const storage = new MemoryStorage();
+    storage.value = "40";
+    expect(readWorkspaceHeight(storage, 660)).toBe(660);
+    storage.value = "9000";
+    expect(readWorkspaceHeight(storage, 660)).toBe(660);
   });
 });

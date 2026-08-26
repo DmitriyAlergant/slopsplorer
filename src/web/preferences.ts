@@ -6,6 +6,17 @@ import { FILE_KINDS, MEASURES, RANK_METRICS, TREE_SORTS } from "../shared/api.ts
 // column, and v1 names a tree sort this build no longer knows.
 const STORAGE_KEY = "slopsplorer.view-preferences.v3";
 const TREE_PANEL_STORAGE_KEY = "slopsplorer.tree-panel-ratio.v1";
+const WORKSPACE_HEIGHT_STORAGE_KEY = "slopsplorer.workspace-height.v1";
+
+/**
+ * Bounds on how tall the two workspace panels may stand.
+ *
+ * Read here and applied by the splitter that drags them, so a stored value and
+ * a dragged one are held to one rule.
+ */
+export const MIN_WORKSPACE_HEIGHT = 260;
+export const MAX_WORKSPACE_HEIGHT = 2000;
+export const DEFAULT_WORKSPACE_HEIGHT = 660;
 
 export interface ViewPreferences {
   kinds: FileKind[];
@@ -35,6 +46,33 @@ export function readTreePanelRatio(storage: PreferenceStorage, fallback: number)
 export function writeTreePanelRatio(storage: PreferenceStorage, ratio: number): void {
   try {
     storage.setItem(TREE_PANEL_STORAGE_KEY, String(ratio));
+  } catch {
+    // Browsers may deny storage in private or locked-down contexts.
+  }
+}
+
+/**
+ * Read the workspace height in pixels.
+ *
+ * Absolute rather than proportional, unlike the panel width: the panels scroll
+ * inside themselves, so a useful height is a number of rows rather than a share
+ * of the window.
+ */
+export function readWorkspaceHeight(storage: PreferenceStorage, fallback: number): number {
+  try {
+    const height = Number(storage.getItem(WORKSPACE_HEIGHT_STORAGE_KEY));
+    return Number.isFinite(height) && height >= MIN_WORKSPACE_HEIGHT && height <= MAX_WORKSPACE_HEIGHT
+      ? height
+      : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+/** Remember an operator's preferred workspace height across visits. */
+export function writeWorkspaceHeight(storage: PreferenceStorage, height: number): void {
+  try {
+    storage.setItem(WORKSPACE_HEIGHT_STORAGE_KEY, String(height));
   } catch {
     // Browsers may deny storage in private or locked-down contexts.
   }

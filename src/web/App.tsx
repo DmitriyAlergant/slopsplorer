@@ -2,7 +2,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { FileKind, Measure, RankMetric, TreeRow, ViewRequest, ViewResponse } from "../shared/api.ts";
 import { MEASURES } from "../shared/api.ts";
 import { fetchView, openRoot, rescan } from "./api.ts";
-import { readPreferences, readTreePanelRatio, writePreferences, writeTreePanelRatio } from "./preferences.ts";
+import {
+  DEFAULT_WORKSPACE_HEIGHT, readPreferences, readTreePanelRatio, readWorkspaceHeight,
+  writePreferences, writeTreePanelRatio, writeWorkspaceHeight,
+} from "./preferences.ts";
 import { closeTooltip } from "./tooltip.ts";
 import { readRequest, selectionKey, writeRequest } from "./urlState.ts";
 import { FilterBar } from "./components/FilterBar.tsx";
@@ -14,7 +17,9 @@ import { MassRibbon } from "./components/MassRibbon.tsx";
 import { SkillInstallDialog } from "./components/SkillInstallDialog.tsx";
 import { SourceDialog } from "./components/SourceDialog.tsx";
 import { SourceTree } from "./components/SourceTree.tsx";
-import { DEFAULT_TREE_PANEL_RATIO, WorkspaceSplitter } from "./components/WorkspaceSplitter.tsx";
+import {
+  DEFAULT_TREE_PANEL_RATIO, WorkspaceHeightSplitter, WorkspaceSplitter,
+} from "./components/WorkspaceSplitter.tsx";
 
 /** Long enough to coalesce a burst of typing, short enough to feel immediate. */
 const REQUEST_DEBOUNCE_MS = 80;
@@ -35,6 +40,14 @@ function treePanelRatioFromStorage(): number {
   }
 }
 
+function workspaceHeightFromStorage(): number {
+  try {
+    return readWorkspaceHeight(window.localStorage, DEFAULT_WORKSPACE_HEIGHT);
+  } catch {
+    return DEFAULT_WORKSPACE_HEIGHT;
+  }
+}
+
 export function App(): React.JSX.Element {
   const [request, setRequest] = useState<ViewRequest>(requestFromLocation);
   const [view, setView] = useState<ViewResponse | null>(null);
@@ -45,6 +58,7 @@ export function App(): React.JSX.Element {
   const [sourcePath, setSourcePath] = useState<string | null>(null);
   const [skillOpen, setSkillOpen] = useState(false);
   const [treePanelRatio, setTreePanelRatio] = useState(treePanelRatioFromStorage);
+  const [workspaceHeight, setWorkspaceHeight] = useState(workspaceHeightFromStorage);
   const requestRef = useRef(request);
   requestRef.current = request;
   const lastSelectionRef = useRef(selectionKey(request));
@@ -90,6 +104,10 @@ export function App(): React.JSX.Element {
   useEffect(() => {
     writeTreePanelRatio(window.localStorage, treePanelRatio);
   }, [treePanelRatio]);
+
+  useEffect(() => {
+    writeWorkspaceHeight(window.localStorage, workspaceHeight);
+  }, [workspaceHeight]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -342,7 +360,10 @@ export function App(): React.JSX.Element {
 
       <div
         className="workspace"
-        style={{ "--tree-panel-width": `${treePanelRatio * 100}%` } as React.CSSProperties}
+        style={{
+          "--tree-panel-width": `${treePanelRatio * 100}%`,
+          "--workspace-height": `${workspaceHeight}px`,
+        } as React.CSSProperties}
       >
         <SourceTree
           rows={view?.tree ?? []}
@@ -373,6 +394,8 @@ export function App(): React.JSX.Element {
           onCapacityChange={setCardColumns}
         />
       </div>
+
+      <WorkspaceHeightSplitter height={workspaceHeight} onHeightChange={setWorkspaceHeight} />
 
       {/* Below the workspace, because the page reads downstream: the filters and
           the tree decide what is counted, and every figure here is the result. */}

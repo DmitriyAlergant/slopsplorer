@@ -240,7 +240,9 @@ button { cursor: pointer; }
 
 /* ---- Mass ribbon: the signature element -------------------------------- */
 
-.ribbon { margin: 24px 0 0; }
+/* Closer to the splitter above it than the splitter is to the panels it
+   resizes, so the grip reads as the panels' edge rather than the strip's. */
+.ribbon { margin: 14px 0 0; }
 .ribbon__readouts { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 26px; margin-bottom: 14px; }
 .readout { display: flex; flex-direction: column; gap: 1px; }
 .readout__value { font-size: 20px; font-weight: 600; letter-spacing: -0.02em; }
@@ -496,28 +498,36 @@ button { cursor: pointer; }
   position: relative;
   display: grid;
   place-items: center;
-  width: 8px;
   border-radius: 4px;
-  cursor: col-resize;
   touch-action: none;
 }
+/* The grip is 2px wide. The hit area is not: this pseudo-element widens the
+   target past the drawn line without moving anything around it. */
 .workspace__splitter::before {
   content: "";
   position: absolute;
-  inset: 0 -4px;
 }
 .workspace__splitter span {
-  width: 2px;
-  height: 48px;
   border-radius: 2px;
   background: var(--rule-firm);
-  transition: height 120ms ease, background 120ms ease;
+  transition: width 120ms ease, height 120ms ease, background 120ms ease;
 }
 .workspace__splitter:hover span,
-.workspace__splitter:focus-visible span {
-  height: 72px;
-  background: var(--signal);
-}
+.workspace__splitter:focus-visible span { background: var(--signal); }
+
+.workspace__splitter--column { width: 8px; cursor: col-resize; }
+.workspace__splitter--column::before { inset: 0 -4px; }
+.workspace__splitter--column span { width: 2px; height: 48px; }
+.workspace__splitter--column:hover span,
+.workspace__splitter--column:focus-visible span { height: 72px; }
+
+/* The bottom edge of both panels at once, so it spans them rather than
+   dividing them, and it sits outside the workspace grid. */
+.workspace__splitter--row { height: 14px; margin-top: 4px; cursor: row-resize; }
+.workspace__splitter--row::before { inset: -4px 0; }
+.workspace__splitter--row span { width: 48px; height: 2px; }
+.workspace__splitter--row:hover span,
+.workspace__splitter--row:focus-visible span { width: 72px; }
 /*
  * Both panels stand the same height and scroll internally, so opening a folder
  * or selecting one with hundreds of files never changes the page layout.
@@ -565,7 +575,12 @@ button { cursor: pointer; }
 
 /* ---- Source tree ------------------------------------------------------- */
 
-.tree__scroll { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 6px; }
+/*
+ * `overscroll-behavior` is what keeps the sticky heading below still. Past
+ * either end of the list a rubber-band scroll drags the whole box, heading
+ * included, and it also hands the leftover scroll to the page behind it.
+ */
+.tree__scroll { flex: 1 1 auto; min-height: 0; overflow: auto; overscroll-behavior: none; padding: 6px; }
 /*
  * The headings share the row grid and scroll with the list, so a heading always
  * stands over the column it orders however wide the panel gets.
@@ -780,7 +795,7 @@ button { cursor: pointer; }
 
 /* ---- Metrics tables ---------------------------------------------------- */
 
-.table-scroll { max-height: 480px; overflow: auto; border-top: 1px solid var(--rule); }
+.table-scroll { max-height: 480px; overflow: auto; overscroll-behavior: none; border-top: 1px solid var(--rule); }
 .metrics { width: 100%; border-collapse: collapse; font-size: 12px; }
 .metrics th {
   position: sticky; top: 0; z-index: 1;
@@ -973,7 +988,9 @@ button { cursor: pointer; }
   .instrument__facts { flex-wrap: wrap; gap: 18px; }
   .workspace { grid-template-columns: 1fr; gap: var(--gap); }
   .workspace__splitter { display: none; }
-  :root { --workspace-height: 460px; }
+  /* Set on the panels rather than on the variable: the dragged height is an
+     inline property of the workspace, which no stylesheet rule can outrank. */
+  .tree, .detail { height: 460px; }
   .filters { grid-template-columns: 1fr; }
   .chips { justify-content: flex-start; }
 }
