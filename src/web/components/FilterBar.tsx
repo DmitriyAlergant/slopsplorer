@@ -1,5 +1,6 @@
 import { FILE_KINDS, type FileKind, type ViewRequest } from "../../shared/api.ts";
 import { FILE_KIND_DETAILS } from "../fileKinds.ts";
+import { Tooltip, tooltipHandlers } from "./Tooltip.tsx";
 
 interface Props {
   request: ViewRequest;
@@ -10,21 +11,13 @@ interface Props {
 
 const GENERATED_DESCRIPTION = "Generated output and lockfiles detected from path and filename conventions.";
 
-/** Keep a tooltip inside the viewport when its chip sits near either edge. */
-function positionTooltip(event: React.SyntheticEvent<HTMLLabelElement>): void {
-  const tooltip = event.currentTarget.querySelector<HTMLElement>(".chip__tooltip");
-  if (tooltip === null) return;
-
-  tooltip.style.setProperty("--tooltip-shift", "0px");
-  const bounds = tooltip.getBoundingClientRect();
-  const gutter = 12;
-  const shift = bounds.left < gutter
-    ? gutter - bounds.left
-    : Math.min(0, window.innerWidth - gutter - bounds.right);
-  tooltip.style.setProperty("--tooltip-shift", `${shift}px`);
-}
-
-/** Search plus the visibility switches that decide what counts toward the totals. */
+/**
+ * Search and the visibility switches: what is counted at all.
+ *
+ * The unit those counts are expressed in is not here. It belongs to the columns
+ * that show it, so it is chosen from the source tree's numbers heading or by
+ * sorting a file table on a measured column.
+ */
 export function FilterBar({ request, onToggleKind, onToggleGenerated, onQueryChange }: Props): React.JSX.Element {
   return (
     <section className="filters" aria-label="Scope filters">
@@ -47,8 +40,7 @@ export function FilterBar({ request, onToggleKind, onToggleGenerated, onQueryCha
               className="chip"
               data-flavor={kind}
               data-on={request.kinds.includes(kind)}
-              onMouseEnter={positionTooltip}
-              onFocus={positionTooltip}
+              {...tooltipHandlers}
             >
               <input
                 type="checkbox"
@@ -57,7 +49,7 @@ export function FilterBar({ request, onToggleKind, onToggleGenerated, onQueryCha
                 onChange={() => onToggleKind(kind)}
               />
               {label}
-              <span className="chip__tooltip" id={`flavor-tooltip-${kind}`} role="tooltip">{description}</span>
+              <Tooltip id={`flavor-tooltip-${kind}`}>{description}</Tooltip>
             </label>
           );
         })}
@@ -65,8 +57,7 @@ export function FilterBar({ request, onToggleKind, onToggleGenerated, onQueryCha
           className="chip"
           data-flavor="generated"
           data-on={request.showGenerated}
-          onMouseEnter={positionTooltip}
-          onFocus={positionTooltip}
+          {...tooltipHandlers}
         >
           <input
             type="checkbox"
@@ -75,7 +66,7 @@ export function FilterBar({ request, onToggleKind, onToggleGenerated, onQueryCha
             onChange={onToggleGenerated}
           />
           Generated
-          <span className="chip__tooltip" id="flavor-tooltip-generated" role="tooltip">{GENERATED_DESCRIPTION}</span>
+          <Tooltip id="flavor-tooltip-generated">{GENERATED_DESCRIPTION}</Tooltip>
         </label>
       </div>
     </section>

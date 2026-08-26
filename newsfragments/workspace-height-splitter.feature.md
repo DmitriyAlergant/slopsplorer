@@ -1,0 +1,1 @@
+The source tree and folder panel can now be resized in height together by dragging the boundary below them, and scrolling a table or the tree past either end no longer rubber-bands its sticky column headings.

@@ -1,0 +1,7 @@
+# Application settings.
+[server]
+host = "localhost"
+port = 8080   # listening port
+
+[theme]
+accent = "#4f46e5"

@@ -15,21 +15,38 @@ export const FILE_KINDS: readonly FileKind[] = ["code", "test", "text", "i18n", 
 
 export const FLAVORS: readonly Flavor[] = [...FILE_KINDS, "generated"];
 
-export type TreeSort = "name" | "tokens";
+export type TreeSort = "name" | "weight";
 
-export const TREE_SORTS: readonly TreeSort[] = ["name", "tokens"];
+export const TREE_SORTS: readonly TreeSort[] = ["name", "weight"];
 
+/**
+ * The quantity every total, bar, and ranking is expressed in.
+ *
+ * This is orthogonal to the filters: it changes the unit, never which files are
+ * counted. Each name is also a numeric `FileRow` field, so a measure is applied
+ * by indexing a row rather than by a switch statement.
+ */
+export type Measure = "tokens" | "lines" | "codeLines";
+
+export const MEASURES: readonly Measure[] = ["tokens", "lines", "codeLines"];
+
+/**
+ * A sortable column of the file tables.
+ *
+ * Every metric here is a column both tables draw, and every numeric column
+ * they draw is a metric here. Sorting is the only way to choose one, so a
+ * metric without a column would be unreachable.
+ */
 export type RankMetric =
   | "tokens"
   | "lines"
   | "codeLines"
   | "commentLines"
   | "functions"
-  | "classes"
   | "branches";
 
 export const RANK_METRICS: readonly RankMetric[] = [
-  "tokens", "lines", "codeLines", "commentLines", "functions", "classes", "branches",
+  "tokens", "lines", "codeLines", "commentLines", "functions", "branches",
 ];
 
 /** One measured file. Paths are POSIX-style and relative to the scan root. */
@@ -61,8 +78,9 @@ export interface TreeRow {
   depth: number;
   /** `files` is the pseudo-row grouping files sitting directly in a folder. */
   rowKind: "folder" | "files";
-  tokens: number;
-  /** 0-1 share of the active drill scope's unfiltered tokens. */
+  /** Subtree total in the active measure. */
+  weight: number;
+  /** 0-1 share of the active drill scope's unfiltered weight. */
   shareOfScope: number;
   hasChildren: boolean;
   expanded: boolean;
@@ -77,29 +95,45 @@ export interface FolderCard {
   /** null marks the aggregate tile, which is not navigable. */
   path: string | null;
   name: string;
-  tokens: number;
+  /** Folder total in the active measure. */
+  weight: number;
   files: number;
   shareOfProject: number;
-  /** 0-1 share of the active drill scope's unfiltered tokens. */
+  /** 0-1 share of the active drill scope's unfiltered weight. */
   shareOfScope: number;
   flavors: FlavorSlice[];
 }
 
 export interface FlavorSlice {
   flavor: Flavor;
-  tokens: number;
+  weight: number;
+}
+
+/** One navigable step of the folder heading's path. */
+export interface PathCrumb {
+  name: string;
+  /** Folder path this step selects. `""` is the scan root. */
+  path: string;
 }
 
 export interface DetailView {
   title: string;
-  breadcrumb: string;
-  tokens: number;
+  /**
+   * Ancestors of the heading, nearest last, each one selectable.
+   *
+   * Sent as steps rather than as a joined string, so the client never has to
+   * take a path apart to know where a segment leads.
+   */
+  trail: PathCrumb[];
+  /** Folder total in the active measure. */
+  weight: number;
   files: number;
+  tokens: number;
   lines: number;
   codeLines: number;
   commentLines: number;
   shareOfProject: number;
-  /** 0-1 share of the active drill scope's unfiltered tokens. */
+  /** 0-1 share of the active drill scope's unfiltered weight. */
   shareOfScope: number;
   cards: FolderCard[];
   /** Fixed column capacity measured from the panel width. */
@@ -109,14 +143,24 @@ export interface DetailView {
 
 export interface SummaryView {
   /** Unfiltered weight of the whole scanned tree, the fixed percentage baseline. */
-  projectTokens: number;
-  /** Whole-project weight under the active visibility and inclusion switches. */
-  selectedTokens: number;
+  projectWeight: number;
+  /**
+   * Folder these figures describe, echoed from the request's drill path.
+   *
+   * `""` is the scan root. Echoed rather than assumed, so a label cannot name
+   * one scope while the numbers beside it still describe another.
+   */
+  scopePath: string;
+  /** Unfiltered weight of the drill scope, the denominator of "of scope". */
+  scopeWeight: number;
+  /** Drill-scope weight under the active visibility and inclusion switches. */
+  selectedWeight: number;
   selectedFiles: number;
+  selectedTokens: number;
   selectedLines: number;
   selectedCodeLines: number;
   selectedCommentLines: number;
-  /** Top-level segments of the whole-project proportion ribbon. */
+  /** Top-level segments of the drill scope's proportion ribbon. */
   ribbon: FolderCard[];
 }
 
@@ -142,6 +186,8 @@ export interface ScanMeta {
 /** Everything the client controls, sent on every view request. */
 export interface ViewRequest {
   kinds: FileKind[];
+  /** Unit every aggregation is expressed in. Independent of every filter. */
+  measure: Measure;
   showGenerated: boolean;
   query: string;
   excludedFolders: string[];
@@ -151,7 +197,12 @@ export interface ViewRequest {
   /** Folder that replaces the project root in the main workspace widgets. */
   drillPath: string;
   selected: { rowKind: "folder" | "files"; path: string };
-  rank: { metric: RankMetric; minTokens: number; limit: number };
+  /**
+   * The sorted column of both file tables, and the ranking's order.
+   *
+   * `minWeight` is a floor in the active measure, not always in tokens.
+   */
+  rank: { metric: RankMetric; minWeight: number; limit: number };
   /**
    * How many tiles fit across the panel at its current width.
    *
@@ -164,6 +215,13 @@ export interface ViewRequest {
 
 export interface ViewResponse {
   meta: ScanMeta;
+  /**
+   * The measure these figures are in.
+   *
+   * Echoed rather than assumed, so a label never disagrees with the numbers
+   * beside it while a newer request is still in flight.
+   */
+  measure: Measure;
   summary: SummaryView;
   tree: TreeRow[];
   detail: DetailView;

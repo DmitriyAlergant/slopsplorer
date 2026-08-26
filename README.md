@@ -1,59 +1,79 @@
 # Slopsplorer
 
-Slopsplorer is a local, read-only map of where the weight of a codebase sits.
+Slopsplorer is an interactive codebase explorer focused on mapping where the weight of a codebase sits.
 
-Point it at a repository.
-It measures every file by tokenizer weight, line composition, and structure.
-You then narrow the tree until the total matches what you can hold in a review, or in an agent's context window.
-
-![Slopsplorer reading its own repository: a mass ribbon split by top-level folder, a source tree where every row carries its share of its parent, folder cards, and a ranked file table.](https://raw.githubusercontent.com/DmitriyAlergant/slopsplorer/main/docs/screenshot.png)
-
-*Slopsplorer reading its own source tree.*
+Point it at a repository. It measures every file by tokenizer weight, line composition, and structure, then shows you which folders and which files carry the mass. At any measure (Tokens or LOC), the higher the number the bigger the slop. Sniff where it has accumulated.
 
 ```bash
 npx slopsplorer /path/to/repository
 ```
 
-Slopsplorer opens <http://127.0.0.1:8765> in your default browser when the scan finishes.
-Install it with `npm install -g slopsplorer` if you use it often.
+The scan runs, then Slopsplorer opens <http://127.0.0.1:8765> in your default browser.
 
-Token weight is a proxy for review surface and agent context cost.
-It is not a measure of cyclomatic complexity, and it is not a quality score.
-A large file is not a bad file.
-It is an expensive one.
+```bash
+# Install it if you use it often
+npm install -g slopsplorer
 
-## What it measures
+cd vibe-coded-repo
+slopsplorer .
+```
+
+![Slopsplorer reading its own repository: flavor filters above a source tree and a folder panel, then the headline readouts, the mass ribbon, and the heaviest-files table.](https://raw.githubusercontent.com/DmitriyAlergant/slopsplorer/main/docs/screenshot.png)
+
+*Slopsplorer reading its own source tree.*
+
+## Three ways to filter and narrow-down
+
+They are deliberately different, and they compose.
+
+- **The flavor switches and the search box** decide which files are counted at all.
+  - Code
+  - Tests
+  - Docs
+  - i18n
+  - Data, Config and Other files
+  - Generated files (e.g. lockfiles), default off
+- **The tree checkboxes** allow you to selectively exclude certain folders from totals and heavy files summary
+- **Drill Down** (**double-click**) focuses the entire explorer to the selected subfolder
+
+## What you see
+
+The page reads downwards. What you choose at the top decides every number below it.
+
+- **Filters** across the top: a path search, and one switch per flavor, with generated output as a switch of its own.
+- **A source tree**, where every row carries a bar showing its share of its parent, so weight is visible before you read the number. A `.` row holds the files that sit directly in a folder rather than in a subfolder.
+- **A folder panel** beside it, showing how the selected folder divides among its children as cards, then listing its own files. Each card's bar is scaled to the folder rather than to the project.
+- **Headline readouts**, then **a mass ribbon**: the current scope as one bar, split by the folders directly inside it and shaded darkest-first by rank. Clicking a segment selects that folder in the panel above.
+- **A heaviest-files table** for the current selection, sorted by any column, with a minimum threshold in the active measure. A dot marks a file whose lines are mostly commentary, a common shape for generated bulk.
+- **Read-only source previews**, capped at 512 KiB.
+
+## What it counts
 
 Per file:
 
-| Metric | Notes |
+| Metric | Counts |
 | --- | --- |
-| `tokens` | `cl100k_base` by default, or `o200k_base` |
-| `lines` | Non-blank lines only, so `lines = codeLines + commentLines` |
-| `codeLines` / `commentLines` | Mutually exclusive. Code with a trailing comment counts as code |
+| `tokens` | Tokenizer weight for the whole file, comments and whitespace included |
+| `lines` | Every line with content, comment lines included |
+| `codeLines` (LOC) | Content lines that are not entirely comment |
+| `commentLines` | Content lines that are. A line of code with a trailing comment counts as code |
 | `functions` / `classes` / `branches` | From tree-sitter, across 13 languages |
 
-Structure metrics come from prebuilt WASM grammars for Python, TypeScript, TSX, JavaScript, Go, Rust, Java, Ruby, C/C++, C#, PHP, Bash, and PowerShell.
-Files outside those languages still get token and line counts.
-They report zero structure counts rather than a guess.
+No line measure counts blank lines, and `lines = codeLines + commentLines` always.
 
-Comment spans come from the grammar, not from a leading-`#` heuristic, so block comments and doc comments are counted correctly.
-Python docstrings count as comment, because Python has no block-comment syntax.
+Tokens, Lines, or LOC is the unit every total, bar, and ranking is expressed in.
+The unit belongs to the columns that display it, so you choose it there: from the source tree's numbers heading, which is a menu, or by sorting a file table on one of those columns.
+Tokens answer what a review or a context window will cost.
+LOC answers how much logic is actually there, which is the question a comment-padded file distorts.
 
-Files are sorted into flavors that you can show or hide independently: code, tests, docs, i18n catalogues, structured data, and configuration.
-Generated output is tracked separately.
-Hiding the tests is usually the fastest way to find out whether a project is as large as it looks.
+Structure counts come from prebuilt WASM grammars for thirteen languages.
+A file outside them still gets token and line counts, and reports zero structure rather than a guess.
+Comment spans come from the grammar where there is one, and from a marker table covering some fifty other formats where there is not.
 
-## What it shows
+Every file gets a flavor you can switch on and off: Code, Tests, Docs, i18n, Data & Config, or Other, with generated output as a switch of its own.
+Flavor comes from the file itself before it comes from where the file sits, so a fixture in a test folder is reported as the format it is rather than as test code.
 
-- **A mass ribbon** across the top: the whole scope as one bar, split by top-level folder, shaded darkest-first by rank. Click a segment to drill in.
-- **A source tree** where each row carries a bar showing its share of its parent, so weight is visible before you read the number.
-- **Folder cards** showing how a folder divides among its children. Each card's composition bar is scaled to the folder rather than to the project.
-- **A ranked file list** for the current scope, sortable by any metric. A dot marks files whose lines are mostly commentary, a common shape for generated bulk.
-- **Read-only source previews**, capped at 512 KiB.
-
-The folder and `(files)` checkboxes narrow the analytical scope.
-They work independently of tree expansion, so you can drop a vendored subtree from the totals and still see it in the tree.
+[docs/classification.md](docs/classification.md) has the full rules: which files enter a scan, how a grammar is chosen, and every deliberate divergence from `cloc`.
 
 ## Options
 
@@ -63,32 +83,27 @@ slopsplorer <path>              # defaults to the current folder
   --host 0.0.0.0                # default 127.0.0.1
   --all-files                   # walk the filesystem and ignore .gitignore
   --exclude vendor              # exclude a directory name, repeatable
-  --tokenizer o200k_base        # default cl100k_base
+  --tokenizer cl100k_base       # default o200k_base
   --no-open                     # do not open a browser on start
   --dev                         # Vite hot reload, for work on Slopsplorer itself
 ```
 
-Inside a Git worktree the file list comes from the Git index, so ignored dependencies and build output never distort the map.
+Inside a Git worktree the file list comes from the Git index plus untracked files that no ignore rule covers, so dependencies and build output never distort the map.
 Outside one, the walker applies `.gitignore` itself, so a plain folder behaves the same way.
 `--all-files` disables both.
 
 ## Agent skill
 
-Slopsplorer ships an agent skill that teaches a coding agent when to use it and how to read its output.
-The **Install agent skill** button in the interface gives you a command to run.
-The button itself installs nothing.
-
+Slopsplorer ships an agent skill that teaches a coding agent when to reach for it and how to read its output.
+The **Install agent skill** button gives you a command to run; the button itself installs nothing.
 The skill goes to `~/.agents/skills/slopsplorer`, with a symlink from `~/.claude/skills/slopsplorer`, so any agent tool can find it.
 
 ## Safety
 
 The server binds to loopback by default and is read-only.
 It serves only files that were part of the scan, and refuses any path outside it.
-Source previews are capped at 512 KiB.
 
 ## Development
-
-See [AGENTS.md](AGENTS.md) for the architecture and the conventions.
 
 ```bash
 npm install
@@ -99,7 +114,7 @@ npm test
 `npm run dev` needs Node 22.18 or later, because it runs the TypeScript sources directly.
 A published install runs the compiled output and needs only Node 20.19.
 
-[AGENTS.md](AGENTS.md#releasing) also describes how a release reaches npm.
+[AGENTS.md](AGENTS.md) covers the architecture, the conventions, and [how a release reaches npm](AGENTS.md#changelog-and-releasing).
 
 ## License
 

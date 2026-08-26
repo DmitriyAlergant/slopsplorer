@@ -1,13 +1,20 @@
 import { useEffect, useRef } from "react";
-import type { TreeRow, TreeSort } from "../../shared/api.ts";
+import type { Measure, TreeRow, TreeSort } from "../../shared/api.ts";
 import { count } from "../format.ts";
+import { MeasureMenu } from "./MeasureMenu.tsx";
+import { SortCaret } from "./SortCaret.tsx";
+import { Tooltip, tooltipHandlers } from "./Tooltip.tsx";
 
 interface Props {
   rows: readonly TreeRow[];
   sort: TreeSort;
+  /** Names the numbers column, and the unit every figure on the page is in. */
+  measure: Measure;
   onSelect: (rowKind: "folder" | "files", path: string) => void;
   onDrill: (path: string) => void;
   onSortChange: (sort: TreeSort) => void;
+  /** Picking a measure also orders the tree by it, so the menu is the weight sort. */
+  onMeasureChange: (measure: Measure) => void;
   onToggleExpanded: (path: string) => void;
   onToggleFolder: (row: TreeRow) => void;
   onToggleDirectFiles: (row: TreeRow) => void;
@@ -45,7 +52,7 @@ function ScopeCheckbox({ row, onChange }: { row: TreeRow; onChange: () => void }
 
 /** The folder hierarchy, with every row measured against the active scope root. */
 export function SourceTree({
-  rows, sort, onSelect, onDrill, onSortChange, onToggleExpanded, onToggleFolder, onToggleDirectFiles, onExpandAll, onCollapseAll,
+  rows, sort, measure, onSelect, onDrill, onSortChange, onMeasureChange, onToggleExpanded, onToggleFolder, onToggleDirectFiles, onExpandAll, onCollapseAll,
 }: Props): React.JSX.Element {
   const expandableRows = rows.filter((row) => row.rowKind === "folder" && row.hasChildren);
   const allExpanded = expandableRows.length > 0 && expandableRows.every((row) => row.expanded);
@@ -54,11 +61,6 @@ export function SourceTree({
       <div className="panel__head">
         <h2>Source tree</h2>
         <div className="panel__tools">
-          <div className="tree__sort" role="group" aria-label="Sort source tree">
-            <button type="button" aria-pressed={sort === "name"} onClick={() => onSortChange("name")}>Name</button>
-            <span aria-hidden="true">|</span>
-            <button type="button" aria-pressed={sort === "tokens"} onClick={() => onSortChange("tokens")}>Tokens</button>
-          </div>
           <button
             type="button"
             className="button button--tiny"
@@ -70,6 +72,25 @@ export function SourceTree({
       </div>
 
       <div className="tree__scroll">
+        {/* Aligned to the row grid, so each heading sits over the column it orders. */}
+        <div className="tree__columns">
+          <span className="tree__disclose tree__disclose--leaf" aria-hidden="true" />
+          <span aria-hidden="true" />
+          <button
+            type="button"
+            className="tree__column"
+            aria-pressed={sort === "name"}
+            aria-label="Sort by name"
+            onClick={() => onSortChange("name")}
+          >
+            Name
+            {sort === "name" ? <SortCaret ascending /> : null}
+          </button>
+          {/* The numbers column has no separate sort control: choosing the measure
+              is what puts the tree on it, so one heading carries both jobs. */}
+          <MeasureMenu measure={measure} sorted={sort === "weight"} onChange={onMeasureChange} />
+        </div>
+
         {rows.length === 0 ? (
           <p className="empty">Nothing matches the current filters.</p>
         ) : (
@@ -101,23 +122,24 @@ export function SourceTree({
                 onChange={() => (row.rowKind === "files" ? onToggleDirectFiles(row) : onToggleFolder(row))}
               />
 
+              {/* Only the `.` row needs explaining. A folder row says what it is. */}
               <button
                 type="button"
                 className="tree__label"
                 onClick={() => onSelect(row.rowKind, row.path)}
-                onDoubleClick={() => {
-                  if (row.rowKind === "folder") onDrill(row.path);
-                }}
-                title={row.rowKind === "folder" ? `${row.path || row.name} - double-click to drill down` : row.path || row.name}
+                // A `.` row names the same folder, so it drills to the same place.
+                onDoubleClick={() => onDrill(row.path)}
+                {...(row.rowKind === "files" ? tooltipHandlers : {})}
               >
                 {row.name}
+                {row.rowKind === "files" ? <Tooltip compact>Files directly in this folder</Tooltip> : null}
               </button>
 
-              <span className="tree__tokens">
+              <span className="tree__weight">
                 {row.included ? (
                   <>
                     <span className="tree__mass" aria-hidden="true" />
-                    <span className="tree__count">{count(row.tokens)}</span>
+                    <span className="tree__count">{count(row.weight)}</span>
                   </>
                 ) : null}
               </span>

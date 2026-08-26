@@ -1,3 +1,5 @@
+import type { Measure } from "../shared/api.ts";
+
 const integer = new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 });
 
 export function count(value: number): string {
@@ -26,4 +28,31 @@ export function since(isoTimestamp: string): string {
   if (elapsedSeconds < 3600) return `${Math.round(elapsedSeconds / 60)}m ago`;
   if (elapsedSeconds < 86_400) return `${Math.round(elapsedSeconds / 3600)}h ago`;
   return `${Math.round(elapsedSeconds / 86_400)}d ago`;
+}
+
+/**
+ * How each measure is named in prose, in a heading, and in a tight cell.
+ *
+ * One table rather than three, so a new measure cannot arrive with a label
+ * missing from one surface and present in another.
+ */
+const MEASURE_NAMES: Record<Measure, { prose: string; heading: string; abbreviation: string }> = {
+  tokens: { prose: "tokens", heading: "Tokens", abbreviation: "tok" },
+  lines: { prose: "lines", heading: "Lines", abbreviation: "lines" },
+  codeLines: { prose: "LOC", heading: "LOC", abbreviation: "LOC" },
+};
+
+/** Name for running text: "42,000 tokens", "1,200 LOC". */
+export function measureName(measure: Measure): string {
+  return MEASURE_NAMES[measure].prose;
+}
+
+/** Title-case name for a control, a button, or a column heading. */
+export function measureHeading(measure: Measure): string {
+  return MEASURE_NAMES[measure].heading;
+}
+
+/** Shortest form, for a tile caption where the number matters more than the unit. */
+export function measureAbbreviation(measure: Measure): string {
+  return MEASURE_NAMES[measure].abbreviation;
 }

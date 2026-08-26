@@ -1,0 +1,1 @@
+Comment detection now covers formats with no tree-sitter grammar, reading block comments across lines for CSS, HTML, XML, SVG, Vue, Svelte, Lua, Terraform, INI, Kotlin, Swift, Scala, Dart, `Dockerfile`, `Makefile`, and more, and the whole shell family (`.bash`, `.ksh`, `.bats`, `.fish`, and `#!` scripts) is now measured.

@@ -1,0 +1,12 @@
+{
+  // Compiler options for the corpus.
+  "compilerOptions": {
+    "strict": true,   /* every strict flag */
+    "target": "es2023"
+  },
+  /*
+   * Only the sources are compiled.
+   */
+  "include": ["src/**/*"],
+  "note": "// not a comment"
+}

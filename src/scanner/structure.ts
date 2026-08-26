@@ -1,6 +1,8 @@
 import { createRequire } from "node:module";
 import { readFile } from "node:fs/promises";
+import path from "node:path";
 import { Language, Parser } from "web-tree-sitter";
+import { shebangInterpreter } from "./classify.ts";
 import type { CommentRange } from "./lines.ts";
 
 const require = createRequire(import.meta.url);
@@ -12,10 +14,39 @@ export interface StructureCounts {
   branches: number;
   /** Spans the line classifier uses to separate comment lines from code. */
   commentRanges: CommentRange[];
+  /**
+   * Non-whitespace characters inside string literals, and non-whitespace
+   * characters of everything that is not a comment.
+   *
+   * Their ratio says how much of a file is payload rather than logic, which is
+   * what separates a hand-written translation catalogue in `.ts` from code.
+   */
+  literalChars: number;
+  contentChars: number;
+  /**
+   * The largest single literal, which separates a catalogue of many strings
+   * from one embedded blob of markup, SQL, or injected script.
+   */
+  largestLiteral: number;
 }
 
 export function emptyStructure(): StructureCounts {
-  return { functions: 0, classes: 0, branches: 0, commentRanges: [] };
+  return { functions: 0, classes: 0, branches: 0, commentRanges: [], literalChars: 0, contentChars: 0, largestLiteral: 0 };
+}
+
+/**
+ * Non-whitespace characters in `text` between `start` and `end`.
+ *
+ * Whitespace is excluded so that indentation and line breaks do not decide
+ * whether a file reads as payload or as logic.
+ */
+function countNonWhitespace(text: string, start: number, end: number): number {
+  let total = 0;
+  for (let index = start; index < end; index += 1) {
+    // Everything at or below the space character is whitespace or a control code.
+    if (text.charCodeAt(index) > 32) total += 1;
+  }
+  return total;
 }
 
 /**
@@ -41,6 +72,15 @@ interface LanguageRule {
    */
   docstrings?: boolean;
 }
+
+/**
+ * Node types that carry literal text, across every grammar in `RULES`.
+ *
+ * Matching by name rather than by an exhaustive per-grammar list mirrors how
+ * comments are found, and covers `string`, `string_literal`, `template_string`,
+ * `raw_string_literal`, `concatenated_string`, and a shell heredoc body.
+ */
+const STRING_NODE = /string|heredoc_body/;
 
 /** A statement whose whole content is a string literal, i.e. a docstring. */
 function isDocstring(node: { type: string; namedChildCount: number; namedChild(index: number): { type: string } | null } | null): boolean {
@@ -160,12 +200,35 @@ const GRAMMAR_BY_EXTENSION: ReadonlyMap<string, string> = new Map([
   [".c", "cpp"], [".h", "cpp"], [".cc", "cpp"], [".cpp", "cpp"], [".hpp", "cpp"],
   [".cs", "c-sharp"],
   [".php", "php"],
-  [".sh", "bash"], [".zsh", "bash"],
+  [".sh", "bash"], [".zsh", "bash"], [".bash", "bash"], [".ksh", "bash"], [".bats", "bash"],
   [".ps1", "powershell"],
 ]);
 
-export function grammarForExtension(extension: string): string | null {
-  return GRAMMAR_BY_EXTENSION.get(extension.toLowerCase()) ?? null;
+/**
+ * Shebang interpreters the bash grammar can parse well enough.
+ *
+ * Shell scripts routinely carry no extension, so the `#!` line is the only
+ * thing left to identify them by. Only the Bourne family is listed: `ksh`,
+ * `dash`, and `zsh` differ from bash in ways the grammar tolerates, while fish
+ * is a different language and takes the marker fallback instead.
+ */
+const GRAMMAR_BY_SHEBANG: ReadonlyMap<string, string> = new Map([
+  ["sh", "bash"], ["bash", "bash"], ["zsh", "bash"], ["ksh", "bash"],
+  ["dash", "bash"], ["ash", "bash"], ["mksh", "bash"],
+]);
+
+/**
+ * The grammar for one file, by extension first and by `#!` line second.
+ *
+ * The extension wins so that a `.py` script with a `#!/bin/sh` wrapper line is
+ * still parsed as Python.
+ */
+export function grammarForFile(fileName: string, text: string): string | null {
+  const byExtension = GRAMMAR_BY_EXTENSION.get(path.posix.extname(fileName).toLowerCase());
+  if (byExtension !== undefined) return byExtension;
+  const interpreter = shebangInterpreter(text);
+  if (interpreter === null) return null;
+  return GRAMMAR_BY_SHEBANG.get(interpreter) ?? null;
 }
 
 /**
@@ -215,8 +278,7 @@ export class StructureAnalyzer {
    * block comments, nested comments, and doc comments are all handled without
    * per-language parsing rules.
    */
-  async analyze(extension: string, text: string): Promise<StructureCounts> {
-    const grammar = grammarForExtension(extension);
+  async analyze(grammar: string | null, text: string): Promise<StructureCounts> {
     if (!grammar) return emptyStructure();
     const rule = RULES_BY_GRAMMAR.get(grammar);
     if (!rule) return emptyStructure();
@@ -228,6 +290,14 @@ export class StructureAnalyzer {
     if (!tree) return emptyStructure();
     try {
       const result = emptyStructure();
+      let commentChars = 0;
+      // A pre-order walk visits nodes in non-decreasing start offset, so one
+      // watermark per span kind is enough to charge nested nodes only once: a
+      // template's embedded expressions, an escape sequence inside a literal,
+      // and a docstring's own string node are all already inside the span that
+      // was counted when the walk entered it.
+      let countedLiteralEnd = 0;
+      let countedCommentEnd = 0;
       const cursor = tree.walk();
       try {
         let descend = true;
@@ -247,6 +317,15 @@ export class StructureAnalyzer {
                 endRow: end.row,
                 endColumn: end.column,
               });
+              if (cursor.startIndex >= countedCommentEnd) {
+                commentChars += countNonWhitespace(text, cursor.startIndex, cursor.endIndex);
+                countedCommentEnd = cursor.endIndex;
+              }
+            } else if (STRING_NODE.test(type) && cursor.startIndex >= countedLiteralEnd && cursor.startIndex >= countedCommentEnd) {
+              const size = countNonWhitespace(text, cursor.startIndex, cursor.endIndex);
+              result.literalChars += size;
+              if (size > result.largestLiteral) result.largestLiteral = size;
+              countedLiteralEnd = cursor.endIndex;
             }
           }
           if (descend && cursor.gotoFirstChild()) continue;
@@ -257,6 +336,7 @@ export class StructureAnalyzer {
       } finally {
         cursor.delete();
       }
+      result.contentChars = Math.max(0, countNonWhitespace(text, 0, text.length) - commentChars);
       this.used.add(grammar);
       return result;
     } finally {

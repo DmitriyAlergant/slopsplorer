@@ -1,0 +1,3 @@
+This format has no comment rule at all.
+
+Every content line must therefore be reported as code.

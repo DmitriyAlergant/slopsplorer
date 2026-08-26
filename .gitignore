@@ -1,4 +1,35 @@
+# Dependencies and build output
 node_modules/
 dist/
 *.tsbuildinfo
+
+# Tool caches
+.vite/
+.cache/
+coverage/
+.eslintcache
+
+# Packaging artifacts
+*.tgz
+
+# Logs and crash reports
+*.log
+npm-debug.log*
+yarn-error.log*
+
+# Local environment and scratch work
+.env
+.env.*
+!.env.example
+.plans/
+tmp/
+
+# Agent tooling, local overrides only
+.claude/settings.local.json
+
+# Editors and operating systems
+.vscode/
+.idea/
+*.swp
 .DS_Store
+Thumbs.db

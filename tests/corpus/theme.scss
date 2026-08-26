@@ -1,0 +1,8 @@
+// Line comment in SCSS.
+$radius: 4px;
+
+.card {
+  border-radius: $radius; // trailing
+  /* block opened and closed on one line */
+  background: url("http://example.com/a.png");
+}

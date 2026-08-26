@@ -38,10 +38,15 @@ For every file that enters the scan it reports:
 | `language` | The tree-sitter grammar that produced the structure counts, or `null`. |
 
 Structure counts come from 13 tree-sitter grammars: `python`, `typescript`, `tsx`, `javascript`, `go`, `rust`, `java`, `ruby`, `cpp`, `c-sharp`, `php`, `bash`, `powershell`.
+Shell scripts reach `bash` by extension (`.sh`, `.bash`, `.ksh`, `.bats`, `.zsh`) or by a `#!` line naming a Bourne shell.
 A file outside those grammars still gets accurate `tokens`, `lines`, and `blankLines`.
 For such a file, `functions`, `classes`, and `branches` are all `0`, and `language` is `null`.
-For YAML, TOML, SQL, Prisma, and JSONC, the comment split uses leading-marker detection instead of a grammar.
-For Markdown and JSON it reports zero comment lines, because a Markdown paragraph is content rather than commentary.
+
+The comment split for those files comes from a comment-marker table rather than a grammar.
+It covers YAML, TOML, SQL, Prisma, JSONC, CSS, SCSS, LESS, HTML, XML, SVG, Vue, Svelte, Lua, Kotlin, Swift, Scala, Dart, Terraform, INI, Java properties, R, Perl, fish, `.env`, `Dockerfile`, and `Makefile`.
+Block comments are read across lines, and a marker inside a string literal is ignored.
+For Markdown and JSON it reports zero comment lines, because a Markdown paragraph is content rather than commentary and JSON has no comment syntax.
+A format with no rule at all reports its content as `codeLines`, so a file with content is never reported as empty.
 
 ## What it does not measure
 
@@ -76,7 +81,7 @@ It runs until it is stopped, so start it in the background and hand the URL to t
 | `--port <n>` | Bind a specific port instead of the default 8765. |
 | `--all-files` | Walk the filesystem and ignore `.gitignore` completely. Use it to see what the default view hides. |
 | `--exclude <dir>` | Skip a directory by name, anywhere in the tree. Repeatable. |
-| `--tokenizer cl100k_base\|o200k_base` | `cl100k_base` is the default and is a reasonable proxy for Claude's context cost. `o200k_base` matches GPT-4o. |
+| `--tokenizer o200k_base\|cl100k_base` | `o200k_base` is the default and is a reasonable proxy for Claude's context cost. `cl100k_base` matches GPT-4 and GPT-3.5. |
 | `--dev` | Development mode, for work on Slopsplorer itself. It does not help when you analyse another repository. |
 
 Inside a Git worktree, the default file list is the Git index plus untracked files that no ignore rule covers.
@@ -86,10 +91,11 @@ Either way, ignored build output, dependencies, and caches stay out of the map, 
 
 ## Reading the UI
 
+- The **Measure** switch chooses the unit every total, bar, and ranking is expressed in: `Tokens` (the default), `Lines`, or `LOC`, which are the `tokens`, `lines`, and `codeLines` metrics above. Neither line measure counts blank lines. It is orthogonal to the filters: it changes the unit, never which files are counted. Tokens answer what a review or a context window costs. LOC answers how much logic is present, which is the question a comment-padded file distorts.
 - The visibility switches separate `code`, `test`, `text`, `i18n`, `data`, `other`, and `generated`. Clear one switch and that weight leaves every total.
-- The folder and `(files)` checkboxes narrow the analytical scope. They work independently of tree expansion, so you can drop a folder from the totals and still see it in the tree.
+- The folder and `.` checkboxes narrow the analytical scope, where `.` is the row holding the files that sit directly in a folder. They work independently of tree expansion, so you can drop a folder from the totals and still see it in the tree.
 - The percentage baseline is the whole scanned tree, measured before any filter. It does not move while you filter, so shares stay comparable between two views.
-- The ranked file list sorts by one metric. It reports the total number of matches before the display limit, so a truncated list still tells you how many files qualified.
+- The ranked file list sorts by one metric, and its minimum-size floor is expressed in the active measure. It reports the total number of matches before the display limit, so a truncated list still tells you how many files qualified.
 
 ## Recipes to give the user
 
@@ -104,6 +110,7 @@ A long tail means you must work folder by folder.
 
 **Find comment-padded or model-generated bulk.**
 Clear the `test`, `data`, `i18n`, and `generated` switches, so only hand-written code and prose remain.
+Set the measure to `Lines`, note where the weight sits, then set it to `LOC` and look at what shrank: those folders are mostly commentary.
 Rank the files by `commentLines`.
 Compare each result's `commentLines` against its `codeLines`.
 Open the files where commentary approaches or exceeds code, especially those with a low `functions` count.

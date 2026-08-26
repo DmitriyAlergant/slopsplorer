@@ -6,12 +6,12 @@ import type { FileKind } from "../shared/api.ts";
  * uninteresting artifact and never enters a snapshot.
  */
 export const SOURCE_EXTENSIONS: ReadonlySet<string> = new Set([
-  ".adoc", ".c", ".cc", ".cjs", ".cpp", ".cs", ".csv", ".css", ".go", ".h",
-  ".hpp", ".html", ".java", ".js", ".json", ".jsonc", ".jsx", ".kt", ".kts",
-  ".lock", ".lua", ".md", ".mdx", ".mjs", ".php", ".po", ".pot", ".prisma",
-  ".ps1", ".py", ".pyi", ".rb", ".rs", ".rst", ".scss", ".sh", ".sql",
-  ".svelte", ".swift", ".toml", ".ts", ".tsv", ".tsx", ".txt", ".vue", ".xml",
-  ".yaml", ".yml", ".zsh",
+  ".adoc", ".bash", ".bats", ".c", ".cc", ".cjs", ".cpp", ".cs", ".csv",
+  ".css", ".fish", ".go", ".h", ".hpp", ".html", ".java", ".js", ".json",
+  ".jsonc", ".jsx", ".ksh", ".kt", ".kts", ".lock", ".lua", ".md", ".mdx",
+  ".mjs", ".php", ".po", ".pot", ".prisma", ".ps1", ".py", ".pyi", ".rb",
+  ".rs", ".rst", ".scss", ".sh", ".sql", ".svelte", ".swift", ".toml", ".ts",
+  ".tsv", ".tsx", ".txt", ".vue", ".xml", ".yaml", ".yml", ".zsh",
 ]);
 
 /** Directories never worth measuring, even when a filesystem walk reaches them. */
@@ -22,10 +22,10 @@ export const EXCLUDED_DIRECTORIES: ReadonlySet<string> = new Set([
 ]);
 
 const CODE_EXTENSIONS: ReadonlySet<string> = new Set([
-  ".c", ".cc", ".cjs", ".cpp", ".cs", ".css", ".go", ".h", ".hpp", ".java",
-  ".js", ".jsx", ".kt", ".kts", ".lua", ".mjs", ".php", ".prisma", ".ps1",
-  ".py", ".pyi", ".rb", ".rs", ".scss", ".sh", ".sql", ".svelte", ".swift",
-  ".ts", ".tsx", ".vue", ".zsh",
+  ".bash", ".bats", ".c", ".cc", ".cjs", ".cpp", ".cs", ".css", ".fish",
+  ".go", ".h", ".hpp", ".java", ".js", ".jsx", ".ksh", ".kt", ".kts", ".lua",
+  ".mjs", ".php", ".prisma", ".ps1", ".py", ".pyi", ".rb", ".rs", ".scss",
+  ".sh", ".sql", ".svelte", ".swift", ".ts", ".tsx", ".vue", ".zsh",
 ]);
 
 const DATA_EXTENSIONS: ReadonlySet<string> = new Set([
@@ -76,8 +76,13 @@ function isLocaleStem(stem: string): boolean {
   return match !== null && LANGUAGE_CODES.has(match[1]!);
 }
 
-function isTestPath(name: string, directories: ReadonlySet<string>): boolean {
-  if (containsAny(directories, TEST_DIRECTORIES)) return true;
+/**
+ * Whether the filename itself declares the file to be a test.
+ *
+ * This is the strong half of test detection: the name is an assertion about
+ * the file's role, so it outranks what the extension says about its format.
+ */
+function isTestFileName(name: string): boolean {
   if (name.startsWith("test_") || name.startsWith("spec_")) return true;
   if (/_(test|spec)\.[a-z]+$/.test(name)) return true;
   return name.includes(".test.") || name.includes(".spec.");
@@ -86,9 +91,12 @@ function isTestPath(name: string, directories: ReadonlySet<string>): boolean {
 /**
  * Classify a file into the buckets the visibility switches control.
  *
- * Test detection deliberately runs before the data-extension check so that
- * fixtures such as `tests/fixtures/events.json` are attributed to the test
- * surface they belong to, rather than counted as project data.
+ * The two halves of test detection carry different weight. A test-shaped
+ * filename outranks the extension, because the name states the file's role.
+ * Sitting in a test directory is only a location, and a test tree holds
+ * fixtures, corpora, and sample documents alongside its code, so that signal
+ * ranks below format: `tests/fixtures/events.json` is data and
+ * `tests/paste/clipboard.html` is other, while `tests/conftest.py` is a test.
  */
 export function classifyFile(relativePath: string): FileKind {
   const name = path.posix.basename(relativePath).toLowerCase();
@@ -99,12 +107,69 @@ export function classifyFile(relativePath: string): FileKind {
   if (extension === ".po" || extension === ".pot") return "i18n";
   if (containsAny(directories, I18N_DIRECTORIES)) return "i18n";
   if ((extension === ".json" || extension === ".yaml" || extension === ".yml") && isLocaleStem(stem)) return "i18n";
-  if (isTestPath(name, directories)) return "test";
+  if (isTestFileName(name)) return "test";
   if (DATA_NAMES.has(name)) return "data";
   if (DATA_EXTENSIONS.has(extension)) return "data";
   if (TEXT_EXTENSIONS.has(extension)) return "text";
-  if (CODE_EXTENSIONS.has(extension)) return "code";
+  const inTestDirectory = containsAny(directories, TEST_DIRECTORIES);
+  if (CODE_EXTENSIONS.has(extension)) return inTestDirectory ? "test" : "code";
   return "other";
+}
+
+/**
+ * Grammars where a high string-literal share carries no information.
+ *
+ * A shell script quotes nearly everything it handles - paths, messages,
+ * heredocs of SQL - so the whole family sits between 70% and 97% literal
+ * content while still being ordinary scripts.
+ */
+const LITERAL_HEAVY_GRAMMARS: ReadonlySet<string> = new Set(["bash", "powershell"]);
+
+/** Below this, a file is too small for its literal share to mean anything. */
+const MIN_CONTENT_CHARS = 1000;
+
+/** The share of non-comment content that must sit inside literals. */
+const DATA_LITERAL_SHARE = 0.9;
+
+/** The share of literal content one single literal may hold. */
+const MAX_LITERAL_DOMINANCE = 0.25;
+
+/** Filenames that name the catalogue's purpose, as in `desktop-i18n.ts`. */
+const I18N_NAME = /i18n|intl|translat|locale/;
+
+/** What one file's content says about it, beyond what its path says. */
+export interface ContentShape {
+  /** The grammar that produced the measurements, or `null` if none applied. */
+  grammar: string | null;
+  literalChars: number;
+  contentChars: number;
+  largestLiteral: number;
+}
+
+/**
+ * Re-file source code that is really a payload rather than logic.
+ *
+ * A hand-maintained translation catalogue, a table of canned messages, or a
+ * bundle of queries carries a code extension while being data, and its weight
+ * behaves like data: it grows with content and is not read as logic. Three
+ * conditions have to hold together, because each alone has a false positive
+ * measured on a real repository:
+ *
+ *   - Nearly all non-comment content is literal. An icon component whose SVG
+ *     path attributes reach 88% is still a component.
+ *   - No single literal dominates. One giant template literal of injected
+ *     script or one embedded SVG reaches 99% literal content in a file that is
+ *     unambiguously code.
+ *   - The grammar is one where quoting is not the norm, and the file is large
+ *     enough for the ratio to be more than an accident.
+ */
+export function refineKindByContent(kind: FileKind, relativePath: string, shape: ContentShape): FileKind {
+  if (kind !== "code") return kind;
+  if (shape.grammar === null || LITERAL_HEAVY_GRAMMARS.has(shape.grammar)) return kind;
+  if (shape.contentChars < MIN_CONTENT_CHARS) return kind;
+  if (shape.literalChars < shape.contentChars * DATA_LITERAL_SHARE) return kind;
+  if (shape.largestLiteral > shape.literalChars * MAX_LITERAL_DOMINANCE) return kind;
+  return I18N_NAME.test(path.posix.basename(relativePath).toLowerCase()) ? "i18n" : "data";
 }
 
 const GENERATED_DIRECTORIES: ReadonlySet<string> = new Set([
@@ -128,6 +193,33 @@ export function isGenerated(relativePath: string): boolean {
   if (containsAny(directories, GENERATED_DIRECTORIES)) return true;
   if (GENERATED_NAMES.has(name)) return true;
   return GENERATED_SUFFIXES.some((suffix) => name.endsWith(suffix));
+}
+
+/** Trailing version digits on an interpreter name, as in `python3.12` or `perl5`. */
+const INTERPRETER_VERSION_SUFFIX = /[0-9]+(?:\.[0-9]+)*$/;
+
+/**
+ * The interpreter named on a leading `#!` line, lowercased and unversioned.
+ *
+ * `#!/bin/bash`, `#!/usr/bin/env bash -e`, and `#!/usr/bin/env -S python3 -u`
+ * yield `bash`, `bash`, and `python`. Scripts routinely carry no extension, and
+ * the shebang is the only thing left to identify them by.
+ */
+export function shebangInterpreter(text: string): string | null {
+  if (!text.startsWith("#!")) return null;
+  const lineEnd = text.indexOf("\n");
+  const words = text.slice(2, lineEnd === -1 ? undefined : lineEnd).trim().split(/\s+/).filter(Boolean);
+  const first = words[0];
+  if (first === undefined) return null;
+  let name = path.posix.basename(first).toLowerCase();
+  if (name === "env") {
+    // `env` runs its first non-option argument, which is the real interpreter.
+    const target = words.slice(1).find((word) => !word.startsWith("-"));
+    if (target === undefined) return null;
+    name = path.posix.basename(target).toLowerCase();
+  }
+  const unversioned = name.replace(INTERPRETER_VERSION_SUFFIX, "");
+  return unversioned === "" ? name : unversioned;
 }
 
 /** Whether the scanner should read this path at all. */

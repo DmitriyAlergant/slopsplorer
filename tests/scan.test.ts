@@ -262,3 +262,51 @@ describe("walking a plain folder that is not a Git worktree", () => {
     expect(index.files.map((file) => file.path)).toEqual(["ignored/thing.py", "kept.py"]);
   }, SCAN_TIMEOUT_MS);
 });
+
+describe("scanning the shell family", () => {
+  let root: string;
+
+  beforeAll(async () => {
+    root = await makeTree({
+      "scripts/deploy.sh": "#!/usr/bin/env bash\n# Ship it.\nset -euo pipefail\n\nrelease() {\n  if [[ -n \"$1\" ]]; then\n    echo \"# not a comment\"\n  fi\n}\n\nrelease \"$@\"\n",
+      "scripts/build.bash": "#!/bin/bash\necho build\n",
+      "scripts/run.ksh": "#!/bin/ksh\necho run\n",
+      "scripts/unit.bats": "#!/usr/bin/env bats\n@test \"works\" {\n  true\n}\n",
+      "scripts/config.fish": "#!/usr/bin/env fish\n# Fish is not Bourne shell.\nset -gx EDITOR vim\n",
+      "scripts/prompt.zsh": "#!/bin/zsh\necho prompt\n",
+    });
+  });
+
+  afterAll(async () => {
+    await rm(root, { recursive: true, force: true });
+  });
+
+  it("routes every Bourne dialect through the bash grammar, so a script gets exact comment spans", async () => {
+    const index = await scan(root, true);
+    const byPath = new Map(index.files.map((file) => [file.path, file]));
+    for (const name of ["deploy.sh", "build.bash", "run.ksh", "unit.bats", "prompt.zsh"]) {
+      expect({ name, language: byPath.get(`scripts/${name}`)?.language }).toEqual({ name, language: "bash" });
+    }
+  }, SCAN_TIMEOUT_MS);
+
+  it("measures a real shell script end to end, keeping a hash inside a string out of the comment count", async () => {
+    const index = await scan(root, true);
+    const file = index.files.find((row) => row.path === "scripts/deploy.sh")!;
+    expect(file.language).toBe("bash");
+    expect(file.commentLines).toBe(2);
+    expect(file.codeLines).toBe(7);
+    expect(file.blankLines).toBe(2);
+    expect(file.lines).toBe(file.codeLines + file.commentLines);
+    expect(file.functions).toBe(1);
+    expect(file.branches).toBe(1);
+    expect(file.tokens).toBeGreaterThan(0);
+  }, SCAN_TIMEOUT_MS);
+
+  it("keeps fish on the marker path, because its syntax is not Bourne shell", async () => {
+    const index = await scan(root, true);
+    const file = index.files.find((row) => row.path === "scripts/config.fish")!;
+    expect(file.language).toBeNull();
+    expect(file.commentLines).toBe(2);
+    expect(file.codeLines).toBe(1);
+  }, SCAN_TIMEOUT_MS);
+});

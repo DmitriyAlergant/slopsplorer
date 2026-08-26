@@ -1,5 +1,5 @@
 import type { FileKind, RankMetric, ViewRequest } from "../shared/api.ts";
-import { FILE_KINDS, RANK_METRICS, TREE_SORTS } from "../shared/api.ts";
+import { FILE_KINDS, MEASURES, RANK_METRICS, TREE_SORTS } from "../shared/api.ts";
 import type { ViewPreferences } from "./preferences.ts";
 
 /** Matches the server's own ceiling on how many ranked rows it will return. */
@@ -32,26 +32,36 @@ export function readRequest(search: string, stored: ViewPreferences | null = nul
   const embeddedPreferences = params.get("prefs") === "1";
   const path = params.get("path") ?? "";
   const drillPath = params.get("drill") ?? "";
+  // A link may name a drill scope without naming a selection inside it. The
+  // server clamps a selection that falls outside the scope, so the link state
+  // has to agree, or a panel would name a folder its contents do not cover.
+  const insideDrill = !drillPath || path === drillPath || path.startsWith(`${drillPath}/`);
+  const selectedPath = insideDrill ? path : drillPath;
   const rawKinds = params.get("kinds");
   const metric = RANK_METRICS.find((candidate) => candidate === params.get("rank"));
   const treeSort = TREE_SORTS.find((candidate) => candidate === params.get("tree"));
+  const measure = MEASURES.find((candidate) => candidate === params.get("measure"));
   return {
     kinds: rawKinds !== null
       ? rawKinds.split(",").filter(isFileKind)
       : !embeddedPreferences && stored !== null ? stored.kinds : [...FILE_KINDS],
+    measure: measure ?? (!embeddedPreferences && stored !== null ? stored.measure : "tokens"),
     showGenerated: params.has("gen")
       ? params.get("gen") === "1"
       : !embeddedPreferences && stored !== null ? stored.showGenerated : false,
     query: params.get("q") ?? "",
     excludedFolders: params.getAll("x"),
     excludedDirectFiles: params.getAll("xf"),
-    expanded: ancestorsOf(path),
+    expanded: ancestorsOf(selectedPath),
     treeSort: treeSort ?? (!embeddedPreferences && stored !== null ? stored.treeSort : "name"),
     drillPath,
-    selected: { rowKind: params.get("sel") === "files" ? "files" : "folder", path },
+    selected: {
+      rowKind: insideDrill && params.get("sel") === "files" ? "files" : "folder",
+      path: selectedPath,
+    },
     rank: {
-      metric: metric ?? "tokens",
-      minTokens: Math.max(0, Number(params.get("min")) || 0),
+      metric: metric ?? (!embeddedPreferences && stored !== null ? stored.rankMetric : "tokens"),
+      minWeight: Math.max(0, Number(params.get("min")) || 0),
       limit: RANK_LIMIT,
     },
     // Layout capacity, measured by the panel rather than carried in the link.
@@ -68,7 +78,8 @@ export function readRequest(search: string, stored: ViewPreferences | null = nul
 export function writeRequest(request: ViewRequest): string {
   const params = new URLSearchParams();
   const preferencesDifferFromDefaults =
-    request.kinds.length !== FILE_KINDS.length || request.showGenerated || request.treeSort !== "name";
+    request.kinds.length !== FILE_KINDS.length || request.showGenerated
+    || request.treeSort !== "name" || request.measure !== "tokens" || request.rank.metric !== "tokens";
   if (preferencesDifferFromDefaults) params.set("prefs", "1");
   if (request.selected.path) params.set("path", request.selected.path);
   if (request.drillPath) params.set("drill", request.drillPath);
@@ -81,8 +92,9 @@ export function writeRequest(request: ViewRequest): string {
   for (const folder of request.excludedFolders) params.append("x", folder);
   for (const folder of request.excludedDirectFiles) params.append("xf", folder);
   if (request.treeSort !== "name") params.set("tree", request.treeSort);
+  if (request.measure !== "tokens") params.set("measure", request.measure);
   if (request.rank.metric !== "tokens") params.set("rank", request.rank.metric);
-  if (request.rank.minTokens > 0) params.set("min", String(request.rank.minTokens));
+  if (request.rank.minWeight > 0) params.set("min", String(request.rank.minWeight));
   return params.toString();
 }
 

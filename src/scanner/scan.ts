@@ -1,9 +1,10 @@
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
-import type { FileRow, ScanMeta } from "../shared/api.ts";
-import { classifyFile, isGenerated } from "./classify.ts";
-import { measureLines, measureLinesByPrefix } from "./lines.ts";
-import { grammarForExtension, StructureAnalyzer } from "./structure.ts";
+import type { FileRow, Measure, ScanMeta } from "../shared/api.ts";
+import { MEASURES } from "../shared/api.ts";
+import { classifyFile, isGenerated, refineKindByContent } from "./classify.ts";
+import { measureFile } from "./measure.ts";
+import { StructureAnalyzer } from "./structure.ts";
 import { tokenCounter, type TokenizerName } from "./tokenize.ts";
 import { listSourceFiles } from "./walk.ts";
 
@@ -30,11 +31,12 @@ export interface ScanIndex {
   /** Sorted by path. */
   files: FileRow[];
   /**
-   * Running token totals over `files`, where `tokenPrefix[n]` is the sum of the
-   * first `n` files. Because a folder's descendants are contiguous, its total
-   * unfiltered weight is one subtraction, independent of any active filter.
+   * Running totals over `files` per measure, where `prefix[measure][n]` is the
+   * sum of the first `n` files. Because a folder's descendants are contiguous,
+   * its unfiltered weight in any measure is one subtraction, independent of any
+   * active filter.
    */
-  tokenPrefix: Float64Array;
+  weightPrefix: Record<Measure, Float64Array>;
   /** Sorted by path, so a parent always precedes its children. */
   folders: FolderNode[];
   folderByPath: Map<string, FolderNode>;
@@ -128,19 +130,12 @@ export async function scanSourceTree(options: ScanOptions): Promise<ScanIndex> {
         return null;
       }
 
-      const extension = path.posix.extname(relativePath).toLowerCase();
-      const grammar = grammarForExtension(extension);
-      const structure = await analyzer.analyze(extension, text);
-      // A grammar gives exact comment spans. Anything else uses leading-marker
-      // detection, which reports zero for formats with no comment syntax
-      // rather than guessing.
-      const lineMetrics = grammar
-        ? measureLines(text, structure.commentRanges)
-        : measureLinesByPrefix(text, extension);
+      const name = path.posix.basename(relativePath);
+      const { grammar, structure, lines: lineMetrics } = await measureFile(analyzer, name, text);
       const row: FileRow = {
         path: relativePath,
-        name: path.posix.basename(relativePath),
-        kind: classifyFile(relativePath),
+        name,
+        kind: refineKindByContent(classifyFile(relativePath), relativePath, { grammar, ...structure }),
         generated: isGenerated(relativePath),
         tokens: countTokens(text),
         lines: lineMetrics.lines,
@@ -180,19 +175,27 @@ export async function scanSourceTree(options: ScanOptions): Promise<ScanIndex> {
     languages,
   };
 
-  const tokenPrefix = new Float64Array(files.length + 1);
-  for (const [position, file] of files.entries()) {
-    tokenPrefix[position + 1] = tokenPrefix[position]! + file.tokens;
-  }
-
   return {
     meta,
     files,
-    tokenPrefix,
+    weightPrefix: buildWeightPrefixes(files),
     folders,
     folderByPath: new Map(folders.map((folder) => [folder.path, folder])),
     fileIndexByPath: new Map(files.map((file, index) => [file.path, index])),
   };
+}
+
+/** One running-total array per measure, so any measure costs the same to query. */
+function buildWeightPrefixes(files: readonly FileRow[]): Record<Measure, Float64Array> {
+  const prefixes = {} as Record<Measure, Float64Array>;
+  for (const measure of MEASURES) {
+    const running = new Float64Array(files.length + 1);
+    for (const [position, file] of files.entries()) {
+      running[position + 1] = running[position]! + file[measure];
+    }
+    prefixes[measure] = running;
+  }
+  return prefixes;
 }
 
 /** Derive the folder hierarchy, including folders that only contain other folders. */
