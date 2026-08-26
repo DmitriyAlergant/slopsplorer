@@ -42,7 +42,6 @@ export interface FileRow {
   /** Non-blank lines whose entire content is comment. */
   commentLines: number;
   blankLines: number;
-  bytes: number;
   functions: number;
   classes: number;
   branches: number;
@@ -52,7 +51,7 @@ export interface FileRow {
 
 /** One rendered row of the source tree, already filtered and aggregated. */
 export interface TreeRow {
-  /** Folder path; `""` is the scan root. */
+  /** Folder path. `""` is the scan root. */
   path: string;
   name: string;
   depth: number;
@@ -107,7 +106,6 @@ export interface DetailView {
   /** Columns the client should render, chosen so the last row is never ragged. */
   cardColumns: number;
   directFiles: FileRow[];
-  directFileCount: number;
 }
 
 export interface SummaryView {
@@ -155,7 +153,7 @@ export interface ViewRequest {
   /**
    * How many tiles fit across the panel at its current width.
    *
-   * The client measures this; the server decides the actual column count and
+   * The client measures this. The server decides the actual column count and
    * tile count from it, because only the server knows how many child folders
    * there are. Purely a layout concern, so it is not part of the linkable state.
    */

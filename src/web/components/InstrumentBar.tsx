@@ -49,7 +49,7 @@ export function InstrumentBar({ meta, rescanning, onRescan, onInstallSkill }: Pr
 
       {meta && meta.skippedLargeFiles > 0 ? (
         <p className="instrument__note">
-          {count(meta.skippedLargeFiles)} file{meta.skippedLargeFiles === 1 ? "" : "s"} skipped for exceeding the size ceiling.
+          {count(meta.skippedLargeFiles)} file{meta.skippedLargeFiles === 1 ? "" : "s"} skipped for exceeding the per-file size ceiling.
         </p>
       ) : null}
     </header>

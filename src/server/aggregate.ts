@@ -3,7 +3,7 @@ import type {
   DetailView, FileRow, Flavor, FlavorSlice, FolderCard, RankMetric,
   SummaryView, TreeRow, ViewRequest, ViewResponse,
 } from "../shared/api.ts";
-import { FLAVORS, RANK_METRICS } from "../shared/api.ts";
+import { FILE_KINDS, FLAVORS, RANK_METRICS } from "../shared/api.ts";
 import type { FolderNode, ScanIndex } from "../scanner/scan.ts";
 
 /** Bounds on the column count the client may ask for. */
@@ -140,14 +140,13 @@ interface Aggregation {
   direct: Map<string, Totals>;
 }
 
-function aggregate(index: ScanIndex, request: ViewRequest): Aggregation {
+function aggregate(index: ScanIndex, request: ViewRequest, exclusions: ExclusionState): Aggregation {
   const categoryVisible = computeCategoryVisibility(index, request);
-  const { excluded } = computeExclusions(index, request);
   const excludedDirectFiles = new Set(request.excludedDirectFiles);
 
   const included = new Uint8Array(index.files.length);
   for (const folder of index.folders) {
-    const folderExcluded = excluded.has(folder.path);
+    const folderExcluded = exclusions.excluded.has(folder.path);
     const directExcluded = folderExcluded || excludedDirectFiles.has(folder.path);
     if (directExcluded) continue;
     for (const fileIndex of folder.directFileIndices) {
@@ -369,7 +368,6 @@ function buildDetail(
     cards,
     cardColumns,
     directFiles,
-    directFileCount: directFiles.length,
   };
 }
 
@@ -386,16 +384,17 @@ function rankFiles(index: ScanIndex, request: ViewRequest, aggregation: Aggregat
   const metric: RankMetric = request.rank.metric;
   const folder = index.folderByPath.get(request.selected.path) ?? index.folderByPath.get("")!;
   const directFilesOnly = request.selected.rowKind === "files";
-  const positions = directFilesOnly
-    ? folder.directFileIndices
-    : Array.from({ length: folder.end - folder.start }, (_unused, offset) => folder.start + offset);
-
   const matches: FileRow[] = [];
-  for (const position of positions) {
-    if (aggregation.included[position] !== 1) continue;
+  const consider = (position: number): void => {
+    if (aggregation.included[position] !== 1) return;
     const file = index.files[position]!;
-    if (file.tokens < request.rank.minTokens) continue;
+    if (file.tokens < request.rank.minTokens) return;
     matches.push(file);
+  };
+  if (directFilesOnly) {
+    for (const position of folder.directFileIndices) consider(position);
+  } else {
+    for (let position = folder.start; position < folder.end; position += 1) consider(position);
   }
   matches.sort(
     (left, right) =>
@@ -431,11 +430,11 @@ function buildSummary(
       .filter((entry) => entry.totals.tokens > 0)
       .sort((left, right) => right.totals.tokens - left.totals.tokens);
     for (const entry of children) {
-      ribbon.push(buildFolderCard(entry.node.name, entry.node.path, entry.totals, baseline, unfilteredTokens(index, "")));
+      ribbon.push(buildFolderCard(entry.node.name, entry.node.path, entry.totals, baseline, baseline));
     }
     const rootDirect = aggregation.direct.get("") ?? emptyTotals();
     if (rootDirect.tokens > 0) {
-      ribbon.push(buildFolderCard("(files)", null, rootDirect, baseline, unfilteredTokens(index, "")));
+      ribbon.push(buildFolderCard("(files)", null, rootDirect, baseline, baseline));
     }
   }
   return {
@@ -458,8 +457,8 @@ function rankScopeLabel(index: ScanIndex, request: ViewRequest): string {
 
 /** Build every surface the client renders, for one scope request. */
 export function buildView(index: ScanIndex, request: ViewRequest): ViewResponse {
-  const aggregation = aggregate(index, request);
   const exclusions = computeExclusions(index, request);
+  const aggregation = aggregate(index, request, exclusions);
   const baseline = projectBaseline(index);
   const ranked = rankFiles(index, request, aggregation);
   return {
@@ -485,7 +484,7 @@ export function parseViewRequest(body: unknown): ViewRequest {
   const selected = (typeof raw["selected"] === "object" && raw["selected"] !== null ? raw["selected"] : {}) as Record<string, unknown>;
   const metric = RANK_METRICS.find((candidate) => candidate === rank["metric"]) ?? "tokens";
   return {
-    kinds: stringArray(raw["kinds"]) as ViewRequest["kinds"],
+    kinds: FILE_KINDS.filter((kind) => stringArray(raw["kinds"]).includes(kind)),
     showGenerated: raw["showGenerated"] === true,
     query: typeof raw["query"] === "string" ? raw["query"] : "",
     excludedFolders: stringArray(raw["excludedFolders"]),

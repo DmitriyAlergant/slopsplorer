@@ -23,14 +23,14 @@ Usage: slopsplorer [root] [options]
 
 Options:
   --host <address>        Interface to bind. Default ${DEFAULT_HOST}.
-  --port <number>         Port to bind. 0 picks a free port. Default ${DEFAULT_PORT}.
+  --port <number>         Port to bind. Use 0 for any free port. Default ${DEFAULT_PORT}.
   --dev                   Serve the client through Vite with hot reload on the same port.
-  --all-files             Ignore Git and .gitignore and scan everything the built-in exclusions allow.
+  --all-files             Ignore Git and .gitignore. Built-in directory exclusions still apply.
   --exclude <dir>         Skip a directory name anywhere in the tree. Repeatable.
   --tokenizer <name>      One of ${TOKENIZERS.join(", ")}. Default ${TOKENIZERS[0]}.
-  --max-file-bytes <n>    Skip files larger than this. Default ${DEFAULT_MAX_FILE_BYTES}.
-  --concurrency <n>       Files read in parallel. Default ${DEFAULT_CONCURRENCY} on this machine.
-  --open                  Open the URL in the default browser once the scan finishes.
+  --max-file-bytes <n>    Skip files larger than this. Default ${DEFAULT_MAX_FILE_BYTES} bytes.
+  --concurrency <n>       Number of files to read in parallel. Default ${DEFAULT_CONCURRENCY} on this machine.
+  --open                  Open the URL in the default browser when the scan finishes.
   --no-open               Do not open a browser. This is the default.
   -h, --help              Show this help.
   --version               Show the version.
@@ -56,7 +56,7 @@ function readPackageVersion(): string {
   return typeof version === "string" ? version : "0.0.0";
 }
 
-/** Best-effort browser launch; a headless or locked-down box must still serve. */
+/** Best-effort browser launch. A headless or locked-down box must still serve. */
 function openInBrowser(url: string): void {
   const [command, commandArguments]: [string, string[]] =
     process.platform === "darwin"

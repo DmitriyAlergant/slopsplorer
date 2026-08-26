@@ -19,7 +19,7 @@ const MAX_SOURCE_BYTES = 512 * 1024;
 
 const SKILL_NAME = "slopsplorer";
 
-/** Canonical, tool-agnostic skill location; Claude Code reads it through a symlink. */
+/** Canonical, tool-agnostic skill location. Claude Code reads it through a symlink. */
 const SKILL_TARGET_PATH = "~/.agents/skills/slopsplorer";
 const SKILL_LINK_PATH = "~/.claude/skills/slopsplorer";
 
@@ -45,7 +45,7 @@ const STATIC_CONTENT_TYPES: Readonly<Record<string, string>> = {
   ".txt": "text/plain; charset=utf-8",
 };
 
-/** A request the client got wrong; reported as 400 rather than logged as a fault. */
+/** A request the client got wrong. Reported as 400 rather than logged as a fault. */
 class BadRequestError extends Error {}
 
 export interface SlopsplorerServerOptions {
@@ -75,7 +75,7 @@ export interface SlopsplorerServer {
  * Locate the installed package root by walking up from this module.
  *
  * The compiled server lands in `dist/node/server/`, but tests import the source
- * from `src/server/`, so the depth differs; the nearest enclosing `package.json`
+ * from `src/server/`, so the depth differs. The nearest enclosing `package.json`
  * is the same directory either way.
  */
 export function resolvePackageRoot(): string {
@@ -182,7 +182,7 @@ async function sendStaticFile(response: ServerResponse, filePath: string): Promi
   response.writeHead(200, {
     "Content-Type": STATIC_CONTENT_TYPES[extension] ?? "application/octet-stream",
     "Content-Length": body.byteLength,
-    // Vite content-hashes everything under `assets/`; the entry document must not stick.
+    // Vite content-hashes everything under `assets/`. The entry document must not stick.
     "Cache-Control": isHashedAsset ? "public, max-age=31536000, immutable" : "no-store",
     "X-Content-Type-Options": "nosniff",
   });
@@ -193,7 +193,7 @@ async function sendStaticFile(response: ServerResponse, filePath: string): Promi
  * Create the local HTTP server.
  *
  * The index is held in a mutable closure variable because `POST /api/rescan`
- * replaces it in place; every later request then aggregates over the new scan.
+ * replaces it in place. Every later request then aggregates over the new scan.
  */
 export function createSlopsplorerServer(options: SlopsplorerServerOptions): SlopsplorerServer {
   const packageRoot = resolvePackageRoot();
@@ -204,7 +204,7 @@ export function createSlopsplorerServer(options: SlopsplorerServerOptions): Slop
   let rescanInFlight: Promise<ScanIndex> | null = null;
   let vite: ViteDevServer | null = null;
 
-  /** Coalesce concurrent rescans; a second click should join the running scan. */
+  /** Coalesce concurrent rescans. A second click joins the running scan. */
   function rescan(): Promise<ScanIndex> {
     if (rescanInFlight) return rescanInFlight;
     const running = scanSourceTree(options.scanOptions).then((next) => {
@@ -324,7 +324,7 @@ export function createSlopsplorerServer(options: SlopsplorerServerOptions): Slop
       await sendStaticFile(response, indexHtml);
       return;
     }
-    sendJson(response, 404, { error: "client assets are missing; run `npm run build:web`" });
+    sendJson(response, 404, { error: "client assets are missing. Run `npm run build:web`." });
   }
 
   const httpServer = createHttpServer((request, response) => {
@@ -338,8 +338,8 @@ export function createSlopsplorerServer(options: SlopsplorerServerOptions): Slop
         return;
       }
       if (error instanceof BadRequestError) {
-        // The rest of a rejected body may still be in flight; drop the connection
-        // after the reply rather than reading out bytes we already refused.
+        // The rest of a rejected body may still be in flight. Drop the connection
+        // after the reply rather than reading bytes we already refused.
         if (!request.readableEnded) response.setHeader("Connection", "close");
         sendJson(response, 400, { error: error.message });
         return;
@@ -354,11 +354,23 @@ export function createSlopsplorerServer(options: SlopsplorerServerOptions): Slop
     httpServer,
     async listen(): Promise<ServerAddress> {
       if (options.dev === true) {
-        // Vite is a devDependency, so this import must stay unreachable in a normal install.
+        // Vite and the React plugin are devDependencies, so these imports must
+        // stay unreachable in a normal install.
         const { createServer: createViteServer } = await import("vite");
+        const { default: reactPlugin } = await import("@vitejs/plugin-react");
+        // The config is inline rather than read from `vite.config.ts`. Vite
+        // bundles a TypeScript config into a temporary file beside it on every
+        // start, and that file lands inside the tree `node --watch` observes,
+        // so `npm run dev` would restart itself forever. The two settings that
+        // matter in middleware mode are repeated here. `vite.config.ts` still
+        // owns the build.
         vite = await createViteServer({
-          configFile: path.join(packageRoot, "vite.config.ts"),
-          server: { middlewareMode: true },
+          configFile: false,
+          root: path.join(packageRoot, "src", "web"),
+          plugins: [reactPlugin()],
+          // Handing Vite the HTTP server puts hot-reload messages on the port
+          // that is already open, instead of opening a second one.
+          server: { middlewareMode: true, hmr: { server: httpServer } },
           appType: "spa",
           // Vite's info output would repaint over the CLI summary and log every request.
           logLevel: "warn",
@@ -385,15 +397,18 @@ export function createSlopsplorerServer(options: SlopsplorerServerOptions): Slop
       return address;
     },
     async close(): Promise<void> {
-      if (vite) {
-        await vite.close();
-        vite = null;
-      }
+      // The listening socket goes first, so the port is free before the slower
+      // Vite teardown runs. `npm run dev` restarts within milliseconds of the
+      // old process being signalled, and the new one has to be able to bind.
       await new Promise<void>((resolve) => {
         httpServer.close(() => resolve());
         // Keep-alive sockets would otherwise hold the close open until they time out.
         httpServer.closeAllConnections();
       });
+      if (vite) {
+        await vite.close();
+        vite = null;
+      }
     },
   };
 }

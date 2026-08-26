@@ -76,7 +76,3 @@ export function selectionKey(request: ViewRequest): string {
   return `${request.selected.rowKind}:${request.selected.path}`;
 }
 
-/** Two requests describe the same view. */
-export function sameRequest(left: ViewRequest, right: ViewRequest): boolean {
-  return writeRequest(left) === writeRequest(right);
-}

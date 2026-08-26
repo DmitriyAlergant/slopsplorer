@@ -49,7 +49,7 @@ export function splitLines(text: string): string[] {
  */
 export function measureLines(text: string, commentRanges: readonly CommentRange[]): LineMetrics {
   const lines = splitLines(text);
-  // Int32Array cannot hold Number.MAX_SAFE_INTEGER; use the largest int32 as
+  // Int32Array cannot hold Number.MAX_SAFE_INTEGER, so the largest int32 is
   // the "no comment starts on this line yet" sentinel.
   const NO_COMMENT = 0x7fffffff;
   const spanStart = new Int32Array(lines.length).fill(NO_COMMENT);

@@ -59,7 +59,7 @@ export function SkillInstallDialog({ open, onClose }: Props): React.JSX.Element 
         {install ? (
           <>
             <p>
-              This teaches your agent when to reach for Slopsplorer and how to read its output.
+              This teaches your agent when to use Slopsplorer and how to read its output.
               Run the command below in a terminal. Nothing is installed until you do.
             </p>
             <pre className="command"><code>{install.command}</code></pre>

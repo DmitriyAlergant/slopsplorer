@@ -42,9 +42,10 @@ export function FolderDetail({ detail, onSelectFolder, onOpenSource, onCapacityC
     onCapacityChange(columns);
   }, [columns, onCapacityChange]);
 
-  const commentShare = detail && detail.lines > 0 ? detail.commentLines / detail.lines : 0;
-
   if (!detail) return <section ref={panelRef} className="panel detail" aria-label="Folder detail" />;
+
+  const commentShare = detail.lines > 0 ? detail.commentLines / detail.lines : 0;
+  const directFileCount = detail.directFiles.length;
 
   return (
     <section ref={panelRef} className="panel detail" aria-label="Folder detail">
@@ -57,7 +58,7 @@ export function FolderDetail({ detail, onSelectFolder, onOpenSource, onCapacityC
             {percent(commentShare)} comment
           </p>
         </div>
-        <p className="detail__share" title="Share of the project token baseline, excluding generated files">
+        <p className="detail__share" title="Share of the whole scanned tree, measured before any filter">
           {percent(detail.shareOfProject)}
         </p>
       </header>
@@ -86,7 +87,7 @@ export function FolderDetail({ detail, onSelectFolder, onOpenSource, onCapacityC
       ) : null}
 
       <p className="detail__caption">
-        {count(detail.directFileCount)} file{detail.directFileCount === 1 ? "" : "s"} directly in this folder
+        {count(directFileCount)} file{directFileCount === 1 ? "" : "s"} directly in this folder
       </p>
       <FileTable
         files={detail.directFiles}

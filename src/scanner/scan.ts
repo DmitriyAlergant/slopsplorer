@@ -47,7 +47,7 @@ export interface ScanOptions {
   allFiles: boolean;
   exclude: readonly string[];
   maxFileBytes: number;
-  /** Files read concurrently. Reading is IO-bound; measuring is not. */
+  /** Files read concurrently. Reading is IO-bound. Measuring is not. */
   concurrency: number;
 }
 
@@ -95,53 +95,57 @@ export async function scanSourceTree(options: ScanOptions): Promise<ScanIndex> {
   const analyzer = new StructureAnalyzer();
   let skippedLargeFiles = 0;
 
-  const measured = await mapWithConcurrency(relativePaths, options.concurrency, async (relativePath) => {
-    const absolutePath = path.join(options.root, relativePath);
-    let text: string;
-    try {
-      const info = await stat(absolutePath);
-      if (!info.isFile()) return null;
-      if (info.size > options.maxFileBytes) {
-        skippedLargeFiles += 1;
+  let measured: (FileRow | null)[];
+  let languages: string[];
+  try {
+    measured = await mapWithConcurrency(relativePaths, options.concurrency, async (relativePath) => {
+      const absolutePath = path.join(options.root, relativePath);
+      let text: string;
+      try {
+        const info = await stat(absolutePath);
+        if (!info.isFile()) return null;
+        if (info.size > options.maxFileBytes) {
+          skippedLargeFiles += 1;
+          return null;
+        }
+        text = await readFile(absolutePath, "utf8");
+      } catch {
+        // The file disappeared or is unreadable between listing and measuring.
         return null;
       }
-      text = await readFile(absolutePath, "utf8");
-    } catch {
-      // The file disappeared or is unreadable between listing and measuring.
-      return null;
-    }
 
-    const extension = path.posix.extname(relativePath).toLowerCase();
-    const grammar = grammarForExtension(extension);
-    const structure = await analyzer.analyze(extension, text);
-    // A grammar gives exact comment spans; anything else falls back to
-    // leading-marker detection, which reports zero for formats with no
-    // comment syntax rather than guessing.
-    const lineMetrics = grammar
-      ? measureLines(text, structure.commentRanges)
-      : measureLinesByPrefix(text, extension);
-    const row: FileRow = {
-      path: relativePath,
-      name: path.posix.basename(relativePath),
-      kind: classifyFile(relativePath),
-      generated: isGenerated(relativePath),
-      tokens: countTokens(text),
-      lines: lineMetrics.lines,
-      codeLines: lineMetrics.codeLines,
-      commentLines: lineMetrics.commentLines,
-      blankLines: lineMetrics.blankLines,
-      bytes: Buffer.byteLength(text),
-      functions: structure.functions,
-      classes: structure.classes,
-      branches: structure.branches,
-      language: grammar,
-    };
-    return row;
-  });
+      const extension = path.posix.extname(relativePath).toLowerCase();
+      const grammar = grammarForExtension(extension);
+      const structure = await analyzer.analyze(extension, text);
+      // A grammar gives exact comment spans. Anything else uses leading-marker
+      // detection, which reports zero for formats with no comment syntax
+      // rather than guessing.
+      const lineMetrics = grammar
+        ? measureLines(text, structure.commentRanges)
+        : measureLinesByPrefix(text, extension);
+      const row: FileRow = {
+        path: relativePath,
+        name: path.posix.basename(relativePath),
+        kind: classifyFile(relativePath),
+        generated: isGenerated(relativePath),
+        tokens: countTokens(text),
+        lines: lineMetrics.lines,
+        codeLines: lineMetrics.codeLines,
+        commentLines: lineMetrics.commentLines,
+        blankLines: lineMetrics.blankLines,
+        functions: structure.functions,
+        classes: structure.classes,
+        branches: structure.branches,
+        language: grammar,
+      };
+      return row;
+    });
+    languages = analyzer.usedGrammars;
+  } finally {
+    analyzer.dispose();
+  }
 
   const files = measured.filter((row): row is FileRow => row !== null);
-  const languages = analyzer.usedGrammars;
-  analyzer.dispose();
 
   const folders = buildFolders(files, path.basename(path.resolve(options.root)) || options.root);
 

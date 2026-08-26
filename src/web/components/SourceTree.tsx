@@ -42,16 +42,17 @@ function ScopeCheckbox({ row, onChange }: { row: TreeRow; onChange: () => void }
 }
 
 /** The folder hierarchy, with each row's bar showing its share of its parent. */
-export function SourceTree(props: Props): React.JSX.Element {
-  const { rows, totalTokens, onSelect, onToggleExpanded, onToggleFolder, onToggleDirectFiles } = props;
+export function SourceTree({
+  rows, totalTokens, onSelect, onToggleExpanded, onToggleFolder, onToggleDirectFiles, onExpandAll, onCollapseAll,
+}: Props): React.JSX.Element {
   return (
     <section className="panel tree" aria-label="Source tree">
       <div className="panel__head">
         <h2>Source tree</h2>
         <div className="panel__tools">
           <span className="muted mono">{count(totalTokens)} tok</span>
-          <button type="button" className="button button--tiny" onClick={props.onCollapseAll}>Collapse</button>
-          <button type="button" className="button button--tiny" onClick={props.onExpandAll}>Expand</button>
+          <button type="button" className="button button--tiny" onClick={onCollapseAll}>Collapse</button>
+          <button type="button" className="button button--tiny" onClick={onExpandAll}>Expand</button>
         </div>
       </div>
 

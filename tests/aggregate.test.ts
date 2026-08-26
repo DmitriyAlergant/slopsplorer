@@ -281,6 +281,10 @@ describe("request parsing", () => {
     expect(parseViewRequest({ rank: { metric: "commentLines" } }).rank.metric).toBe("commentLines");
   });
 
+  it("keeps only known file kinds, in the canonical order", () => {
+    expect(parseViewRequest({ kinds: ["other", "code", "__proto__", "nonsense"] }).kinds).toEqual(["code", "other"]);
+  });
+
   it("discards list fields that are not lists of strings rather than trusting the shape", () => {
     const parsed = parseViewRequest({
       kinds: "code",

@@ -131,7 +131,22 @@ const RULES: readonly LanguageRule[] = [
   },
 ];
 
-const RULES_BY_GRAMMAR = new Map(RULES.map((rule) => [rule.grammar, rule]));
+/** A rule with its node-type lists turned into sets, built once per process. */
+interface CompiledRule {
+  functions: ReadonlySet<string>;
+  classes: ReadonlySet<string>;
+  branches: ReadonlySet<string>;
+  docstrings: boolean;
+}
+
+const RULES_BY_GRAMMAR: ReadonlyMap<string, CompiledRule> = new Map(
+  RULES.map((rule) => [rule.grammar, {
+    functions: new Set(rule.functions),
+    classes: new Set(rule.classes),
+    branches: new Set(rule.branches),
+    docstrings: rule.docstrings === true,
+  }]),
+);
 
 /** File extension to grammar name. Extensions absent here get no structure metrics. */
 const GRAMMAR_BY_EXTENSION: ReadonlyMap<string, string> = new Map([
@@ -186,7 +201,7 @@ export class StructureAnalyzer {
       parser.setLanguage(language);
     } catch {
       // A missing or ABI-incompatible grammar degrades to zero counts rather
-      // than failing the scan; the file still contributes tokens and lines.
+      // than failing the scan. The file still contributes tokens and lines.
       parser = null;
     }
     this.parsers.set(grammar, parser);
@@ -213,20 +228,17 @@ export class StructureAnalyzer {
     if (!tree) return emptyStructure();
     try {
       const result = emptyStructure();
-      const functions = new Set(rule.functions);
-      const classes = new Set(rule.classes);
-      const branches = new Set(rule.branches);
       const cursor = tree.walk();
       try {
         let descend = true;
         for (;;) {
           if (descend) {
             const type = cursor.nodeType;
-            if (functions.has(type)) result.functions += 1;
-            else if (classes.has(type)) result.classes += 1;
-            else if (branches.has(type)) result.branches += 1;
+            if (rule.functions.has(type)) result.functions += 1;
+            else if (rule.classes.has(type)) result.classes += 1;
+            else if (rule.branches.has(type)) result.branches += 1;
 
-            if (type.includes("comment") || (rule.docstrings === true && isDocstring(cursor.currentNode))) {
+            if (type.includes("comment") || (rule.docstrings && isDocstring(cursor.currentNode))) {
               const start = cursor.startPosition;
               const end = cursor.endPosition;
               result.commentRanges.push({

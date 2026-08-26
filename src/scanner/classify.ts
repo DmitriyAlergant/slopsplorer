@@ -57,6 +57,14 @@ const LANGUAGE_CODES: ReadonlySet<string> = new Set([
   "te", "th", "tr", "uk", "ur", "uz", "vi", "zh",
 ]);
 
+/** Whether any member of `candidates` is in `known`. */
+function containsAny(candidates: Iterable<string>, known: ReadonlySet<string>): boolean {
+  for (const candidate of candidates) {
+    if (known.has(candidate)) return true;
+  }
+  return false;
+}
+
 /** `en`, `de-DE`, `pt_BR` - a language code with an optional region suffix. */
 const LOCALE_STEM = /^([a-z]{2,3})(?:[-_][a-z]{2,4})?$/;
 
@@ -66,7 +74,7 @@ function isLocaleStem(stem: string): boolean {
 }
 
 function isTestPath(name: string, directories: ReadonlySet<string>): boolean {
-  if ([...directories].some((directory) => TEST_DIRECTORIES.has(directory))) return true;
+  if (containsAny(directories, TEST_DIRECTORIES)) return true;
   if (name.startsWith("test_") || name.startsWith("spec_")) return true;
   if (/_(test|spec)\.[a-z]+$/.test(name)) return true;
   return name.includes(".test.") || name.includes(".spec.");
@@ -86,7 +94,7 @@ export function classifyFile(relativePath: string): FileKind {
   const directories = new Set(path.posix.dirname(relativePath).toLowerCase().split("/").filter((part) => part && part !== "."));
 
   if (extension === ".po" || extension === ".pot") return "i18n";
-  if ([...directories].some((directory) => I18N_DIRECTORIES.has(directory))) return "i18n";
+  if (containsAny(directories, I18N_DIRECTORIES)) return "i18n";
   if ((extension === ".json" || extension === ".yaml" || extension === ".yml") && isLocaleStem(stem)) return "i18n";
   if (isTestPath(name, directories)) return "test";
   if (DATA_EXTENSIONS.has(extension)) return "data";
@@ -113,7 +121,7 @@ const GENERATED_NAMES: ReadonlySet<string> = new Set([
 export function isGenerated(relativePath: string): boolean {
   const name = path.posix.basename(relativePath).toLowerCase();
   const directories = path.posix.dirname(relativePath).toLowerCase().split("/").filter((part) => part && part !== ".");
-  if (directories.some((directory) => GENERATED_DIRECTORIES.has(directory))) return true;
+  if (containsAny(directories, GENERATED_DIRECTORIES)) return true;
   if (GENERATED_NAMES.has(name)) return true;
   return GENERATED_SUFFIXES.some((suffix) => name.endsWith(suffix));
 }
@@ -123,5 +131,5 @@ export function isSourceFile(relativePath: string): boolean {
   const extension = path.posix.extname(relativePath).toLowerCase();
   if (!SOURCE_EXTENSIONS.has(extension)) return false;
   const directories = path.posix.dirname(relativePath).split("/").filter((part) => part && part !== ".");
-  return !directories.some((directory) => EXCLUDED_DIRECTORIES.has(directory));
+  return !containsAny(directories, EXCLUDED_DIRECTORIES);
 }
