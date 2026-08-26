@@ -158,6 +158,8 @@ export interface ViewResponse {
   ranked: FileRow[];
   /** Total matches before `rank.limit` was applied. */
   rankedTotal: number;
+  /** The subtree the ranking covers, for labelling the panel. */
+  rankScope: string;
   /** Every folder the current filters leave visible, so the client can expand all. */
   expandableFolderPaths: string[];
 }

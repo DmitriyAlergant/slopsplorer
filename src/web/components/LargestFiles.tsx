@@ -5,6 +5,8 @@ import { FileTable } from "./FileTable.tsx";
 interface Props {
   files: readonly FileRow[];
   total: number;
+  /** The folder the ranking covers, shown so the panel cannot mislead. */
+  scope: string;
   rank: ViewRequest["rank"];
   onRankChange: (change: Partial<ViewRequest["rank"]>) => void;
   onOpenSource: (path: string) => void;
@@ -21,12 +23,12 @@ const METRIC_LABELS: ReadonlyArray<{ metric: RankMetric; label: string }> = [
 ];
 
 /** The ranked file list for whatever scope the tree currently describes. */
-export function LargestFiles({ files, total, rank, onRankChange, onOpenSource }: Props): React.JSX.Element {
+export function LargestFiles({ files, total, scope, rank, onRankChange, onOpenSource }: Props): React.JSX.Element {
   return (
     <section className="panel ranking" aria-label="Heaviest files in scope">
       <div className="panel__head">
         <div>
-          <p className="eyebrow">Within selected scope</p>
+          <p className="eyebrow">Within {scope || "the selected folder"}</p>
           <h2>Heaviest files</h2>
         </div>
         <div className="ranking__controls">
@@ -55,7 +57,7 @@ export function LargestFiles({ files, total, rank, onRankChange, onOpenSource }:
       </div>
 
       <p className="detail__caption">
-        Showing {count(files.length)} of {count(total)} matching files
+        Showing {count(files.length)} of {count(total)} matching files in this folder
       </p>
       <FileTable
         files={files}

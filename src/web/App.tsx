@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { FileKind, RankMetric, TreeRow, ViewRequest, ViewResponse } from "../shared/api.ts";
-import { FILE_KINDS } from "../shared/api.ts";
+import type { FileKind, TreeRow, ViewRequest, ViewResponse } from "../shared/api.ts";
 import { fetchView, rescan } from "./api.ts";
+import { readRequest, selectionKey, writeRequest } from "./urlState.ts";
 import { FilterBar } from "./components/FilterBar.tsx";
 import { FolderDetail } from "./components/FolderDetail.tsx";
 import { InstrumentBar } from "./components/InstrumentBar.tsx";
@@ -11,22 +11,11 @@ import { SkillInstallDialog } from "./components/SkillInstallDialog.tsx";
 import { SourceDialog } from "./components/SourceDialog.tsx";
 import { SourceTree } from "./components/SourceTree.tsx";
 
-const INITIAL_REQUEST: ViewRequest = {
-  kinds: [...FILE_KINDS],
-  showGenerated: false,
-  query: "",
-  excludedFolders: [],
-  excludedDirectFiles: [],
-  expanded: [""],
-  selected: { rowKind: "folder", path: "" },
-  rank: { metric: "tokens", minTokens: 0, limit: 100 },
-};
-
 /** Long enough to coalesce a burst of typing, short enough to feel immediate. */
 const REQUEST_DEBOUNCE_MS = 80;
 
 export function App(): React.JSX.Element {
-  const [request, setRequest] = useState<ViewRequest>(INITIAL_REQUEST);
+  const [request, setRequest] = useState<ViewRequest>(() => readRequest(window.location.search));
   const [view, setView] = useState<ViewResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -35,6 +24,37 @@ export function App(): React.JSX.Element {
   const [skillOpen, setSkillOpen] = useState(false);
   const requestRef = useRef(request);
   requestRef.current = request;
+  const lastSelectionRef = useRef(selectionKey(request));
+
+  /**
+   * Mirror the view state into the URL so it can be linked and revisited.
+   *
+   * Changing the selected folder pushes a history entry, so Back walks the
+   * folders visited. Filters, search, and ranking replace it instead, which
+   * keeps a burst of typing from filling the history stack.
+   */
+  useEffect(() => {
+    const search = writeRequest(request);
+    if (search === window.location.search.replace(/^\?/, "")) {
+      lastSelectionRef.current = selectionKey(request);
+      return;
+    }
+    const navigated = selectionKey(request) !== lastSelectionRef.current;
+    lastSelectionRef.current = selectionKey(request);
+    const url = `${window.location.pathname}${search ? `?${search}` : ""}`;
+    if (navigated) window.history.pushState(null, "", url);
+    else window.history.replaceState(null, "", url);
+  }, [request]);
+
+  useEffect(() => {
+    const restore = (): void => {
+      const restored = readRequest(window.location.search);
+      lastSelectionRef.current = selectionKey(restored);
+      setRequest(restored);
+    };
+    window.addEventListener("popstate", restore);
+    return () => window.removeEventListener("popstate", restore);
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -200,6 +220,7 @@ export function App(): React.JSX.Element {
       <LargestFiles
         files={view?.ranked ?? []}
         total={view?.rankedTotal ?? 0}
+        scope={view?.rankScope ?? ""}
         rank={request.rank}
         onRankChange={setRank}
         onOpenSource={setSourcePath}
@@ -210,5 +231,3 @@ export function App(): React.JSX.Element {
     </main>
   );
 }
-
-export type { RankMetric };

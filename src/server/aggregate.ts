@@ -337,11 +337,27 @@ function buildDetail(
   };
 }
 
+/**
+ * Rank the heaviest files inside the selected folder.
+ *
+ * The ranking follows the tree selection, not just the visibility switches, so
+ * selecting a folder narrows the list to that subtree. Selecting the `(files)`
+ * row narrows it further to the files sitting directly in the folder. Because
+ * descendants are contiguous in the path-sorted array, the subtree is a range
+ * rather than a scan of the project.
+ */
 function rankFiles(index: ScanIndex, request: ViewRequest, aggregation: Aggregation): { rows: FileRow[]; total: number } {
   const metric: RankMetric = request.rank.metric;
+  const folder = index.folderByPath.get(request.selected.path) ?? index.folderByPath.get("")!;
+  const directFilesOnly = request.selected.rowKind === "files";
+  const positions = directFilesOnly
+    ? folder.directFileIndices
+    : Array.from({ length: folder.end - folder.start }, (_unused, offset) => folder.start + offset);
+
   const matches: FileRow[] = [];
-  for (const [position, file] of index.files.entries()) {
+  for (const position of positions) {
     if (aggregation.included[position] !== 1) continue;
+    const file = index.files[position]!;
     if (file.tokens < request.rank.minTokens) continue;
     matches.push(file);
   }
@@ -383,6 +399,13 @@ function buildSummary(index: ScanIndex, aggregation: Aggregation, baseline: numb
   };
 }
 
+/** Human-readable name of the subtree the ranking covers. */
+function rankScopeLabel(index: ScanIndex, request: ViewRequest): string {
+  const folder = index.folderByPath.get(request.selected.path) ?? index.folderByPath.get("")!;
+  const base = folder.path || index.meta.rootName;
+  return request.selected.rowKind === "files" ? `${base}/(files)` : base;
+}
+
 /** Build every surface the client renders, for one scope request. */
 export function buildView(index: ScanIndex, request: ViewRequest): ViewResponse {
   const aggregation = aggregate(index, request);
@@ -396,6 +419,7 @@ export function buildView(index: ScanIndex, request: ViewRequest): ViewResponse 
     detail: buildDetail(index, request, aggregation, baseline),
     ranked: ranked.rows,
     rankedTotal: ranked.total,
+    rankScope: rankScopeLabel(index, request),
     expandableFolderPaths: index.folders
       .filter((folder) => (aggregation.categoryCount.get(folder.path) ?? 0) > 0)
       .map((folder) => folder.path),

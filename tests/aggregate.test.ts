@@ -371,3 +371,33 @@ describe("bar normalisation", () => {
     expect(deepAfter!.shareOfParent).toBeCloseTo(deepBefore!.shareOfParent, 10);
   });
 });
+
+describe("ranking scope", () => {
+  it("ranks only files inside the selected folder, so the panel label is truthful", () => {
+    const wholeTree = buildView(index, request());
+    const justSrc = buildView(index, request({ selected: { rowKind: "folder", path: "src" } }));
+
+    expect(wholeTree.ranked.some((file) => file.path.startsWith("tests/"))).toBe(true);
+    expect(justSrc.ranked.length).toBeGreaterThan(0);
+    expect(justSrc.ranked.every((file) => file.path.startsWith("src/"))).toBe(true);
+    expect(justSrc.rankedTotal).toBeLessThan(wholeTree.rankedTotal);
+    expect(justSrc.rankScope).toBe("src");
+  });
+
+  it("narrows to a folder's own files when the (files) row is selected", () => {
+    const subtree = buildView(index, request({ selected: { rowKind: "folder", path: "src" } }));
+    const directOnly = buildView(index, request({ selected: { rowKind: "files", path: "src" } }));
+
+    expect(subtree.ranked.some((file) => file.path.startsWith("src/deep/"))).toBe(true);
+    expect(directOnly.ranked.every((file) => file.path.lastIndexOf("/") === "src".length)).toBe(true);
+    expect(directOnly.rankScope).toBe("src/(files)");
+  });
+
+  it("still honours the visibility switches inside the selected folder", () => {
+    const all = buildView(index, request({ selected: { rowKind: "folder", path: "" } }));
+    const noTests = buildView(index, request({ selected: { rowKind: "folder", path: "" }, kinds: ["code"] }));
+
+    expect(all.ranked.some((file) => file.path.startsWith("tests/"))).toBe(true);
+    expect(noTests.ranked.some((file) => file.path.startsWith("tests/"))).toBe(false);
+  });
+});
