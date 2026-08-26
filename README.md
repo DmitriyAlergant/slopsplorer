@@ -14,7 +14,7 @@ You then narrow the tree until the total matches what you can hold in a review, 
 npx slopsplorer /path/to/repository
 ```
 
-Then open <http://127.0.0.1:8765>.
+Slopsplorer opens <http://127.0.0.1:8765> in your default browser when the scan finishes.
 Install it with `npm install -g slopsplorer` if you use it often.
 
 Token weight is a proxy for review surface and agent context cost.
@@ -64,7 +64,7 @@ slopsplorer <path>              # defaults to the current folder
   --all-files                   # walk the filesystem and ignore .gitignore
   --exclude vendor              # exclude a directory name, repeatable
   --tokenizer o200k_base        # default cl100k_base
-  --open                        # open a browser on start
+  --no-open                     # do not open a browser on start
   --dev                         # Vite hot reload, for work on Slopsplorer itself
 ```
 

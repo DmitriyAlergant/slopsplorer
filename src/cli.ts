@@ -30,8 +30,8 @@ Options:
   --tokenizer <name>      One of ${TOKENIZERS.join(", ")}. Default ${TOKENIZERS[0]}.
   --max-file-bytes <n>    Skip files larger than this. Default ${DEFAULT_MAX_FILE_BYTES} bytes.
   --concurrency <n>       Number of files to read in parallel. Default ${DEFAULT_CONCURRENCY} on this machine.
-  --open                  Open the URL in the default browser when the scan finishes.
-  --no-open               Do not open a browser. This is the default.
+  --open                  Open the URL in the default browser when the scan finishes. This is the default outside --dev.
+  --no-open               Do not open a browser.
   -h, --help              Show this help.
   --version               Show the version.
 `;
@@ -208,7 +208,8 @@ async function main(): Promise<void> {
   const address = await server.listen();
   process.stderr.write(`\n  slopsplorer ready on ${address.url}\n\n`);
 
-  if (values.open === true && values["no-open"] !== true) openInBrowser(address.url);
+  const shouldOpenBrowser = values["no-open"] !== true && (values.open === true || values.dev !== true);
+  if (shouldOpenBrowser) openInBrowser(address.url);
 
   let shuttingDown = false;
   const shutDown = (): void => {
