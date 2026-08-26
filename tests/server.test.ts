@@ -1,4 +1,5 @@
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { connect, type Socket } from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -13,6 +14,39 @@ let initialRoot: string;
 let nextRoot: string;
 let server: SlopsplorerServer;
 let serverUrl: string;
+
+/** Open the same upgraded socket Vite's browser client holds, without a WebSocket dependency. */
+function openHotReloadSocket(host: string, port: number): Promise<Socket> {
+  return new Promise((resolve, reject) => {
+    const socket = connect(port, host);
+    const fail = (error: Error): void => {
+      socket.destroy();
+      reject(error);
+    };
+    socket.once("error", fail);
+    socket.once("connect", () => {
+      socket.write([
+        "GET / HTTP/1.1",
+        `Host: ${host}:${port}`,
+        "Upgrade: websocket",
+        "Connection: Upgrade",
+        "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==",
+        "Sec-WebSocket-Version: 13",
+        "Sec-WebSocket-Protocol: vite-hmr",
+        "",
+        "",
+      ].join("\r\n"));
+    });
+    socket.once("data", (data) => {
+      socket.removeListener("error", fail);
+      if (!data.toString("utf8").startsWith("HTTP/1.1 101")) {
+        fail(new Error("hot-reload socket upgrade was rejected"));
+        return;
+      }
+      resolve(socket);
+    });
+  });
+}
 
 beforeAll(async () => {
   fixtureRoot = await mkdtemp(path.join(os.tmpdir(), "slopsplorer-server-"));
@@ -100,11 +134,7 @@ describe("development server shutdown", () => {
       dev: true,
     });
     const address = await developmentServer.listen();
-    const socket = new WebSocket(address.url.replace(/^http/, "ws"), "vite-hmr");
-    await new Promise<void>((resolve, reject) => {
-      socket.addEventListener("open", () => resolve(), { once: true });
-      socket.addEventListener("error", () => reject(new Error("hot-reload socket did not open")), { once: true });
-    });
+    const socket = await openHotReloadSocket(address.host, address.port);
 
     let timedOut = false;
     let timeout: ReturnType<typeof setTimeout> | undefined;
@@ -114,13 +144,14 @@ describe("development server shutdown", () => {
       new Promise<void>((resolve) => {
         timeout = setTimeout(() => {
           timedOut = true;
-          socket.close();
+          socket.destroy();
           resolve();
         }, 2_000);
       }),
     ]);
     if (timeout !== undefined) clearTimeout(timeout);
     await closing;
+    socket.destroy();
 
     expect(timedOut).toBe(false);
   });
