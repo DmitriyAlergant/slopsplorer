@@ -12,7 +12,9 @@
     "rootDir": "src",
     "outDir": "dist/node",
     "declaration": false,
-    "sourceMap": true,
+    // No source maps: the published package ships `dist` without `src`, so a
+    // map would point at files that are not there.
+    "sourceMap": false,
     "allowImportingTsExtensions": true,
     "rewriteRelativeImportExtensions": true
   },

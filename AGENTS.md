@@ -97,6 +97,26 @@ Pin every dependency to an exact version that is at least four days old.
 Check the registry rather than writing a version from memory.
 Do not bump a version without a reason.
 
+## Releasing
+
+A release is one tag.
+`.github/workflows/release.yml` runs the checks, publishes to npm, and opens the GitHub release.
+
+1. Bump `version` in `package.json` and commit it.
+2. `git tag vX.Y.Z && git push origin main --follow-tags`.
+
+The workflow refuses to publish when the tag and the manifest version disagree, so step 1 cannot be skipped.
+
+Authentication is npm trusted publishing over OIDC.
+No npm token exists in this repository, and none should ever be added.
+The registry mints a short-lived token for this one workflow, and it signs a provenance attestation that ties the tarball to the commit that produced it.
+The trusted publisher is configured once, in the package's npm access settings, against this repository and `release.yml`.
+
+Both workflows are written to survive a hostile pull request.
+CI triggers on `pull_request`, never `pull_request_target`, so a fork's code runs with a read-only token and no secrets.
+The release workflow triggers only on a version tag, which only an account with write access can push.
+Every action is pinned to a commit rather than to a movable tag, and `npm ci --ignore-scripts` keeps a dependency from running code during install.
+
 ## Known limits
 
 Scanning is single-threaded.

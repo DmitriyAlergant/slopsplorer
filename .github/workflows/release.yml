@@ -1,0 +1,102 @@
+# Publishes a tagged commit to npm, then opens the matching GitHub release.
+#
+# The trigger is a version tag, and only an account with write access to this
+# repository can push one. There is deliberately no `pull_request` or
+# `pull_request_target` trigger here: code from a fork must never reach a job
+# that can publish.
+#
+# Authentication uses npm trusted publishing (OIDC). No npm token is stored in
+# this repository, so there is no long-lived credential for a workflow to leak.
+# The registry mints a short-lived token for this workflow alone, and it signs a
+# provenance attestation that ties the published tarball to this commit.
+#
+# Configure the trusted publisher once, at
+# https://www.npmjs.com/package/slopsplorer/access:
+#   Publisher      GitHub Actions
+#   Organization   DmitriyAlergant
+#   Repository     slopsplorer
+#   Workflow       release.yml
+#
+# The two jobs hold different permissions on purpose. `publish` can mint an OIDC
+# token but cannot write to the repository. `release` can write a release but
+# has no OIDC token to publish with.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      # Actions are pinned to a commit rather than to a tag. A tag can be moved
+      # to point at different code; a commit cannot.
+      - name: Check out the tagged commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Node 24 ships an npm new enough for trusted publishing. The guard below
+      # turns a silent fallback to token auth into a loud failure.
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          cache: npm
+
+      # Compared in Node rather than with a helper package, so the release path
+      # downloads nothing that is not already a dependency.
+      - name: Require an npm that supports trusted publishing
+        run: |
+          node -e '
+            const required = [11, 5, 1];
+            const found = process.argv[1].split(".").map(Number);
+            const first = required.findIndex((part, index) => (found[index] ?? 0) !== part);
+            if (first !== -1 && (found[first] ?? 0) < required[first]) {
+              console.error(`npm ${process.argv[1]} is older than 11.5.1`);
+              process.exit(1);
+            }
+          ' "$(npm --version)"
+
+      - name: Require the tag to match the manifest version
+        if: github.ref_type == 'tag'
+        run: |
+          manifest="$(node -p 'require("./package.json").version')"
+          tag="${GITHUB_REF_NAME#v}"
+          test "$manifest" = "$tag" \
+            || { echo "tag v$tag does not match package.json $manifest"; exit 1; }
+
+      - run: npm ci --ignore-scripts
+      - run: npm run typecheck
+      - run: npm test
+
+      # `prepack` builds the client and the server, so the tarball is produced
+      # from this commit rather than from anything left in the working tree.
+      # Trusted publishing adds the provenance attestation on its own, so
+      # `--provenance` is not passed here.
+      - name: Publish to npm
+        run: npm publish
+
+  release:
+    needs: publish
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out the tagged commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Open the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" --generate-notes --verify-tag

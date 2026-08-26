@@ -11,6 +11,7 @@ npx slopsplorer /path/to/repository
 ```
 
 Then open <http://127.0.0.1:8765>.
+Install it with `npm install -g slopsplorer` if you use it often.
 
 Token weight is a proxy for review surface and agent context cost.
 It is not a measure of cyclomatic complexity, and it is not a quality score.
@@ -93,6 +94,8 @@ npm test
 
 `npm run dev` needs Node 22.18 or later, because it runs the TypeScript sources directly.
 A published install runs the compiled output and needs only Node 20.19.
+
+[AGENTS.md](AGENTS.md#releasing) also describes how a release reaches npm.
 
 ## License
 
