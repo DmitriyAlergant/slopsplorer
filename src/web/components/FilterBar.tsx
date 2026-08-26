@@ -1,4 +1,5 @@
-import type { FileKind, ViewRequest } from "../../shared/api.ts";
+import { FILE_KINDS, type FileKind, type ViewRequest } from "../../shared/api.ts";
+import { FILE_KIND_DETAILS } from "../fileKinds.ts";
 
 interface Props {
   request: ViewRequest;
@@ -6,15 +7,6 @@ interface Props {
   onToggleGenerated: () => void;
   onQueryChange: (query: string) => void;
 }
-
-const KIND_LABELS: ReadonlyArray<{ kind: FileKind; label: string; description: string }> = [
-  { kind: "code", label: "Code", description: "Source and application code." },
-  { kind: "test", label: "Tests", description: "Files in test folders or with common test naming patterns." },
-  { kind: "text", label: "Docs", description: "Markdown and other prose documentation." },
-  { kind: "i18n", label: "i18n", description: "Translation catalogues and locale files." },
-  { kind: "data", label: "Data", description: "Structured data and configuration formats such as JSON, YAML, TOML, XML, and CSV." },
-  { kind: "other", label: "Other", description: "Scannable text files that do not fit another flavor, such as HTML." },
-];
 
 const GENERATED_DESCRIPTION = "Generated output and lockfiles detected from path and filename conventions.";
 
@@ -47,25 +39,28 @@ export function FilterBar({ request, onToggleKind, onToggleGenerated, onQueryCha
       </label>
 
       <div className="chips" role="group" aria-label="File kinds counted">
-        {KIND_LABELS.map(({ kind, label, description }) => (
-          <label
-            key={kind}
-            className="chip"
-            data-flavor={kind}
-            data-on={request.kinds.includes(kind)}
-            onMouseEnter={positionTooltip}
-            onFocus={positionTooltip}
-          >
-            <input
-              type="checkbox"
-              checked={request.kinds.includes(kind)}
-              aria-describedby={`flavor-tooltip-${kind}`}
-              onChange={() => onToggleKind(kind)}
-            />
-            {label}
-            <span className="chip__tooltip" id={`flavor-tooltip-${kind}`} role="tooltip">{description}</span>
-          </label>
-        ))}
+        {FILE_KINDS.map((kind) => {
+          const { label, description } = FILE_KIND_DETAILS[kind];
+          return (
+            <label
+              key={kind}
+              className="chip"
+              data-flavor={kind}
+              data-on={request.kinds.includes(kind)}
+              onMouseEnter={positionTooltip}
+              onFocus={positionTooltip}
+            >
+              <input
+                type="checkbox"
+                checked={request.kinds.includes(kind)}
+                aria-describedby={`flavor-tooltip-${kind}`}
+                onChange={() => onToggleKind(kind)}
+              />
+              {label}
+              <span className="chip__tooltip" id={`flavor-tooltip-${kind}`} role="tooltip">{description}</span>
+            </label>
+          );
+        })}
         <label
           className="chip"
           data-flavor="generated"

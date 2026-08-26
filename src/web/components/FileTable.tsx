@@ -1,5 +1,6 @@
 import type { FileRow } from "../../shared/api.ts";
 import { pathRelativeTo } from "../displayPath.ts";
+import { FILE_KIND_DETAILS } from "../fileKinds.ts";
 import { count, percent } from "../format.ts";
 
 interface Props {
@@ -35,7 +36,7 @@ export function FileTable({ files, displayRoot, onOpenSource, emptyMessage }: Pr
               <tr key={file.path}>
                 <td>
                   <span className="tag" data-flavor={file.generated ? "generated" : file.kind}>
-                    {file.generated ? "gen" : file.kind}
+                    {file.generated ? "gen" : FILE_KIND_DETAILS[file.kind].label}
                   </span>
                 </td>
                 <td className="metrics__path">

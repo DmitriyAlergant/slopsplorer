@@ -36,6 +36,12 @@ describe("file kind classification", () => {
     expect(classifyFile("src/db.yaml")).toBe("data");
   });
 
+  it("classifies Python dependency manifests as configuration rather than prose", () => {
+    expect(classifyFile("requirements.txt")).toBe("data");
+    expect(classifyFile("deploy/requirements.txt")).toBe("data");
+    expect(isGenerated("requirements.txt")).toBe(false);
+  });
+
   it("falls back to `other` for extensions that are neither code, prose, nor data", () => {
     expect(classifyFile("scripts/query.sql")).toBe("code");
     expect(classifyFile("Cargo.lock")).toBe("other");

@@ -32,6 +32,9 @@ const DATA_EXTENSIONS: ReadonlySet<string> = new Set([
   ".csv", ".json", ".jsonc", ".toml", ".tsv", ".xml", ".yaml", ".yml",
 ]);
 
+/** Plain-text manifests whose contents are configuration rather than prose. */
+const DATA_NAMES: ReadonlySet<string> = new Set(["requirements.txt"]);
+
 const TEXT_EXTENSIONS: ReadonlySet<string> = new Set([".adoc", ".md", ".mdx", ".rst", ".txt"]);
 
 const I18N_DIRECTORIES: ReadonlySet<string> = new Set([
@@ -97,6 +100,7 @@ export function classifyFile(relativePath: string): FileKind {
   if (containsAny(directories, I18N_DIRECTORIES)) return "i18n";
   if ((extension === ".json" || extension === ".yaml" || extension === ".yml") && isLocaleStem(stem)) return "i18n";
   if (isTestPath(name, directories)) return "test";
+  if (DATA_NAMES.has(name)) return "data";
   if (DATA_EXTENSIONS.has(extension)) return "data";
   if (TEXT_EXTENSIONS.has(extension)) return "text";
   if (CODE_EXTENSIONS.has(extension)) return "code";
