@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { scanSourceTree, type ScanIndex } from "../src/scanner/scan.ts";
+import { TOKENIZERS, type TokenizerName } from "../src/scanner/tokenize.ts";
 
 const SCAN_TIMEOUT_MS = 60_000;
 
@@ -16,10 +17,14 @@ async function makeTree(files: Record<string, string>): Promise<string> {
   return root;
 }
 
-async function scan(root: string, allFiles: boolean): Promise<ScanIndex> {
+async function scan(
+  root: string,
+  allFiles: boolean,
+  tokenizer: TokenizerName = "cl100k_base",
+): Promise<ScanIndex> {
   return scanSourceTree({
     root,
-    tokenizer: "cl100k_base",
+    tokenizer,
     allFiles,
     exclude: [],
     maxFileBytes: 2 * 1024 * 1024,
@@ -183,6 +188,21 @@ describe("scanning a source tree", () => {
   it("records which grammars produced the structure numbers so the metadata explains the counts", () => {
     expect(index.meta.languages).toEqual(["python", "typescript"]);
     expect(index.meta.folderCount).toBe(index.folders.length);
+  });
+
+  it("measures tokenizer control-token spellings as ordinary source text", async () => {
+    const specialTokenRoot = await makeTree({
+      "special-token.txt": "A source fixture can contain <|endoftext|> literally.\n",
+    });
+    try {
+      for (const tokenizer of TOKENIZERS) {
+        const specialTokenIndex = await scan(specialTokenRoot, true, tokenizer);
+        expect(specialTokenIndex.files).toHaveLength(1);
+        expect(specialTokenIndex.files[0]?.tokens).toBeGreaterThan(0);
+      }
+    } finally {
+      await rm(specialTokenRoot, { recursive: true, force: true });
+    }
   });
 });
 

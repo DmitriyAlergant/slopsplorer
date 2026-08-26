@@ -16,5 +16,8 @@ export function isTokenizerName(value: string): value is TokenizerName {
  * be a useful proxy for agent context cost. `o200k_base` matches GPT-4o.
  */
 export function tokenCounter(name: TokenizerName): (text: string) => number {
-  return name === "o200k_base" ? countO200k : countCl100k;
+  const count = name === "o200k_base" ? countO200k : countCl100k;
+  // Source files can contain strings that spell tokenizer control tokens.
+  // Measure them as ordinary text instead of rejecting the entire scan.
+  return (text) => count(text, { disallowedSpecial: new Set() });
 }
