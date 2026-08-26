@@ -8,7 +8,7 @@
 
 export type FileKind = "code" | "test" | "text" | "i18n" | "data" | "other";
 
-/** A file kind, or `generated` — which overrides kind for display purposes. */
+/** A file kind, or `generated` - which overrides kind for display purposes. */
 export type Flavor = FileKind | "generated";
 
 export const FILE_KINDS: readonly FileKind[] = ["code", "test", "text", "i18n", "data", "other"];

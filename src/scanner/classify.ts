@@ -57,7 +57,7 @@ const LANGUAGE_CODES: ReadonlySet<string> = new Set([
   "te", "th", "tr", "uk", "ur", "uz", "vi", "zh",
 ]);
 
-/** `en`, `de-DE`, `pt_BR` — a language code with an optional region suffix. */
+/** `en`, `de-DE`, `pt_BR` - a language code with an optional region suffix. */
 const LOCALE_STEM = /^([a-z]{2,3})(?:[-_][a-z]{2,4})?$/;
 
 function isLocaleStem(stem: string): boolean {
