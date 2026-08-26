@@ -71,6 +71,8 @@
 
 *, *::before, *::after { box-sizing: border-box; }
 
+html { scrollbar-gutter: stable; }
+
 body {
   margin: 0;
   background: var(--paper);
@@ -80,6 +82,10 @@ body {
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
 }
+
+/* A modal owns wheel and touch input even when its contents are too short to scroll. */
+html:has(.viewer[open]),
+body:has(.viewer[open]) { overflow: hidden; }
 
 /* Every figure in this interface is meant to be compared vertically. */
 .mono, .readout__value, .tree__tokens, .metrics td, .metrics th,
@@ -810,7 +816,11 @@ button { cursor: pointer; }
 }
 .viewer__title-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .viewer__title-row h2 { min-width: 0; }
-.viewer__body { height: calc(100% - 66px); overflow: auto; }
+.viewer__body {
+  height: calc(100% - 66px);
+  overflow: auto;
+  overscroll-behavior: contain;
+}
 .viewer__body--prose { height: auto; padding: 20px; }
 .viewer__body--prose p { margin: 0 0 14px; color: var(--ink-soft); font-size: 13px; }
 .viewer__code {

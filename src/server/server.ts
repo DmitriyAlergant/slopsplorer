@@ -444,18 +444,17 @@ export function createSlopsplorerServer(options: SlopsplorerServerOptions): Slop
       return address;
     },
     async close(): Promise<void> {
-      // The listening socket goes first, so the port is free before the slower
-      // Vite teardown runs. `npm run dev` restarts within milliseconds of the
-      // old process being signalled, and the new one has to be able to bind.
-      await new Promise<void>((resolve) => {
+      // Start closing the listener first so a watch restart can reclaim the port,
+      // then close Vite concurrently because its upgraded HMR socket prevents the
+      // HTTP close callback from firing until Vite tears that socket down.
+      const httpClosed = new Promise<void>((resolve) => {
         httpServer.close(() => resolve());
         // Keep-alive sockets would otherwise hold the close open until they time out.
         httpServer.closeAllConnections();
       });
-      if (vite) {
-        await vite.close();
-        vite = null;
-      }
+      const activeVite = vite;
+      vite = null;
+      await Promise.all([httpClosed, activeVite?.close() ?? Promise.resolve()]);
     },
   };
 }

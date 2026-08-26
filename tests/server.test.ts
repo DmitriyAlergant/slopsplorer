@@ -80,3 +80,48 @@ describe("opening a scan root", () => {
     expect(health.meta.rootPath).toBe(nextRoot);
   });
 });
+
+describe("development server shutdown", () => {
+  it("closes while a browser has an active hot-reload socket", async () => {
+    const scanOptions = {
+      root: initialRoot,
+      tokenizer: "cl100k_base" as const,
+      allFiles: true,
+      exclude: [],
+      maxFileBytes: 2 * 1024 * 1024,
+      concurrency: 2,
+    };
+    const index = await scanSourceTree(scanOptions);
+    const developmentServer = createSlopsplorerServer({
+      index,
+      scanOptions,
+      host: "127.0.0.1",
+      port: 0,
+      dev: true,
+    });
+    const address = await developmentServer.listen();
+    const socket = new WebSocket(address.url.replace(/^http/, "ws"), "vite-hmr");
+    await new Promise<void>((resolve, reject) => {
+      socket.addEventListener("open", () => resolve(), { once: true });
+      socket.addEventListener("error", () => reject(new Error("hot-reload socket did not open")), { once: true });
+    });
+
+    let timedOut = false;
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    const closing = developmentServer.close();
+    await Promise.race([
+      closing,
+      new Promise<void>((resolve) => {
+        timeout = setTimeout(() => {
+          timedOut = true;
+          socket.close();
+          resolve();
+        }, 2_000);
+      }),
+    ]);
+    if (timeout !== undefined) clearTimeout(timeout);
+    await closing;
+
+    expect(timedOut).toBe(false);
+  });
+}, SCAN_TIMEOUT_MS);
