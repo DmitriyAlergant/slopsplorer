@@ -111,7 +111,25 @@ jobs:
         with:
           fetch-depth: 0
 
+      # The exact version was checked against PyPI before it was pinned here.
+      # Draft mode preserves the fragments in the tagged commit while emitting
+      # the same release section used to build CHANGELOG.md.
+      - name: Build release notes from Towncrier fragments
+        run: |
+          set -o pipefail
+          python3 -m pip install --disable-pip-version-check \
+            "towncrier==25.8.0" \
+            "click==8.4.2" \
+            "jinja2==3.1.6" \
+            "markupsafe==3.0.3"
+          python3 -m towncrier build \
+            --draft \
+            --version "${GITHUB_REF_NAME#v}" \
+            | sed -n '/^## /,$p' \
+            > release-notes.md
+          test -s release-notes.md
+
       - name: Open the GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" --generate-notes --verify-tag
+        run: gh release create "$GITHUB_REF_NAME" --notes-file release-notes.md --verify-tag

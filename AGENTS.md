@@ -101,11 +101,19 @@ Do not bump a version without a reason.
 
 A release is one tag.
 `.github/workflows/release.yml` runs the checks, publishes to npm, and opens the GitHub release.
+Towncrier owns both `CHANGELOG.md` and the GitHub release notes.
+Every user-facing change must add one file under `newsfragments/` named `<issue-or-commit>.<type>.md`.
+Use `feature`, `bugfix`, `doc`, or `misc`, and write one concise sentence for users.
+Towncrier and its runtime dependencies are pinned in `.github/workflows/release.yml`; use Towncrier 25.8.0 when building the changelog locally.
 
-1. Bump `version` in `package.json` and commit it.
-2. `git tag vX.Y.Z && git push origin main --follow-tags`.
+1. Bump `version` in `package.json` and `package-lock.json`.
+2. Run `towncrier build --version X.Y.Z --keep` so `CHANGELOG.md` is updated while the fragments remain available to the tagged workflow.
+3. Commit and push the version, changelog, and fragments.
+4. Tag that exact commit with `vX.Y.Z` and push the tag.
+5. After the release workflow succeeds, remove the consumed fragments and commit that cleanup to `main`.
 
 The workflow refuses to publish when the tag and the manifest version disagree, so step 1 cannot be skipped.
+The workflow compiles its release body from the fragments in the tagged commit rather than from Git commit subjects.
 
 Authentication is npm trusted publishing over OIDC.
 No npm token exists in this repository, and none should ever be added.

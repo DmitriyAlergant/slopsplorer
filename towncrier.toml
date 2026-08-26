@@ -1,0 +1,28 @@
+[tool.towncrier]
+name = "Slopsplorer"
+directory = "newsfragments"
+filename = "CHANGELOG.md"
+start_string = "<!-- towncrier release notes start -->\n"
+title_format = "## [{version}](https://github.com/DmitriyAlergant/slopsplorer/releases/tag/v{version}) - {project_date}"
+issue_format = "[{issue}](https://github.com/DmitriyAlergant/slopsplorer/commit/{issue})"
+wrap = false
+
+[[tool.towncrier.type]]
+directory = "feature"
+name = "Features"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "bugfix"
+name = "Bug Fixes"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "doc"
+name = "Documentation"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "misc"
+name = "Other Changes"
+showcontent = true
