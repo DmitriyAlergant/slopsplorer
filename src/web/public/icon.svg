@@ -2,6 +2,6 @@
   <title>Slopsplorer</title>
   <rect width="32" height="32" rx="7" fill="#252E40"/>
   <rect x="4" y="7.2" width="24" height="17.6" rx="8.8" fill="#F4C0BF"/>
-  <rect x="10.3" y="14" width="3.7" height="6.8" rx="0.8" fill="#EB7131"/>
-  <rect x="18" y="10.9" width="3.7" height="9.9" rx="0.8" fill="#EB7131"/>
+  <rect x="10.3" y="14" width="3.7" height="6.8" rx="0.8" fill="#252E40"/>
+  <rect x="18" y="10.9" width="3.7" height="9.9" rx="0.8" fill="#252E40"/>
 </svg>

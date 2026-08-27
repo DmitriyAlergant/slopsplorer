@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import type { Aspect, DetailView, Measure, RankMetric } from "../../shared/api.ts";
-import { ASPECTS, MEASURES } from "../../shared/api.ts";
+import type { Aspect, DetailView, FileRow, Measure, RankMetric, RowKind, ViewRequest } from "../../shared/api.ts";
+import { ASPECTS, MEASURES, aspectTotals } from "../../shared/api.ts";
 import {
   aspectFigure, count, countOf, measureHeading, percent, weightAbbreviation, weightCount, weightHeading, weightName,
 } from "../format.ts";
@@ -12,6 +12,10 @@ import { Tooltip, tooltipHandlers } from "./Tooltip.tsx";
 
 interface Props {
   detail: DetailView | null;
+  /** The selection's files, heaviest first, already cut to the threshold and the limit. */
+  files: readonly FileRow[];
+  /** How many files matched before the limit, so a curtailed list can say so. */
+  filesTotal: number;
   /** The measure the figures are in, taken from the response rather than the pending request. */
   measure: Measure;
   /** The side of the change the figures describe. */
@@ -22,11 +26,15 @@ interface Props {
   onSortChange: (metric: RankMetric) => void;
   /** The selected folder: the path the copy control hands over, and the root that file names shorten against. */
   path: string;
-  onSelectFolder: (path: string) => void;
+  /** Selects what a tile or an ancestor step names, which is a folder or a folder's own files. */
+  onSelect: (rowKind: RowKind, path: string) => void;
   /** Whether the panel describes a folder's own files rather than its subtree. */
   directFilesOnly: boolean;
   canDrill: boolean;
   onDrill: () => void;
+  /** The threshold under the file list, in the active measure and aspect. */
+  rank: ViewRequest["rank"];
+  onRankChange: (change: Partial<ViewRequest["rank"]>) => void;
   onOpenSource: (path: string) => void;
   /** Reports how many tiles fit across the panel, so the server can plan the grid. */
   onCapacityChange: (cardColumns: number) => void;
@@ -38,27 +46,18 @@ const CARD_GAP = 8;
 const CARD_PADDING = 40;
 const MAX_COLUMNS = 6;
 
-/**
- * Every aspect figure of a folder, in the active measure.
- *
- * The server sends the two sides in that measure, and the two identities give
- * the rest, so the head states all five sides whichever one the switch selects
- * and the reader never has to change the switch to see a neighbour.
- */
-function aspectTotals(detail: DetailView, measure: Measure): Record<Aspect, number> {
-  return {
-    added: detail.added,
-    removed: detail.removed,
-    net: detail.added - detail.removed,
-    churn: detail.added + detail.removed,
-    after: detail[measure],
-  };
-}
+/** A round step for each measure, so the spinner moves by a useful amount. */
+const THRESHOLD_STEPS: Record<Measure, number> = { tokens: 500, lines: 50, codeLines: 50 };
 
 /** The selected folder: its weight, how its children divide it, and its own files. */
-export function FolderDetail({ detail, measure, aspect, isDiff, sort, onSortChange, path, onSelectFolder, directFilesOnly, canDrill, onDrill, onOpenSource, onCapacityChange }: Props): React.JSX.Element {
+export function FolderDetail({ detail, files, filesTotal, measure, aspect, isDiff, sort, onSortChange, path, onSelect, directFilesOnly, canDrill, onDrill, rank, onRankChange, onOpenSource, onCapacityChange }: Props): React.JSX.Element {
   const panelRef = useRef<HTMLElement>(null);
   const [columns, setColumns] = useState(3);
+  // What the reader has typed, which is not the threshold: an empty box is a
+  // legal thing to type and means nothing yet, while the threshold is always a
+  // number. Holding only the number would write a 0 back into a box the reader
+  // just cleared, and the next digit would land after it.
+  const [thresholdDraft, setThresholdDraft] = useState<string | null>(null);
 
   // Measure rather than guess: the panel is a fraction of a resizable window,
   // so the number of tiles that fit is not knowable from a breakpoint.
@@ -81,7 +80,10 @@ export function FolderDetail({ detail, measure, aspect, isDiff, sort, onSortChan
 
   if (!detail) return <section ref={panelRef} className="panel detail" aria-label="Folder detail" />;
 
+  // The head states all five sides whichever one the switch selects, so the
+  // reader never has to move the switch to see a neighbour.
   const totals = aspectTotals(detail, measure);
+  const unit = weightName(measure, aspect, isDiff);
   // Net is signed, so no whole divides it into an honest percentage. The bands
   // still scale against churn, and the page states no share of them.
   const showsShare = aspect !== "net";
@@ -118,7 +120,7 @@ export function FolderDetail({ detail, measure, aspect, isDiff, sort, onSortChan
             <h2>
               {detail.trail.map((crumb) => (
                 <span key={crumb.path} className="detail__step">
-                  <button type="button" className="detail__ancestor" onClick={() => onSelectFolder(crumb.path)}>
+                  <button type="button" className="detail__ancestor" onClick={() => onSelect("folder", crumb.path)}>
                     {crumb.name}
                   </button>
                   <span className="detail__separator" aria-hidden="true">/</span>
@@ -167,84 +169,120 @@ export function FolderDetail({ detail, measure, aspect, isDiff, sort, onSortChan
         </div>
       </header>
 
-      {detail.cards.length > 0 ? (
-        <div className="cards" style={{ "--card-columns": detail.cardColumns } as React.CSSProperties}>
-          {detail.cards.map((card, index) => {
-            const added = aspectFigure("added", card.added);
-            const removed = aspectFigure("removed", card.removed);
-            // Only the hue: the unit beside the headline already names the side,
-            // so the figure reads as a count and still matches the strip above.
-            const headline = aspectFigure(aspect, card.weight);
-            const body = (
-              <>
-                <span className="card__head">
-                  <span className="card__name">{card.name}</span>
-                  <span className="card__files">{countOf(card.files, "file")}</span>
+      {/* Always drawn, one row high, so the table below starts in the same place
+          whether the folder has children or not. A folder's own files are one of
+          the tiles, so a folder without subfolders still has a row to draw. */}
+      <div className="cards" style={{ "--card-columns": detail.cardColumns } as React.CSSProperties}>
+        {detail.cards.map((card, index) => {
+          const added = aspectFigure("added", card.added);
+          const removed = aspectFigure("removed", card.removed);
+          // Only the hue: the unit beside the headline already names the side,
+          // so the figure reads as a count and still matches the strip above.
+          const headline = aspectFigure(aspect, card.weight);
+          const body = (
+            <>
+              <span className="card__head">
+                <span className="card__name">{card.name}</span>
+                <span className="card__files">{countOf(card.files, "file")}</span>
+              </span>
+              {/* The figure names its own side: the switch that chose it is
+                  at the top of the page, and a tile is read on its own. */}
+              <span className="card__row">
+                <span className="card__weight" data-sign={headline.sign}>
+                  {weightCount(card.weight, aspect)}
+                  <span className="card__unit">{weightAbbreviation(measure, aspect, isDiff)}</span>
                 </span>
-                {/* The figure names its own side: the switch that chose it is
-                    at the top of the page, and a tile is read on its own. */}
-                <span className="card__row">
-                  <span className="card__weight" data-sign={headline.sign}>
-                    {weightCount(card.weight, aspect)}
-                    <span className="card__unit">{weightAbbreviation(measure, aspect, isDiff)}</span>
-                  </span>
-                  {showsShare ? <span className="card__share">{percent(card.shareOfScope)}</span> : null}
+                {showsShare ? <span className="card__share">{percent(card.shareOfScope)}</span> : null}
+              </span>
+              {/* The two sides, whatever the switch selects, because a tile
+                  showing one figure hides a rewrite behind a small number. */}
+              {isDiff ? (
+                <span className="card__split">
+                  <span>{added.text}</span>
+                  <span>{removed.text}</span>
                 </span>
-                {/* The two sides, whatever the switch selects, because a tile
-                    showing one figure hides a rewrite behind a small number. */}
-                {isDiff ? (
-                  <span className="card__split">
-                    <span>{added.text}</span>
-                    <span>{removed.text}</span>
-                  </span>
-                ) : null}
-                <FlavorBar
-                  slices={card.flavors}
-                  statuses={card.statuses}
-                  measure={measure}
-                  aspect={aspect}
-                  isDiff={isDiff}
-                  scale={card.shareOfScope}
-                />
-              </>
-            );
-            return card.path === null ? (
-              <div key={`aggregate-${index}`} className="card card--aggregate">{body}</div>
-            ) : (
-              <button
-                key={card.path}
-                type="button"
-                className="card"
-                // Spelled out, because the tile states each figure as a column
-                // of its own and a reader who cannot see the layout gets none
-                // of what the columns carry.
-                aria-label={
-                  `${card.name}, ${weightCount(card.weight, aspect)} ${weightName(measure, aspect, isDiff)}, `
-                  + `${countOf(card.files, "file")}`
-                  + (showsShare ? `, ${percent(card.shareOfScope)} of current scope` : "")
-                }
-                onClick={() => onSelectFolder(card.path!)}
-              >
-                {body}
-              </button>
-            );
-          })}
-        </div>
-      ) : null}
+              ) : null}
+              <FlavorBar
+                slices={card.flavors}
+                measure={measure}
+                aspect={aspect}
+                isDiff={isDiff}
+                baseline={detail.flavorBaseline}
+              />
+            </>
+          );
+          const cardPath = card.path;
+          return cardPath === null ? (
+            <div key={`aggregate-${index}`} className="card card--aggregate">{body}</div>
+          ) : (
+            <button
+              key={`${card.rowKind}:${cardPath}`}
+              type="button"
+              className="card"
+              data-kind={card.rowKind}
+              // Spelled out, because the tile states each figure as a column
+              // of its own and a reader who cannot see the layout gets none
+              // of what the columns carry.
+              aria-label={
+                `${card.rowKind === "files" ? "Files directly in this folder" : card.name}, `
+                + `${weightCount(card.weight, aspect)} ${weightName(measure, aspect, isDiff)}, `
+                + `${countOf(card.files, "file")}`
+                + (showsShare ? `, ${percent(card.shareOfScope)} of current scope` : "")
+              }
+              onClick={() => onSelect(card.rowKind, cardPath)}
+            >
+              {body}
+            </button>
+          );
+        })}
+      </div>
 
-      {/* No caption: the heading already names the subject, and the table's own
-          columns say what the rows are. */}
+      {/* The tiles divide the subject by folder and the rows divide it by file,
+          so the caption says which of the two the rows below are, and the
+          threshold that thins them stands with them. */}
+      <div className="detail__files-head">
+        <p className="detail__caption">
+          {directFilesOnly
+            ? "Files directly in this folder"
+            : isDiff ? "Heaviest changes below here" : "Heaviest files below here"}
+          {files.length < filesTotal ? (
+            <span className="detail__caption-note">
+              showing {count(files.length)} of {countOf(filesTotal, "match")}
+            </span>
+          ) : null}
+        </p>
+        <label className="detail__threshold">
+          <span>Minimum {unit}</span>
+          <input
+            type="number"
+            min={0}
+            step={THRESHOLD_STEPS[measure]}
+            value={thresholdDraft ?? String(rank.minWeight)}
+            onChange={(event) => {
+              setThresholdDraft(event.target.value);
+              onRankChange({ minWeight: Math.max(0, Number(event.target.value) || 0) });
+            }}
+            // Leaving the box gives it back to the threshold, so anything the
+            // reader left half-typed reads as the number the table was cut by.
+            onBlur={() => setThresholdDraft(null)}
+          />
+        </label>
+      </div>
+
       <FileTable
-        files={detail.directFiles}
+        files={files}
         measure={measure}
         aspect={aspect}
         isDiff={isDiff}
         sort={sort}
         onSortChange={onSortChange}
         displayRoot={path}
-        prefixRelativePaths={false}
         onOpenSource={onOpenSource}
-        emptyMessage="No files sit directly in this folder under the current filters."
+        emptyMessage={
+          directFilesOnly
+            ? `No files sit directly in this folder under the current filters and the minimum ${unit} threshold.`
+            : `No files match the current filters, scope, and minimum ${unit} threshold.`
+        }
       />
     </section>
   );

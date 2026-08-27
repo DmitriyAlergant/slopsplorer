@@ -5,6 +5,7 @@ import { fetchSkillInstall } from "../api.ts";
 interface Props {
   open: boolean;
   onClose: () => void;
+  onPreviewSkill: () => void;
 }
 
 /**
@@ -13,7 +14,7 @@ interface Props {
  * Installing into the user's home directory is their decision to make, and the
  * command is short enough to read before pasting.
  */
-export function SkillInstallDialog({ open, onClose }: Props): React.JSX.Element {
+export function SkillInstallDialog({ open, onClose, onPreviewSkill }: Props): React.JSX.Element {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [install, setInstall] = useState<SkillInstallResponse | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
@@ -58,29 +59,23 @@ export function SkillInstallDialog({ open, onClose }: Props): React.JSX.Element 
         {!failure && !install ? <p className="empty">Resolving install path</p> : null}
         {install ? (
           <>
-            <p>
-              This teaches your agent when to use Slopsplorer and how to read its output.
-              Run the command below in a terminal. Nothing is installed until you do.
-            </p>
+            <p>Run the command below in a terminal.</p>
             <pre className="command"><code>{install.command}</code></pre>
-            <button type="button" className="button" onClick={copy}>
-              {copied ? "Copied" : "Copy command"}
-            </button>
+            <div className="install-actions">
+              <button type="button" className="button" onClick={copy}>
+                {copied ? "Copied" : "Copy command"}
+              </button>
+              <button type="button" className="link" onClick={onPreviewSkill}>Read SKILL.md</button>
+            </div>
             <dl className="install-facts">
-              <div>
-                <dt>Installs to</dt>
-                <dd><code>{install.targetPath}</code></dd>
-              </div>
-              <div>
-                <dt>Links from</dt>
-                <dd><code>{install.linkPath}</code></dd>
-              </div>
+              {install.targets.map((target) => (
+                <div key={target.path}>
+                  <dt>{target.tool}</dt>
+                  <dd><code>{target.path}</code></dd>
+                </div>
+              ))}
             </dl>
-            <p className="muted">
-              The skill lives in the shared <code>~/.agents/skills</code> directory so any agent tool can find it,
-              with a symlink into Claude Code's user-level skills directory.
-              Re-running the command replaces an earlier copy.
-            </p>
+            <p className="muted">Re-running the command replaces an earlier copy.</p>
           </>
         ) : null}
       </div>

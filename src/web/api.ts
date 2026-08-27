@@ -65,3 +65,8 @@ export function fetchSource(path: string): Promise<SourceResponse> {
 export function fetchSkillInstall(): Promise<SkillInstallResponse> {
   return request<SkillInstallResponse>("/api/skill-install");
 }
+
+/** The bundled SKILL.md, shaped like any other file the preview dialog draws. */
+export function fetchSkillSource(): Promise<SourceResponse> {
+  return request<SourceResponse>("/api/skill-source");
+}

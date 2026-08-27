@@ -1,8 +1,8 @@
 import type { Aspect, FileRow, Measure, RankMetric } from "../../shared/api.ts";
 import { rankMetricsFor, weightField } from "../../shared/api.ts";
-import { displayFilePath } from "../displayPath.ts";
+import { pathRelativeTo } from "../displayPath.ts";
 import { FILE_KIND_DETAILS } from "../fileKinds.ts";
-import { aspectHeading, count, measureAbbreviation, percent, signed, statusLabel } from "../format.ts";
+import { aspectHeading, count, measureAbbreviation, percent, signed, statusLetter, statusName } from "../format.ts";
 import { CopyPathButton } from "./CopyPathButton.tsx";
 import { SortCaret } from "./SortCaret.tsx";
 import { Tooltip, tooltipHandlers } from "./Tooltip.tsx";
@@ -14,14 +14,12 @@ interface Props {
   /** Highlighted column in a diff, where the columns are the sides of the change. */
   aspect: Aspect;
   isDiff: boolean;
-  /** Sorted column. Shared by both tables, so they never disagree on an order. */
+  /** Sorted column, chosen by clicking a heading rather than by a control of its own. */
   sort: RankMetric;
   /** Sorting on a measured column also makes that measure the page's unit. */
   onSortChange: (metric: RankMetric) => void;
   /** Project-relative folder that displayed file names should be relative to. */
   displayRoot: string;
-  /** Mark displayed paths as relative while preserving project-relative copy values. */
-  prefixRelativePaths: boolean;
   onOpenSource: (path: string) => void;
   emptyMessage: string;
 }
@@ -76,8 +74,8 @@ function describeColumn(metric: RankMetric, measure: Measure): Column {
 /** Structure counts are absent rather than zero for a file no grammar parsed. */
 const STRUCTURE_METRICS: ReadonlySet<RankMetric> = new Set<RankMetric>(["functions", "branches"]);
 
-/** The shared metrics table, used for a folder's own files and for the ranking. */
-export function FileTable({ files, measure, aspect, isDiff, sort, onSortChange, displayRoot, prefixRelativePaths, onOpenSource, emptyMessage }: Props): React.JSX.Element {
+/** The metrics table of the folder panel: one row for each file of the selection. */
+export function FileTable({ files, measure, aspect, isDiff, sort, onSortChange, displayRoot, onOpenSource, emptyMessage }: Props): React.JSX.Element {
   if (files.length === 0) return <p className="empty">{emptyMessage}</p>;
   const columns = rankMetricsFor(isDiff).map((metric) => describeColumn(metric, measure));
   const activeMetric: RankMetric = isDiff ? aspect : measure;
@@ -87,7 +85,7 @@ export function FileTable({ files, measure, aspect, isDiff, sort, onSortChange, 
         <thead>
           <tr>
             <th scope="col">Flavor</th>
-            {isDiff ? <th scope="col">Change</th> : null}
+            {isDiff ? <th scope="col" className="metrics__change">Change</th> : null}
             <th scope="col">File</th>
             {columns.map(({ metric, label }) => (
               <th
@@ -116,7 +114,7 @@ export function FileTable({ files, measure, aspect, isDiff, sort, onSortChange, 
         <tbody>
           {files.map((file) => {
             const commentShare = file.lines > 0 ? file.commentLines / file.lines : 0;
-            const displayedPath = displayFilePath(file.path, displayRoot, prefixRelativePaths);
+            const displayedPath = pathRelativeTo(file.path, displayRoot);
             return (
               <tr key={file.path}>
                 <td>
@@ -125,11 +123,16 @@ export function FileTable({ files, measure, aspect, isDiff, sort, onSortChange, 
                   </span>
                 </td>
                 {isDiff ? (
-                  <td>
-                    <span className="tag" data-status={file.status} {...tooltipHandlers}>
-                      {statusLabel(file.status)}
+                  /* A Git letter rather than a second pill: the flavor beside it
+                     is a tag, and two tags in two columns read as one system. */
+                  <td className="metrics__change">
+                    <span className="status" data-status={file.status} {...tooltipHandlers}>
+                      <span aria-hidden="true">{statusLetter(file.status)}</span>
+                      <span className="visually-hidden">{statusName(file.status)}</span>
                       <Tooltip compact>
-                        {file.previousPath === null ? `File ${file.status}` : `Renamed from ${file.previousPath}`}
+                        {file.previousPath === null
+                          ? `File ${statusName(file.status)}`
+                          : `Renamed from ${file.previousPath}`}
                       </Tooltip>
                     </span>
                   </td>

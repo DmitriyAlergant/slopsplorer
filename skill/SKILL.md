@@ -9,6 +9,7 @@ description: Map where the weight of a repository or of a change sits, by tokens
 
 Slopsplorer scans a source tree and measures every file: tokenizer weight, line composition, and structure.
 Pointed at a Git revision or range, it measures a change the same way: what it added, what it removed, churn and net.
+It sorts every file into a flavor - code, tests, docs, i18n, data and config - and keeps generated files out of the figures, from the path and the content, with no configuration.
 
 It has two outputs.
 `--report` prints a text report to stdout and exits.
@@ -53,9 +54,6 @@ Shares inside a section are of that section. Shares in the header are of the who
 To see more of a folder, pass `--threshold 1` or point the command at that folder.
 `--unit lines` or `--unit loc` changes the unit.
 In a comparison, `--aspect net` (or `added`, `removed`, `after`) changes which side of the change the figures describe. The default is `churn`.
-
-The figures say where the weight is.
-They do not say whether the code is good.
 
 ## Start the UI for the user
 

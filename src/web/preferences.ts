@@ -8,7 +8,6 @@ import { ASPECTS, FILE_KINDS, MEASURES, RANK_METRICS, TREE_SORTS } from "../shar
 const STORAGE_KEY = "slopsplorer.view-preferences.v4";
 const TREE_PANEL_STORAGE_KEY = "slopsplorer.tree-panel-ratio.v1";
 const WORKSPACE_HEIGHT_STORAGE_KEY = "slopsplorer.workspace-height.v1";
-const RANKING_HEIGHT_STORAGE_KEY = "slopsplorer.ranking-height.v1";
 const CHANGED_LINES_ONLY_STORAGE_KEY = "slopsplorer.changed-lines-only.v1";
 
 /**
@@ -19,10 +18,7 @@ const CHANGED_LINES_ONLY_STORAGE_KEY = "slopsplorer.changed-lines-only.v1";
  */
 export const MIN_WORKSPACE_HEIGHT = 260;
 export const MAX_WORKSPACE_HEIGHT = 2000;
-export const DEFAULT_WORKSPACE_HEIGHT = 660;
-export const MIN_RANKING_HEIGHT = 160;
-export const MAX_RANKING_HEIGHT = 2000;
-export const DEFAULT_RANKING_HEIGHT = 480;
+export const DEFAULT_WORKSPACE_HEIGHT = 780;
 
 export interface ViewPreferences {
   kinds: FileKind[];
@@ -31,7 +27,7 @@ export interface ViewPreferences {
   measure: Measure;
   /** Side of a change the measure describes. Only a diff can act on it. */
   aspect: Aspect;
-  /** Sorted column of both file tables, and the ranking's order. */
+  /** Sorted column of the folder panel's file table. */
   rankMetric: RankMetric;
 }
 
@@ -78,9 +74,9 @@ export function writeChangedLinesOnly(storage: PreferenceStorage, changedOnly: b
 }
 
 /**
- * Read one dragged height in pixels.
+ * Read the dragged height in pixels.
  *
- * Absolute rather than proportional, unlike the panel width: these boxes scroll
+ * Absolute rather than proportional, unlike the panel width: the panels scroll
  * inside themselves, so a useful height is a number of rows rather than a share
  * of the window.
  */
@@ -111,16 +107,6 @@ export function readWorkspaceHeight(storage: PreferenceStorage, fallback: number
 /** Remember an operator's preferred workspace height across visits. */
 export function writeWorkspaceHeight(storage: PreferenceStorage, height: number): void {
   writeHeight(storage, WORKSPACE_HEIGHT_STORAGE_KEY, height);
-}
-
-/** Read the height the ranked file list is capped at. */
-export function readRankingHeight(storage: PreferenceStorage, fallback: number): number {
-  return readHeight(storage, RANKING_HEIGHT_STORAGE_KEY, MIN_RANKING_HEIGHT, MAX_RANKING_HEIGHT, fallback);
-}
-
-/** Remember an operator's preferred ranking height across visits. */
-export function writeRankingHeight(storage: PreferenceStorage, height: number): void {
-  writeHeight(storage, RANKING_HEIGHT_STORAGE_KEY, height);
 }
 
 /** Read validated display preferences without trusting arbitrary stored JSON. */

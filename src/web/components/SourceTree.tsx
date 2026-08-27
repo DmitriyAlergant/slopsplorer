@@ -1,25 +1,33 @@
 import { useEffect, useLayoutEffect, useRef } from "react";
 import type { Aspect, Measure, TreeRow, TreeSort } from "../../shared/api.ts";
+import { isInsideFolder } from "../displayPath.ts";
 import { count, sideCount, weightCount, weightHeading } from "../format.ts";
+import { DrillBreadcrumbs } from "./DrillBreadcrumbs.tsx";
 import { SortCaret } from "./SortCaret.tsx";
 import { Tooltip, tooltipHandlers } from "./Tooltip.tsx";
 
 interface Props {
   rows: readonly TreeRow[];
+  /** Names the scan root, which is the first step of the drill trail. */
+  rootName: string;
+  /** The folder the tree is rooted in, empty at the scan root. */
+  drillPath: string;
   sort: TreeSort;
   /** Names the numbers column, and the unit every figure on the page is in. */
   measure: Measure;
   /** Side of the change the numbers describe. Only `net` is signed. */
   aspect: Aspect;
   isDiff: boolean;
+  /** The folder the expand control acts on, empty at the scan root. */
+  selectedPath: string;
   onSelect: (rowKind: "folder" | "files", path: string) => void;
   onDrill: (path: string) => void;
   onSortChange: (sort: TreeSort) => void;
   onToggleExpanded: (path: string) => void;
   onToggleFolder: (row: TreeRow) => void;
   onToggleDirectFiles: (row: TreeRow) => void;
-  onExpandAll: () => void;
-  onCollapseAll: () => void;
+  onExpandSubtree: (path: string) => void;
+  onCollapseSubtree: (path: string) => void;
 }
 
 /** Gap a band figure keeps from the name beside it before it gives the pixels up. */
@@ -55,9 +63,15 @@ function ScopeCheckbox({ row, onChange }: { row: TreeRow; onChange: () => void }
 
 /** The folder hierarchy, with every row measured against the active scope root. */
 export function SourceTree({
-  rows, sort, measure, aspect, isDiff, onSelect, onDrill, onSortChange, onToggleExpanded, onToggleFolder, onToggleDirectFiles, onExpandAll, onCollapseAll,
+  rows, rootName, drillPath, sort, measure, aspect, isDiff, selectedPath,
+  onSelect, onDrill, onSortChange, onToggleExpanded, onToggleFolder, onToggleDirectFiles, onExpandSubtree, onCollapseSubtree,
 }: Props): React.JSX.Element {
-  const expandableRows = rows.filter((row) => row.rowKind === "folder" && row.hasChildren);
+  // The control acts on the selected folder, so it reads the same subtree it
+  // opens. A collapsed folder hides its children from `rows`, so every visible
+  // folder being open is the whole subtree being open.
+  const expandableRows = rows.filter((row) => (
+    row.rowKind === "folder" && row.hasChildren && isInsideFolder(row.path, selectedPath)
+  ));
   const allExpanded = expandableRows.length > 0 && expandableRows.every((row) => row.expanded);
   // A net total states what a folder kept, and hides what it cost: -6,448 reads
   // the same whether nothing happened or 33,000 tokens were traded for 39,000.
@@ -104,12 +118,17 @@ export function SourceTree({
   return (
     <section className="panel tree" aria-label="Source tree">
       <div className="panel__head">
-        <h2>Source tree</h2>
+        {/* The trail says what the tree is rooted in, which is what the heading
+            says at the scan root, so it takes the heading's place rather than a
+            row of its own above the panel. */}
+        {drillPath
+          ? <DrillBreadcrumbs rootName={rootName} drillPath={drillPath} onDrill={onDrill} />
+          : <h2>Source tree</h2>}
         <div className="panel__tools">
           <button
             type="button"
             className="button button--tiny"
-            onClick={allExpanded ? onCollapseAll : onExpandAll}
+            onClick={() => (allExpanded ? onCollapseSubtree(selectedPath) : onExpandSubtree(selectedPath))}
           >
             {allExpanded ? "Collapse" : "Expand"}
           </button>

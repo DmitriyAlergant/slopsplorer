@@ -187,7 +187,8 @@ Around one man in twelve cannot separate red from green.
 
 The folder tiles in `FolderDetail.tsx` say the same thing, and they say it in every aspect: a tile prints its weight, names the side that weight is, and then puts `+added` and `-removed` beneath it.
 Only one figure of a tile moves when the aspect switch moves, so a reader who is looking at churn still sees what the change traded.
-`FlavorBar` keeps its shape, and in diff mode it draws a better split than file kind: the change status, which is added, modified, deleted, or renamed.
+`FlavorBar` is the same bar as in a scan: it divides a tile by flavor, in the magnitude of the active measure and aspect, because what a folder is made of is the question the tile's own figures do not answer.
+The Git letter in the file table carries the change status instead, one file at a time.
 
 ## How a folder is summarised
 

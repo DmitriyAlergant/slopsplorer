@@ -40,9 +40,21 @@ function takeUpToByteCeiling(aligned: readonly DiffLine[]): { lines: DiffLine[];
 
 const SKILL_NAME = "slopsplorer";
 
-/** Canonical, tool-agnostic skill location. Claude Code reads it through a symlink. */
-const SKILL_TARGET_PATH = "~/.agents/skills/slopsplorer";
-const SKILL_LINK_PATH = "~/.claude/skills/slopsplorer";
+/**
+ * Where each agent tool reads a user-level skill from.
+ *
+ * Claude Code reads `~/.claude/skills`; Codex and the other tools that follow
+ * the open skill layout read `~/.agents/skills`. Each gets its own copy, because
+ * a symlink is not something every platform grants an unprivileged user.
+ */
+const POSIX_SKILL_DIRECTORIES = [
+  { tool: "Claude Code", directory: "~/.claude/skills" },
+  { tool: "Codex and other agents", directory: "~/.agents/skills" },
+];
+const WINDOWS_SKILL_DIRECTORIES = [
+  { tool: "Claude Code", directory: "$HOME\\.claude\\skills" },
+  { tool: "Codex and other agents", directory: "$HOME\\.agents\\skills" },
+];
 
 const STATIC_CONTENT_TYPES: Readonly<Record<string, string>> = {
   ".html": "text/html; charset=utf-8",
@@ -155,21 +167,77 @@ export function resolvePackageRoot(): string {
 }
 
 /** Wrap a path for POSIX shells, which treat everything inside single quotes literally. */
-function shellQuote(value: string): string {
+function posixQuote(value: string): string {
   return `'${value.replaceAll("'", `'\\''`)}'`;
 }
 
+/** Wrap a path for PowerShell, which treats everything inside single quotes literally. */
+function powerShellQuote(value: string): string {
+  return `'${value.replaceAll("'", "''")}'`;
+}
+
 function buildSkillInstall(packageRoot: string): SkillInstallResponse {
-  const source = shellQuote(path.join(packageRoot, "skill"));
-  // `~` stays unexpanded so the command reads the same on any machine and the
-  // user's own shell resolves it. ` && ` stops the chain at the first failure.
+  const source = path.join(packageRoot, "skill");
+  return process.platform === "win32"
+    ? buildWindowsSkillInstall(source)
+    : buildPosixSkillInstall(source);
+}
+
+/**
+ * `~` stays unexpanded so the command reads the same on any machine and the
+ * user's own shell resolves it. ` && ` stops the chain at the first failure.
+ */
+function buildPosixSkillInstall(source: string): SkillInstallResponse {
+  const quotedSource = posixQuote(source);
+  const targets = POSIX_SKILL_DIRECTORIES.map(({ tool, directory }) => (
+    { tool, path: `${directory}/${SKILL_NAME}` }
+  ));
   const command = [
-    `mkdir -p ~/.agents/skills ~/.claude/skills`,
-    `rm -rf ${SKILL_TARGET_PATH}`,
-    `cp -R ${source} ${SKILL_TARGET_PATH}`,
-    `ln -sfn ${SKILL_TARGET_PATH} ${SKILL_LINK_PATH}`,
+    `mkdir -p ${POSIX_SKILL_DIRECTORIES.map(({ directory }) => directory).join(" ")}`,
+    `rm -rf ${targets.map(({ path: target }) => target).join(" ")}`,
+    ...targets.map(({ path: target }) => `cp -R ${quotedSource} ${target}`),
   ].join(" && ");
-  return { skillName: SKILL_NAME, command, targetPath: SKILL_TARGET_PATH, linkPath: SKILL_LINK_PATH };
+  return { skillName: SKILL_NAME, command, targets };
+}
+
+/**
+ * PowerShell is the shell a Windows user has, and it has no ` && ` before
+ * version 7, so `$ErrorActionPreference` is what stops the chain at the first
+ * failure. `$HOME` is expanded by the shell, so each path is double-quoted.
+ */
+function buildWindowsSkillInstall(source: string): SkillInstallResponse {
+  const quotedSource = powerShellQuote(source);
+  const targets = WINDOWS_SKILL_DIRECTORIES.map(({ tool, directory }) => (
+    { tool, path: `${directory}\\${SKILL_NAME}` }
+  ));
+  const quotedTargets = targets.map(({ path: target }) => `"${target}"`).join(",");
+  const command = [
+    `$ErrorActionPreference = 'Stop'`,
+    `New-Item -ItemType Directory -Force -Path ${
+      WINDOWS_SKILL_DIRECTORIES.map(({ directory }) => `"${directory}"`).join(",")
+    } | Out-Null`,
+    `Remove-Item -Recurse -Force -ErrorAction Ignore ${quotedTargets}`,
+    ...targets.map(({ path: target }) => `Copy-Item -Recurse ${quotedSource} "${target}"`),
+  ].join("; ");
+  return { skillName: SKILL_NAME, command, targets };
+}
+
+/**
+ * The bundled skill, for the same preview dialog the scanned files use.
+ *
+ * It ships with the package rather than with the scan, so it is read whole and
+ * by a fixed name instead of through the index allowlist `/api/source` applies.
+ */
+async function readSkillSource(packageRoot: string): Promise<SourceResponse> {
+  const buffer = await readFile(path.join(packageRoot, "skill", "SKILL.md"));
+  return {
+    path: "SKILL.md",
+    content: buffer.toString("utf8"),
+    mode: "source",
+    truncated: false,
+    totalBytes: buffer.byteLength,
+    language: null,
+  };
 }
 
 function sendJson(response: ServerResponse, statusCode: number, payload: unknown): void {
@@ -534,6 +602,10 @@ export function createSlopsplorerServer(options: SlopsplorerServerOptions): Slop
       }
       case "/api/skill-install": {
         sendJson(response, 200, skillInstall);
+        return;
+      }
+      case "/api/skill-source": {
+        sendJson(response, 200, await readSkillSource(packageRoot));
         return;
       }
       case "/api/health": {

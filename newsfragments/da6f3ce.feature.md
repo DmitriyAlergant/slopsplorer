@@ -1,0 +1,1 @@
+The folder panel now holds the heaviest files below its subfolder tiles, so one panel divides a folder by folder and by file, and the separate heaviest-files table at the foot of the page is gone with its threshold moved beside the rows it thins.

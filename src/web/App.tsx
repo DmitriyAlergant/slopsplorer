@@ -1,25 +1,24 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
-  Aspect, ComparisonRequest, FileKind, Measure, RankMetric, TreeRow, ViewRequest, ViewResponse,
+  Aspect, ComparisonRequest, FileKind, Measure, RankMetric, RowKind, TreeRow, ViewRequest, ViewResponse,
 } from "../shared/api.ts";
 import { ASPECTS, MEASURES } from "../shared/api.ts";
 import { compare, fetchView, openRoot, rescan } from "./api.ts";
 import {
-  DEFAULT_RANKING_HEIGHT, DEFAULT_WORKSPACE_HEIGHT, MAX_WORKSPACE_HEIGHT, MIN_WORKSPACE_HEIGHT,
-  readPreferences, readRankingHeight, readTreePanelRatio, readWorkspaceHeight,
-  writePreferences, writeRankingHeight, writeTreePanelRatio, writeWorkspaceHeight,
+  DEFAULT_WORKSPACE_HEIGHT, MAX_WORKSPACE_HEIGHT, MIN_WORKSPACE_HEIGHT,
+  readPreferences, readTreePanelRatio, readWorkspaceHeight,
+  writePreferences, writeTreePanelRatio, writeWorkspaceHeight,
 } from "./preferences.ts";
+import { isInsideFolder } from "./displayPath.ts";
 import { comparisonLabel } from "./format.ts";
 import { closeTooltip } from "./tooltip.ts";
 import { readRequest, selectionKey, writeRequest } from "./urlState.ts";
 import { FilterBar } from "./components/FilterBar.tsx";
-import { DrillBreadcrumbs } from "./components/DrillBreadcrumbs.tsx";
 import { FolderDetail } from "./components/FolderDetail.tsx";
 import { InstrumentBar } from "./components/InstrumentBar.tsx";
-import { LargestFiles } from "./components/LargestFiles.tsx";
 import { MassRibbon } from "./components/MassRibbon.tsx";
 import { SkillInstallDialog } from "./components/SkillInstallDialog.tsx";
-import { SourceDialog } from "./components/SourceDialog.tsx";
+import { SourceDialog, type Preview } from "./components/SourceDialog.tsx";
 import { SourceTree } from "./components/SourceTree.tsx";
 import { DEFAULT_TREE_PANEL_RATIO, HeightSplitter, WorkspaceSplitter } from "./components/Splitter.tsx";
 
@@ -50,12 +49,24 @@ function workspaceHeightFromStorage(): number {
   }
 }
 
-function rankingHeightFromStorage(): number {
-  try {
-    return readRankingHeight(window.localStorage, DEFAULT_RANKING_HEIGHT);
-  } catch {
-    return DEFAULT_RANKING_HEIGHT;
+/** Open `root` and every folder under it, and leave the rest of the tree as it is. */
+function withSubtreeExpanded(expanded: readonly string[], expandable: readonly string[], root: string): string[] {
+  const opened = new Set(expanded);
+  opened.add(root);
+  for (const path of expandable) {
+    if (isInsideFolder(path, root)) opened.add(path);
   }
+  return [...opened];
+}
+
+/**
+ * Close every folder under `root`, and leave `root` itself open.
+ *
+ * Selecting a folder opens it, so closing the folder the button acts on would
+ * undo the selection that aimed the button.
+ */
+function withSubtreeCollapsed(expanded: readonly string[], root: string): string[] {
+  return expanded.filter((path) => path === root || !isInsideFolder(path, root));
 }
 
 export function App(): React.JSX.Element {
@@ -66,11 +77,10 @@ export function App(): React.JSX.Element {
   const [rescanning, setRescanning] = useState(false);
   const [openingRoot, setOpeningRoot] = useState<string | null>(null);
   const [comparingLabel, setComparingLabel] = useState<string | null>(null);
-  const [sourcePath, setSourcePath] = useState<string | null>(null);
+  const [preview, setPreview] = useState<Preview | null>(null);
   const [skillOpen, setSkillOpen] = useState(false);
   const [treePanelRatio, setTreePanelRatio] = useState(treePanelRatioFromStorage);
   const [workspaceHeight, setWorkspaceHeight] = useState(workspaceHeightFromStorage);
-  const [rankingHeight, setRankingHeight] = useState(rankingHeightFromStorage);
   const requestRef = useRef(request);
   requestRef.current = request;
   const lastSelectionRef = useRef(selectionKey(request));
@@ -120,10 +130,6 @@ export function App(): React.JSX.Element {
   useEffect(() => {
     writeWorkspaceHeight(window.localStorage, workspaceHeight);
   }, [workspaceHeight]);
-
-  useEffect(() => {
-    writeRankingHeight(window.localStorage, rankingHeight);
-  }, [rankingHeight]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -196,7 +202,7 @@ export function App(): React.JSX.Element {
       .then((next) => {
         setRequest(nextRequest);
         setView(next);
-        setSourcePath(null);
+        setPreview(null);
         setError(null);
       })
       .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause)))
@@ -231,7 +237,7 @@ export function App(): React.JSX.Element {
     }));
   }, []);
 
-  const select = useCallback((rowKind: "folder" | "files", path: string) => {
+  const select = useCallback((rowKind: RowKind, path: string) => {
     setRequest((previous) => {
       // Selecting a nested folder should reveal it, so open every ancestor.
       const ancestors = new Set(previous.expanded);
@@ -430,7 +436,6 @@ export function App(): React.JSX.Element {
         onRescan={handleRescan}
         onOpen={handleOpen}
         onCompare={handleCompare}
-        onInstallSkill={() => setSkillOpen(true)}
       />
 
       <FilterBar
@@ -441,15 +446,6 @@ export function App(): React.JSX.Element {
         onQueryChange={(query) => patch({ query })}
         onMeasureChange={setMeasure}
         onAspectChange={setAspect}
-      />
-
-      {/* The trail names the scope the tree beneath it is rooted in, and is the
-          way back up out of a drill, so it sits with the tree rather than with
-          the figures that summarise the scope further down. */}
-      <DrillBreadcrumbs
-        rootName={view?.meta.rootName ?? "Project"}
-        drillPath={request.drillPath}
-        onDrill={drill}
       />
 
       {error ? <p className="error-banner" role="status">{error}</p> : null}
@@ -463,33 +459,42 @@ export function App(): React.JSX.Element {
       >
         <SourceTree
           rows={view?.tree ?? []}
+          rootName={view?.meta.rootName ?? "Project"}
+          drillPath={request.drillPath}
           sort={request.treeSort}
           measure={view?.measure ?? request.measure}
           aspect={aspect}
           isDiff={isDiff}
+          selectedPath={request.selected.path}
           onSelect={select}
           onDrill={drill}
           onSortChange={(treeSort) => patch({ treeSort })}
           onToggleExpanded={toggleExpanded}
           onToggleFolder={toggleFolder}
           onToggleDirectFiles={toggleDirectFiles}
-          onExpandAll={() => patch({ expanded: view?.expandableFolderPaths ?? [""] })}
-          onCollapseAll={() => patch({ expanded: [""] })}
+          onExpandSubtree={(path) => patch({
+            expanded: withSubtreeExpanded(request.expanded, view?.expandableFolderPaths ?? [], path),
+          })}
+          onCollapseSubtree={(path) => patch({ expanded: withSubtreeCollapsed(request.expanded, path) })}
         />
         <WorkspaceSplitter ratio={treePanelRatio} onRatioChange={setTreePanelRatio} />
         <FolderDetail
           detail={view?.detail ?? null}
+          files={view?.ranked ?? []}
+          filesTotal={view?.rankedTotal ?? 0}
           measure={view?.measure ?? request.measure}
           aspect={aspect}
           isDiff={isDiff}
           sort={request.rank.metric}
           onSortChange={setRankMetric}
           path={request.selected.path}
-          onSelectFolder={(path) => select("folder", path)}
+          onSelect={select}
           directFilesOnly={request.selected.rowKind === "files"}
           canDrill={request.selected.rowKind === "folder" && request.selected.path !== request.drillPath}
           onDrill={() => drill(request.selected.path)}
-          onOpenSource={setSourcePath}
+          rank={request.rank}
+          onRankChange={setRank}
+          onOpenSource={(path) => setPreview({ kind: "file", path })}
           onCapacityChange={setCardColumns}
         />
       </div>
@@ -504,37 +509,29 @@ export function App(): React.JSX.Element {
         defaultHeight={DEFAULT_WORKSPACE_HEIGHT}
       />
 
-      {/* Below the workspace, because the page reads downstream: the filters and
-          the tree decide what is counted, and every figure here is the result. */}
+      {/* Last, because the page reads downstream: the filters and the tree decide
+          what is counted, the workspace shows it, and this states the total. */}
       <MassRibbon
         summary={view?.summary ?? null}
         measure={view?.measure ?? request.measure}
         aspect={aspect}
         isDiff={isDiff}
-        selectedPath={request.selected.rowKind === "folder" ? request.selected.path : null}
-        onSelect={(path) => select("folder", path)}
+        selected={request.selected}
+        onSelect={select}
       />
 
-      <LargestFiles
-        files={view?.ranked ?? []}
-        measure={view?.measure ?? request.measure}
-        aspect={aspect}
-        isDiff={isDiff}
-        total={view?.rankedTotal ?? 0}
-        scopePath={request.selected.path}
-        directFilesOnly={request.selected.rowKind === "files"}
-        rootName={view?.meta.rootName ?? ""}
-        displayRoot={request.drillPath}
-        rank={request.rank}
-        height={rankingHeight}
-        onHeightChange={setRankingHeight}
-        onRankChange={setRank}
-        onSortChange={setRankMetric}
-        onOpenSource={setSourcePath}
-      />
+      <p className="colophon">
+        <button type="button" className="link" onClick={() => setSkillOpen(true)}>
+          Install the agent skill
+        </button>
+      </p>
 
-      <SourceDialog path={sourcePath} onClose={() => setSourcePath(null)} />
-      <SkillInstallDialog open={skillOpen} onClose={() => setSkillOpen(false)} />
+      <SourceDialog preview={preview} onClose={() => setPreview(null)} />
+      <SkillInstallDialog
+        open={skillOpen}
+        onClose={() => setSkillOpen(false)}
+        onPreviewSkill={() => setPreview({ kind: "skill" })}
+      />
       {reaiming ? (
         <div className="progress-modal" role="dialog" aria-modal="true" aria-labelledby="reaim-title">
           <div className="progress-modal__card">
