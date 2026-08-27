@@ -38,11 +38,11 @@ export function MassRibbon({ summary, measure, aspect, isDiff, selectedPath, onS
   const commentPart = isDiff ? summary?.selectedChurnCommentLines ?? 0 : summary?.selectedCommentLines ?? 0;
   const commentShare = commentBase > 0 ? commentPart / commentBase : 0;
   const unit = weightName(measure, aspect, isDiff);
-  // Net is signed, so every share is drawn against churn instead. These two
-  // readouts state that denominator, and naming them "net" would put a churn
-  // figure under a net label.
+  // Net is signed, so no whole divides it into an honest percentage and the
+  // strip states none. The baseline figure itself is still drawn, in churn,
+  // because naming it "net" would put a churn figure under a net label.
+  const showsShare = aspect !== "net";
   const baselineUnit = weightName(measure, aspect === "net" ? "churn" : aspect, isDiff);
-  const baselineSuffix = aspect === "net" ? " churn" : "";
   // Taken from the response, not from the pending request, so the labels and
   // the numbers always describe the same scope.
   const drilled = summary !== null && summary.scopePath !== "";
@@ -86,13 +86,17 @@ export function MassRibbon({ summary, measure, aspect, isDiff, selectedPath, onS
             <Readout label={weightName(measure, "removed", isDiff)} value={summary ? removedFigure.text : "-"} sign={removedFigure.sign} />
           </>
         ) : null}
-        <Readout
-          label={drilled ? `of scope${baselineSuffix}` : `of project${baselineSuffix}`}
-          value={summary && summary.scopeWeight > 0 ? percent(Math.abs(summary.selectedWeight) / summary.scopeWeight) : "-"}
-        />
-        {drilled ? (
+        {/* What the filters keep, which is why these two divide by the whole
+            scope rather than by the visible one the folder shares use. */}
+        {showsShare ? (
           <Readout
-            label={`of project${baselineSuffix}`}
+            label={drilled ? "of scope" : "of project"}
+            value={summary && summary.scopeWeight > 0 ? percent(Math.abs(summary.selectedWeight) / summary.scopeWeight) : "-"}
+          />
+        ) : null}
+        {showsShare && drilled ? (
+          <Readout
+            label="of project"
             value={summary && summary.projectWeight > 0 ? percent(Math.abs(summary.selectedWeight) / summary.projectWeight) : "-"}
           />
         ) : null}

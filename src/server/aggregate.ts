@@ -343,10 +343,9 @@ function mergeTotals(target: Totals, source: Totals): void {
 /**
  * A folder's complete weight in one measure, ignoring every active filter.
  *
- * Bars are normalised against this rather than against the visible total so
- * that switching a file kind on can only lengthen a bar. Normalising against
- * the filtered total would grow the denominator too, and a tile holding none
- * of the newly enabled kind would visibly shrink.
+ * The summary states this beside the visible weight, so the ribbon can say how
+ * much of the tree the filters keep. No share divides by it: a percentage of a
+ * whole the page is not drawing names a scope the reader cannot see.
  */
 function unfilteredWeight(index: ScanIndex, folderPath: string, field: WeightField): number {
   const folder = index.folderByPath.get(folderPath);
@@ -355,13 +354,7 @@ function unfilteredWeight(index: ScanIndex, folderPath: string, field: WeightFie
   return prefix[folder.end]! - prefix[folder.start]!;
 }
 
-/**
- * The denominator every project percentage is measured against.
- *
- * This is the unfiltered weight of the whole tree, so it does not move when a
- * visibility switch changes and the tile bars, the folder share, and the
- * summary all divide by the same number.
- */
+/** The unfiltered weight of the whole tree, which the ribbon states as `project`. */
 function projectBaseline(index: ScanIndex, field: WeightField): number {
   return unfilteredWeight(index, "", field);
 }
@@ -372,7 +365,7 @@ function buildTree(
   aggregation: Aggregation,
   exclusions: ExclusionState,
   scopeRoot: FolderNode,
-  scopeBaseline: number,
+  visibleScopeWeight: number,
   /** Churn the filters leave in the scope: the whole the two halves divide. */
   visibleChurn: number,
 ): TreeRow[] {
@@ -419,7 +412,7 @@ function buildTree(
       weight: totals.weight,
       added: totals.added,
       removed: totals.removed,
-      shareOfScope: share(totals.weight, scopeBaseline),
+      shareOfScope: share(totals.weight, visibleScopeWeight),
       shareAdded: share(totals.added, visibleChurn),
       shareRemoved: share(totals.removed, visibleChurn),
       hasChildren: children.length > 0,
@@ -446,7 +439,7 @@ function buildTree(
         weight: child.weight,
         added: directTotals.added,
         removed: directTotals.removed,
-        shareOfScope: share(child.weight, scopeBaseline),
+        shareOfScope: share(child.weight, visibleScopeWeight),
         shareAdded: share(directTotals.added, visibleChurn),
         shareRemoved: share(directTotals.removed, visibleChurn),
         hasChildren: false,
@@ -467,8 +460,7 @@ function buildFolderCard(
   name: string,
   folderPath: string | null,
   totals: Totals,
-  baseline: number,
-  scopeBaseline: number,
+  visibleScopeWeight: number,
   isDiff: boolean,
 ): FolderCard {
   return {
@@ -478,8 +470,7 @@ function buildFolderCard(
     added: totals.added,
     removed: totals.removed,
     files: totals.files,
-    shareOfProject: share(totals.weight, baseline),
-    shareOfScope: share(totals.weight, scopeBaseline),
+    shareOfScope: share(totals.weight, visibleScopeWeight),
     flavors: flavorSlices(totals),
     statuses: statusSlices(totals, isDiff),
   };
@@ -497,8 +488,7 @@ function buildDetail(
   request: ViewRequest,
   aggregation: Aggregation,
   fields: ActiveFields,
-  baseline: number,
-  scopeBaseline: number,
+  visibleScopeWeight: number,
 ): DetailView {
   const isDiff = index.meta.diff !== null;
   const directFilesOnly = request.selected.rowKind === "files";
@@ -517,14 +507,14 @@ function buildDetail(
   if (plan.tiles < children.length) {
     const shown = plan.tiles - 1;
     for (const entry of children.slice(0, shown)) {
-      cards.push(buildFolderCard(entry.node.name, entry.node.path, entry.totals, baseline, scopeBaseline, isDiff));
+      cards.push(buildFolderCard(entry.node.name, entry.node.path, entry.totals, visibleScopeWeight, isDiff));
     }
     const rest = emptyTotals();
     for (const entry of children.slice(shown)) mergeTotals(rest, entry.totals);
-    cards.push(buildFolderCard(`${children.length - shown} more folders`, null, rest, baseline, scopeBaseline, isDiff));
+    cards.push(buildFolderCard(`${children.length - shown} more folders`, null, rest, visibleScopeWeight, isDiff));
   } else {
     for (const entry of children) {
-      cards.push(buildFolderCard(entry.node.name, entry.node.path, entry.totals, baseline, scopeBaseline, isDiff));
+      cards.push(buildFolderCard(entry.node.name, entry.node.path, entry.totals, visibleScopeWeight, isDiff));
     }
   }
 
@@ -562,8 +552,7 @@ function buildDetail(
     churnLines: totals.churnLines,
     churnCodeLines: totals.churnCodeLines,
     churnCommentLines: totals.churnCommentLines,
-    shareOfProject: share(totals.weight, baseline),
-    shareOfScope: share(totals.weight, scopeBaseline),
+    shareOfScope: share(totals.weight, visibleScopeWeight),
     cards,
     cardColumns,
     directFiles,
@@ -633,6 +622,7 @@ function buildSummary(
   baseline: number,
   scopeRoot: FolderNode,
   scopeBaseline: number,
+  visibleScopeWeight: number,
 ): SummaryView {
   const isDiff = index.meta.diff !== null;
   const scopeTotals = aggregation.subtree.get(scopeRoot.path) ?? emptyTotals();
@@ -643,11 +633,11 @@ function buildSummary(
     .filter((entry) => entry.totals.weight !== 0)
     .sort((left, right) => byMagnitude(left.totals.weight, right.totals.weight));
   for (const entry of children) {
-    ribbon.push(buildFolderCard(entry.node.name, entry.node.path, entry.totals, baseline, scopeBaseline, isDiff));
+    ribbon.push(buildFolderCard(entry.node.name, entry.node.path, entry.totals, visibleScopeWeight, isDiff));
   }
   const scopeDirect = aggregation.direct.get(scopeRoot.path) ?? emptyTotals();
   if (scopeDirect.weight !== 0) {
-    ribbon.push(buildFolderCard(DIRECT_FILES_LABEL, null, scopeDirect, baseline, scopeBaseline, isDiff));
+    ribbon.push(buildFolderCard(DIRECT_FILES_LABEL, null, scopeDirect, visibleScopeWeight, isDiff));
   }
   return {
     projectWeight: baseline,
@@ -702,21 +692,26 @@ export function buildView(index: ScanIndex, request: ViewRequest): ViewResponse 
   const aggregation = aggregate(index, request, exclusions, fields);
   const baseline = projectBaseline(index, fields.baseline);
   const scopeBaseline = unfilteredWeight(index, scopeRoot.path, fields.baseline);
+  const scopeTotals = aggregation.subtree.get(scopeRoot.path) ?? emptyTotals();
   // One scale for every band, so a row's length means the same wherever it sits
   // in the tree. It is the churn the filters leave rather than the unfiltered
   // whole, because a code-only view of a large repository holds a small part of
   // the project's churn and would draw every band at under a pixel.
-  const scopeTotals = aggregation.subtree.get(scopeRoot.path) ?? emptyTotals();
   const visibleChurn = scopeTotals.added + scopeTotals.removed;
+  // The whole every folder share divides by: the drill scope as the filters
+  // leave it, so a share names the tree the reader is looking at. Net is signed
+  // and cannot be its own whole, so in that aspect the shares scale bands only
+  // and the page states no percentage of them.
+  const visibleScopeWeight = aspect === "net" ? visibleChurn : scopeTotals.weight;
   const ranked = rankFiles(index, modeRequest, aggregation, fields);
   return {
     meta: index.meta,
     measure: request.measure,
     aspect,
     rankMetric,
-    summary: buildSummary(index, aggregation, baseline, scopeRoot, scopeBaseline),
-    tree: buildTree(index, modeRequest, aggregation, exclusions, scopeRoot, scopeBaseline, visibleChurn),
-    detail: buildDetail(index, modeRequest, aggregation, fields, baseline, scopeBaseline),
+    summary: buildSummary(index, aggregation, baseline, scopeRoot, scopeBaseline, visibleScopeWeight),
+    tree: buildTree(index, modeRequest, aggregation, exclusions, scopeRoot, visibleScopeWeight, visibleChurn),
+    detail: buildDetail(index, modeRequest, aggregation, fields, visibleScopeWeight),
     ranked: ranked.rows,
     rankedTotal: ranked.total,
     rankScope: rankScopeLabel(index, modeRequest),

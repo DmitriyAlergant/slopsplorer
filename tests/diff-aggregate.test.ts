@@ -130,8 +130,9 @@ describe("aggregating a diff", () => {
     const grown = rowFor(narrowed.tree, "grown");
     expect(grown.shareAdded).toBe(1);
     expect(grown.shareRemoved).toBe(0);
-    // The percentage baseline is unfiltered, so the share readout does not move.
-    expect(grown.shareOfScope).toBeCloseTo(30 / 65, 6);
+    // The share divides by the same filtered churn, so the one folder the query
+    // leaves is the whole of what the page is showing.
+    expect(grown.shareOfScope).toBe(1);
   });
 
   it("orders by magnitude in net, so the largest deletion is not sorted last", () => {

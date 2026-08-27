@@ -158,8 +158,8 @@ Net is signed, and it changes three things that scan mode takes for granted.
 
 - Every share assumes `0 <= part <= whole`.
   A folder can be -400 inside a project of +10,000, a folder can hold more than all of its scope, and a change whose adds and deletes nearly cancel makes every percentage explode.
-  In net, shares are drawn against the churn of the scope, which is always positive and always at least as large as the net.
-  The readouts that show that denominator say `churn`, so a churn figure never appears under a net label.
+  So net has no honest whole, and the page states no percentage of it: the folder head drops its share figure and the tiles drop theirs.
+  The shares still exist on the wire in that aspect, drawn against the scope's churn, because the bands need a length and a length is not a claim.
 - Heaviest first means largest in magnitude.
   The tree sort, `rankFiles()`, and the folder tiles all order by absolute weight, and `rank.minWeight` is a floor on magnitude, or a threshold would silently drop every deletion.
   The sign is shown beside the number rather than folded into the order.
@@ -173,8 +173,7 @@ In every aspect that is not net, each row of the source tree keeps the single `-
 In net, each row of the source tree shows one figure, the signed net, and beside it a band drawn from a centre axis: removed grows left of the axis and added grows right, as a number line reads.
 The band is why the lone figure is safe: a net of -6,448 reads the same whether nothing happened or 33,000 tokens were traded for 39,000, and the band tells those apart.
 The two halves are `--share-removed` and `--share-added`, which the server computes as `TreeRow.shareRemoved` and `TreeRow.shareAdded`.
-They divide `visibleChurn` in `src/server/aggregate.ts`, the churn the active filters leave in the drill scope, not the unfiltered `scopeBaseline` the percentages use.
-A code-only view of a large repository holds a small part of the project's churn, and against the unfiltered whole every band in it would round to nothing.
+They divide `visibleChurn` in `src/server/aggregate.ts`, the churn the active filters leave in the drill scope.
 Because the halves divide the scope's own churn, the scope's own row fills the whole band.
 
 Each side also states its own figure over its own bar, muted, from the axis outwards: the removed figure ends at the axis and the added figure starts at it, so the pair reads either side of one line.
@@ -192,10 +191,12 @@ Only one figure of a tile moves when the aspect switch moves, so a reader who is
 
 ## How a folder is summarised
 
-The head of `FolderDetail` states every aspect at once, as one strip of `Readout` figures: added, removed, net, churn, after, the comment share of the churn, and the file count.
+The head of `FolderDetail` states every aspect at once, as one strip of `Readout` figures: added, removed, net, churn, after, and the file count.
 The switch above moves the emphasis along that strip and never changes its shape, so the panel keeps its height and the reader keeps their place.
+Only the selected figure keeps full ink and its hue, and the rest are muted, because a strip of equal numbers gives the reader nothing to hold.
+The strip is a grid of equal tracks, so a figure stays in the same place when the reader opens the next folder.
 A scan draws the same strip from the three measures instead, which is why the two modes read alike.
-`MassRibbon` builds its scope figures from the same component, so one figure is stated in one shape wherever the page states it.
+`MassRibbon` builds its scope figures from the same component, so one figure is stated in one shape wherever the page states it, and it is the one strip that states the comment share of the churn.
 
 The aspect totals come from `detail.added` and `detail.removed` in the active measure, and from the two identities.
 The server is not asked for a fifth field it can already imply.

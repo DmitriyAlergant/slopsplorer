@@ -246,8 +246,7 @@ export interface FolderCard {
   added: number;
   removed: number;
   files: number;
-  shareOfProject: number;
-  /** 0-1 share of the active drill scope's unfiltered weight. Magnitude only. */
+  /** 0-1 share of the drill scope as the filters leave it. Magnitude only. */
   shareOfScope: number;
   flavors: FlavorSlice[];
   /** How the change divides, for a diff. Empty for a scan. */
@@ -293,8 +292,13 @@ export interface DetailView {
   churnLines: number;
   churnCodeLines: number;
   churnCommentLines: number;
-  shareOfProject: number;
-  /** 0-1 share of the active drill scope's unfiltered weight. Magnitude only. */
+  /**
+   * 0-1 share of the drill scope as the filters leave it. Magnitude only.
+   *
+   * In the net aspect the whole is the scope's churn, because a signed quantity
+   * cannot be its own whole. The page draws it there and states no figure from
+   * it, so a length stays a length and never becomes a claim.
+   */
   shareOfScope: number;
   cards: FolderCard[];
   /** Fixed column capacity measured from the panel width. */

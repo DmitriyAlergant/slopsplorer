@@ -81,15 +81,10 @@ export function FolderDetail({ detail, measure, aspect, isDiff, sort, onSortChan
 
   if (!detail) return <section ref={panelRef} className="panel detail" aria-label="Folder detail" />;
 
-  // Inside a diff every supporting figure describes the change too, so the
-  // comment share is the comment share of the churn rather than of the result.
-  const commentBase = isDiff ? detail.churnLines : detail.lines;
-  const commentPart = isDiff ? detail.churnCommentLines : detail.commentLines;
-  const commentShare = commentBase > 0 ? commentPart / commentBase : 0;
   const totals = aspectTotals(detail, measure);
-  // Net is signed, so its shares are drawn against churn. Every readout of one
-  // says so, because a churn figure under a net label is a wrong figure.
-  const shareNote = aspect === "net" ? "of the current scope's churn" : "of current scope";
+  // Net is signed, so no whole divides it into an honest percentage. The bands
+  // still scale against churn, and the page states no share of them.
+  const showsShare = aspect !== "net";
 
   return (
     <section ref={panelRef} className="panel detail" aria-label="Folder detail">
@@ -159,18 +154,15 @@ export function FolderDetail({ detail, measure, aspect, isDiff, sort, onSortChan
                   emphasis={candidate === measure}
                 />
               ))}
-            <Readout label={isDiff ? "comment of churn" : "comment share"} value={percent(commentShare)} />
             <Readout label="files" value={count(detail.files)} />
           </div>
         </div>
+        {/* Drawn in every aspect, and empty in net where the page states no
+            share: a slot that came and went would move the strip beside it. */}
         <div className="detail__actions">
           <p className="detail__share" {...tooltipHandlers}>
-            {percent(detail.shareOfScope)}
-            <Tooltip>
-              {aspect === "net"
-                ? "Share of the current scope's churn, measured before any filter. Net is signed, so churn is the whole it is drawn against."
-                : "Share of the current scope, measured before any filter"}
-            </Tooltip>
+            {showsShare ? percent(detail.shareOfScope) : null}
+            {showsShare ? <Tooltip>Share of the current scope, under the active filters</Tooltip> : null}
           </p>
         </div>
       </header>
@@ -180,6 +172,9 @@ export function FolderDetail({ detail, measure, aspect, isDiff, sort, onSortChan
           {detail.cards.map((card, index) => {
             const added = aspectFigure("added", card.added);
             const removed = aspectFigure("removed", card.removed);
+            // Only the hue: the unit beside the headline already names the side,
+            // so the figure reads as a count and still matches the strip above.
+            const headline = aspectFigure(aspect, card.weight);
             const body = (
               <>
                 <span className="card__head">
@@ -189,18 +184,18 @@ export function FolderDetail({ detail, measure, aspect, isDiff, sort, onSortChan
                 {/* The figure names its own side: the switch that chose it is
                     at the top of the page, and a tile is read on its own. */}
                 <span className="card__row">
-                  <span className="card__weight">
+                  <span className="card__weight" data-sign={headline.sign}>
                     {weightCount(card.weight, aspect)}
                     <span className="card__unit">{weightAbbreviation(measure, aspect, isDiff)}</span>
                   </span>
-                  <span className="card__share">{percent(card.shareOfScope)}</span>
+                  {showsShare ? <span className="card__share">{percent(card.shareOfScope)}</span> : null}
                 </span>
                 {/* The two sides, whatever the switch selects, because a tile
                     showing one figure hides a rewrite behind a small number. */}
                 {isDiff ? (
                   <span className="card__split">
-                    <span data-sign={added.sign}>{added.text}</span>
-                    <span data-sign={removed.sign}>{removed.text}</span>
+                    <span>{added.text}</span>
+                    <span>{removed.text}</span>
                   </span>
                 ) : null}
                 <FlavorBar
@@ -225,7 +220,8 @@ export function FolderDetail({ detail, measure, aspect, isDiff, sort, onSortChan
                 // of what the columns carry.
                 aria-label={
                   `${card.name}, ${weightCount(card.weight, aspect)} ${weightName(measure, aspect, isDiff)}, `
-                  + `${countOf(card.files, "file")}, ${percent(card.shareOfScope)} ${shareNote}`
+                  + `${countOf(card.files, "file")}`
+                  + (showsShare ? `, ${percent(card.shareOfScope)} of current scope` : "")
                 }
                 onClick={() => onSelectFolder(card.path!)}
               >

@@ -403,10 +403,18 @@ button { cursor: pointer; }
 .readout { display: flex; flex-direction: column; gap: 1px; }
 .readout__value { font-size: 20px; font-weight: 600; letter-spacing: -0.02em; }
 .readout[data-emphasis="true"] .readout__value { font-size: 30px; font-weight: 700; }
-/* Direction is carried by the sign in the figure as well as by the colour. */
-.readout[data-sign="positive"] .readout__value { color: var(--status-added); }
-.readout[data-sign="negative"] .readout__value { color: var(--status-deleted); }
-.readout[data-sign="zero"] .readout__value { color: var(--ink-faint); }
+/* One hue table for every figure the page states in full, so a strip readout and
+   a tile headline never drift apart. Direction is carried by the sign in the
+   figure, or by the unit beside it, as well as by the colour. */
+.readout[data-sign="positive"], .card__weight[data-sign="positive"] { color: var(--status-added); }
+.readout[data-sign="negative"], .card__weight[data-sign="negative"] { color: var(--status-deleted); }
+.readout[data-sign="zero"], .card__weight[data-sign="zero"] { color: var(--ink-faint); }
+/* The switches above the strip select one figure, and the neighbours are there
+   to be glanced at. Only the selected one keeps full ink and hue, so a strip of
+   seven numbers reads as one figure with context rather than as seven claims.
+   After the sign rules, because it overrides their colour at equal weight. */
+.readout[data-emphasis="false"] .readout__value { color: var(--ink-faint); font-weight: 500; }
+.readout[data-emphasis="true"] .readout__label { color: var(--ink-soft); }
 .readout__label {
   color: var(--ink-faint);
   font-size: 9.5px;
@@ -964,13 +972,27 @@ button { cursor: pointer; }
 /* Secondary to the drill arrow: a utility beside the name, not a way through it. */
 .detail__tool--copy { color: var(--ink-faint); }
 .detail__tool--copy:hover { background: var(--sunk); color: var(--ink); }
-/* Set smaller than the scope strip: this one sits beside the share figure and
-   above the tiles, and both of those outrank it. */
-.detail__readouts { gap: 16px; margin-top: 9px; }
+/*
+ * Set smaller than the scope strip: this one sits beside the share figure and
+ * above the tiles, and both of those outrank it.
+ *
+ * Equal tracks rather than content widths. The strip redraws for every folder,
+ * and a column sized by its own figure moves every column after it, so the eye
+ * has to find each number again. The tracks wrap when the panel is too narrow
+ * to hold them, which is the one case where a fixed place cannot be kept.
+ */
+.detail__readouts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  gap: 16px; margin-top: 9px;
+}
 .detail__readouts .readout__value { font-size: 15px; }
 .detail__readouts .readout[data-emphasis="true"] .readout__value { font-size: 19px; }
 .detail__share {
+  /* Wide enough for the longest figure it draws, so the strip to its left keeps
+     its width when the share goes from one character to five. */
   margin: 0; flex: none;
+  min-width: 5ch; text-align: right;
   font-family: var(--font-mono); font-variant-numeric: tabular-nums;
   font-size: 30px; font-weight: 700; letter-spacing: -0.03em;
 }
@@ -1021,18 +1043,18 @@ button { cursor: pointer; }
   font-size: 13px; font-weight: 600;
   white-space: nowrap;
 }
-/* Quieter than the figure it qualifies, and the only part a narrow tile clips. */
-.card__unit { min-width: 0; overflow: hidden; color: var(--ink-faint); font-size: 11px; font-weight: 400; }
+/* Quieter than the figure it names, and louder than the supporting line under
+   it: the unit belongs to the headline. The only part a narrow tile clips. */
+.card__unit { min-width: 0; overflow: hidden; color: var(--ink-soft); font-size: 11px; font-weight: 400; }
 /* The two sides on every tile, whatever the switch selects, so a tile never
-   hides a rewrite behind a small number. */
+   hides a rewrite behind a small number. Muted, and read by their signs: the
+   headline above is the figure the switches chose, and this line supports it. */
 .card__split {
   display: flex; gap: 9px;
+  color: var(--ink-faint);
   font-family: var(--font-mono); font-size: 11.5px; font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
-.card__split [data-sign="positive"] { color: var(--status-added); }
-.card__split [data-sign="negative"] { color: var(--status-deleted); }
-.card__split [data-sign="zero"] { color: var(--ink-faint); }
 
 .flavor-bar {
   height: 5px; margin-top: 6px;
