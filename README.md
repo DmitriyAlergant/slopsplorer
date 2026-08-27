@@ -1,5 +1,7 @@
 # Slopsplorer
 
+![Slopsplorer: a pig explorer in a pith helmet plants a flag on a summit of source files, beside a bar chart of the weight it found.](https://raw.githubusercontent.com/DmitriyAlergant/slopsplorer/main/docs/hero.jpg)
+
 Slopsplorer is an interactive codebase explorer focused on mapping where the weight of a codebase sits.
 
 Point it at a repository. It measures every file by tokenizer weight, line composition, and structure, then shows you which folders and which files carry the mass. At any measure (Tokens or LOC), the higher the number the bigger the slop. Sniff where it has accumulated.
@@ -17,6 +19,10 @@ npm install -g slopsplorer
 cd vibe-coded-repo
 slopsplorer .
 ```
+
+![Slopsplorer reading its own repository: flavor filters above a source tree and a folder panel, then the headline readouts, the mass ribbon, and the heaviest-files table.](https://raw.githubusercontent.com/DmitriyAlergant/slopsplorer/main/docs/screenshot.png)
+
+*Slopsplorer reading its own source tree.*
 
 ## Diff mode
 
@@ -44,9 +50,9 @@ A switch beside the unit then picks which side of the change every figure descri
 
 In net, every row of the source tree draws a band from a centre axis, removed left and added right, because a rewrite at `+500 / -480` and an addition of `+20` have nearly the same net and are not the same change. Renames are followed rather than counted twice, and a file preview shows the unified diff.
 
-![Slopsplorer reading its own repository: flavor filters above a source tree and a folder panel, then the headline readouts, the mass ribbon, and the heaviest-files table.](https://raw.githubusercontent.com/DmitriyAlergant/slopsplorer/main/docs/screenshot.png)
+![Slopsplorer in diff mode: the aspect switch set to net, a source tree drawing removed and added bands from a centre axis, and a file table of added, removed, net, churn, and after tokens.](https://raw.githubusercontent.com/DmitriyAlergant/slopsplorer/main/docs/screenshot-diff.png)
 
-*Slopsplorer reading its own source tree.*
+*Slopsplorer comparing a release tag against the working tree.*
 
 ## Text report
 
