@@ -35,9 +35,9 @@
   --flavor-generated: oklch(0.60 0.13 12);
 
   /*
-   * Change colours. Nothing on the page depends on hue alone: added sits right
-   * of the centre axis and carries a "+", removed sits left and carries a "-",
-   * and around one man in twelve cannot separate red from green.
+   * Change colours. Nothing on the page depends on hue alone: an added figure
+   * carries a "+" and a removed one carries a "-", and around one man in
+   * twelve cannot separate red from green.
    */
   --status-added: oklch(0.57 0.13 152);
   --status-modified: oklch(0.60 0.11 240);
@@ -105,7 +105,8 @@ body:has(.viewer[open]) { overflow: hidden; }
 
 /* Every figure in this interface is meant to be compared vertically. */
 .mono, .readout__value, .tree__weight, .metrics td, .metrics th,
-.instrument__path, .fact dd, .ribbon__weight, .command {
+.instrument__path, .instrument__root, .picker__trigger, .picker__preview,
+.fact dd, .ribbon__weight, .command {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
 }
@@ -162,11 +163,13 @@ button { cursor: pointer; }
   letter-spacing: -0.045em;
   line-height: 1;
 }
-.instrument__path, .instrument__path-input {
+/* The comparison sits on the wordmark's line, above the repository it is in. */
+.instrument__title { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.instrument__path, .instrument__root, .instrument__path-input {
   color: var(--ink-faint);
   font-size: 11.5px;
 }
-.instrument__path {
+.instrument__path, .instrument__root {
   display: block;
   width: 100%;
   margin: 6px 0 0;
@@ -193,6 +196,7 @@ button { cursor: pointer; }
   font-family: var(--font-mono);
 }
 .instrument__path-hint { flex: none; color: var(--ink-faint); font-size: 9.5px; }
+
 .instrument__facts { display: flex; gap: 24px; margin: 0; }
 .fact dt {
   color: var(--ink-faint);
@@ -201,10 +205,110 @@ button { cursor: pointer; }
   text-transform: uppercase;
 }
 .fact dd { margin: 2px 0 0; font-size: 12px; color: var(--ink-soft); }
-.fact--wide dd { display: flex; align-items: center; gap: 6px; }
-.fact__rev { font-family: var(--font-mono); color: var(--ink); }
-.fact__arrow { color: var(--ink-faint); }
 .instrument__actions { display: flex; gap: 8px; }
+
+/* ---- Comparison picker -------------------------------------------------- */
+
+.picker { min-width: 0; }
+.picker__trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 100%;
+  padding: 4px 10px;
+  border: 1px solid var(--rule-firm);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  font-size: 13px;
+}
+.picker__trigger:hover:not(:disabled), .picker__trigger[aria-expanded="true"] { border-color: var(--signal); }
+.picker__trigger:disabled { opacity: 0.6; cursor: progress; }
+.picker__rev { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.picker__arrow { flex: none; color: var(--ink-faint); }
+
+/* Fixed and placed on open, so the panel is never clipped by the strip. */
+.picker__panel {
+  position: fixed;
+  z-index: 40;
+  width: 560px;
+  padding: 12px;
+  border: 1px solid var(--rule-firm);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: 0 16px 40px oklch(0.2 0.02 265 / 0.18);
+}
+.picker__sides { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.picker__side { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.picker__side-title {
+  margin: 0;
+  color: var(--ink-faint);
+  font-size: 9.5px; font-weight: 600; letter-spacing: 0.11em; text-transform: uppercase;
+}
+.picker__search {
+  padding: 4px 7px;
+  border: 1px solid var(--rule-firm);
+  border-radius: 4px;
+  background: var(--paper);
+  font-size: 12px;
+}
+.picker__list {
+  height: 224px;
+  overflow-y: auto;
+  padding: 2px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-sm);
+}
+.picker__group + .picker__group { margin-top: 4px; }
+.picker__group-title {
+  margin: 0;
+  padding: 4px 7px 2px;
+  color: var(--ink-faint);
+  font-size: 9.5px; letter-spacing: 0.09em; text-transform: uppercase;
+}
+.picker__option {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  padding: 4px 7px;
+  border: 0; border-radius: 4px;
+  background: transparent;
+  text-align: left;
+}
+.picker__option:hover, .picker__option:focus-visible { background: var(--sunk); }
+.picker__option[aria-selected="true"] { background: var(--signal-wash); color: var(--signal); }
+.picker__option-name {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono); font-size: 12px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.picker__option-note {
+  flex: none;
+  color: var(--ink-faint);
+  font-family: var(--font-mono); font-size: 10.5px;
+}
+.picker__empty, .picker__note { margin: 8px 7px; color: var(--ink-faint); font-size: 11.5px; }
+.picker__merge {
+  display: flex; align-items: center; gap: 8px;
+  margin-top: 10px;
+  font-size: 12px;
+}
+.picker__merge[aria-disabled="true"] { color: var(--ink-faint); }
+.picker__error { margin: 8px 0 0; color: var(--signal); font-size: 11.5px; }
+.picker__foot {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--rule);
+}
+.picker__preview { display: flex; align-items: center; gap: 7px; margin: 0; min-width: 0; font-size: 12.5px; }
+.button--primary {
+  border-color: var(--signal);
+  background: var(--signal);
+  color: var(--signal-ink);
+}
+.button--primary:hover:not(:disabled) { color: var(--signal-ink); filter: brightness(1.06); }
 .instrument__note {
   grid-column: 1 / -1;
   margin: 0;
@@ -645,9 +749,7 @@ button { cursor: pointer; }
 .sort-caret { flex: none; }
 .sort-caret[data-ascending="true"] { transform: rotate(180deg); }
 .sort-caret[data-placeholder="true"] { visibility: hidden; }
-/* Two halves and a signed figure need more room than one bar and a count. */
 .tree__scroll { --weight-column: 108px; }
-.tree__scroll[data-axis="true"] { --weight-column: 152px; }
 .tree__row {
   position: relative;
   display: grid;
@@ -675,20 +777,27 @@ button { cursor: pointer; }
 }
 /*
  * Net weight, drawn from a centre axis: removed to the left, added to the
- * right, both against the churn of the scope. One signed bar would make a
- * rewrite at +500/-480 look like an addition of 20.
+ * right, both against the churn the filters leave in the scope. The figure
+ * states the net, and the band states what it cost, because -6,448 reads the
+ * same whether nothing happened or 33,000 tokens were traded for 39,000.
+ *
+ * It runs the width of the row rather than the width of a column, under the
+ * name and the figure, because one scale serves the whole tree and the rows at
+ * the quiet end of it have only a few pixels to say anything with. Its edges
+ * ignore the indent, so two rows at different depths stay comparable.
  */
 .tree__axis {
   position: absolute;
-  inset-block: 4px;
-  inset-inline: 0;
+  inset-block: 3px;
+  left: 52px;
+  right: 7px;
   display: flex;
   pointer-events: none;
 }
 .tree__axis::before {
   content: "";
   position: absolute;
-  inset-block: -2px;
+  inset-block: 0;
   left: 50%;
   width: 1px;
   background: var(--rule-firm);
@@ -698,14 +807,19 @@ button { cursor: pointer; }
 .tree__axis-half--removed { justify-content: flex-end; }
 .tree__axis-half--removed::after {
   width: calc(var(--share-removed) * 100%);
-  border-radius: 2px 0 0 2px;
-  background: color-mix(in oklab, var(--status-deleted) 26%, transparent);
+  border-radius: 3px 0 0 3px;
+  background: color-mix(in oklab, var(--status-deleted) 24%, transparent);
 }
 .tree__axis-half--added::after {
   width: calc(var(--share-added) * 100%);
-  border-radius: 0 2px 2px 0;
-  background: color-mix(in oklab, var(--status-added) 26%, transparent);
+  border-radius: 0 3px 3px 0;
+  background: color-mix(in oklab, var(--status-added) 24%, transparent);
 }
+/* The row's own content sits over the band rather than under it. */
+.tree__scroll[data-axis="true"] .tree__disclose,
+.tree__scroll[data-axis="true"] .tree__check,
+.tree__scroll[data-axis="true"] .tree__label,
+.tree__scroll[data-axis="true"] .tree__weight { position: relative; }
 .tree__count { position: relative; }
 .tree__row:hover { background: var(--sunk); }
 .tree__row[data-selected="true"] { background: var(--signal-wash); }
@@ -840,7 +954,12 @@ button { cursor: pointer; }
 }
 .card__meta { color: var(--ink-faint); font-size: 11px; font-variant-numeric: tabular-nums; }
 /* The two halves of a net figure, so a tile never hides a rewrite behind a small number. */
-.card__split { display: flex; gap: 8px; font-size: 11px; font-variant-numeric: tabular-nums; }
+.card__figures { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.card__figures .card__meta { min-width: 0; }
+.card__split {
+  display: flex; flex: none; gap: 8px;
+  font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap;
+}
 .card__split [data-sign="positive"] { color: var(--status-added); }
 .card__split [data-sign="negative"] { color: var(--status-deleted); }
 
@@ -977,8 +1096,8 @@ button { cursor: pointer; }
 /* ---- Dialogs ----------------------------------------------------------- */
 
 .viewer {
-  width: min(1140px, calc(100% - 40px));
-  height: min(84vh, 880px);
+  width: min(1720px, calc(100% - 40px));
+  height: min(92vh, 1240px);
   padding: 0;
   border: 1px solid var(--rule-firm);
   border-radius: var(--radius);
@@ -1018,6 +1137,21 @@ button { cursor: pointer; }
 }
 .viewer__title-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .viewer__title-row h2 { min-width: 0; }
+.viewer__actions { display: flex; flex: none; align-items: center; gap: 10px; }
+/* Shaped as the button beside it: two controls in one row, one silhouette. */
+.viewer__toggle {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 7px 13px;
+  border: 1px solid var(--rule-firm); border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink-soft);
+  font-size: 12.5px;
+  user-select: none;
+  transition: border-color 120ms ease, color 120ms ease;
+}
+.viewer__toggle:hover { border-color: var(--signal); color: var(--signal); }
+.viewer__toggle[data-on="true"] { color: var(--ink); }
+.viewer__toggle input { margin: 0; accent-color: var(--signal); }
 .viewer__body {
   height: calc(100% - 66px);
   overflow: auto;
@@ -1035,6 +1169,54 @@ button { cursor: pointer; }
   border-top: 1px solid var(--rule);
   color: var(--ink-faint); font-size: 11.5px;
 }
+
+/*
+ * A compared file is drawn one row at a time: two line numbers, the marker,
+ * and the line in the language of the file. The block is as wide as its
+ * widest line, so a row's wash still covers it once the body scrolls sideways.
+ */
+.diff {
+  min-width: max-content;
+  padding: 12px 0 16px;
+  font-family: var(--font-mono); font-size: 11.5px; line-height: 1.65;
+  tab-size: 2;
+}
+.diff__line {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  min-height: 1lh;
+  background: var(--surface);
+}
+/*
+ * The gutter holds its place while the body scrolls sideways, so a long line
+ * never leaves the reader without a line number. It is one block rather than
+ * three, so no scrolling text can show between the numbers, and it takes the
+ * row's own background, which is opaque for that reason.
+ */
+.diff__gutter {
+  position: sticky; left: 0; z-index: 1;
+  display: grid;
+  grid-template-columns: var(--diff-gutter) var(--diff-gutter) 1ch;
+  column-gap: 12px;
+  padding: 0 12px 0 20px;
+  background: inherit;
+  color: var(--ink-faint);
+  user-select: none;
+}
+.diff__number { font-variant-numeric: tabular-nums; text-align: right; }
+.diff__text { white-space: pre; padding-right: 20px; }
+.diff__line[data-marker="added"] { background: color-mix(in oklab, var(--status-added) 13%, var(--surface)); }
+.diff__line[data-marker="added"] .diff__marker { color: var(--status-added); }
+.diff__line[data-marker="removed"] { background: color-mix(in oklab, var(--status-deleted) 13%, var(--surface)); }
+.diff__line[data-marker="removed"] .diff__marker { color: var(--status-deleted); }
+.diff__gap {
+  margin: 8px 0;
+  padding: 5px 20px;
+  border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule);
+  background: var(--sunk);
+  color: var(--ink-faint); font-size: 10.5px; letter-spacing: 0.06em;
+}
+.diff__gap span { position: sticky; left: 20px; display: inline-block; }
 
 .command {
   margin: 0 0 14px; padding: 13px 15px;
@@ -1071,6 +1253,7 @@ button { cursor: pointer; }
 
 @media (max-width: 1100px) {
   .instrument { grid-template-columns: 1fr; gap: 14px; }
+  .instrument__title { flex-wrap: wrap; gap: 10px; }
   .instrument__facts { flex-wrap: wrap; gap: 18px; }
   .workspace { grid-template-columns: 1fr; gap: var(--gap); }
   .workspace__splitter { display: none; }

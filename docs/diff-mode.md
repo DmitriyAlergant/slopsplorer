@@ -38,6 +38,25 @@ A positional that is not a directory is a revision when `git rev-parse --verify`
 
 The scan root is the top of the worktree, because `git diff` reports paths from there.
 
+## Changing the comparison
+
+The comparison readout in the instrument bar is a control.
+A click opens `ComparisonPicker` in `src/web/components/ComparisonPicker.tsx`: a panel with two lists, "From" and "To", where "To" also offers the working tree and the index.
+Each list filters by name and groups branches, remote branches, and tags.
+One checkbox turns `A..B` into `A...B`.
+`GET /api/refs` supplies the lists from `listRefs()` in `src/scanner/gitdiff.ts`, newest first, capped at `MAX_REFS`.
+
+The picker sends a `ComparisonRequest`, defined in `src/shared/api.ts`, so the page writes no argument grammar.
+`parseComparisonSpec()` in `src/scanner/gitdiff.ts` only turns command-line tokens into a `ComparisonRequest` and does not touch the repository.
+`verifyComparisonRequest()` is the single place that decides whether a named revision exists, and both the command line and the route call it.
+`DiffMeta.request` echoes the request, so the picker opens on the comparison being drawn.
+
+`POST /api/compare` takes a `ComparisonRequest` directly, resolves it against the same repository root, and measures it again.
+The repository never moves, so the scan-root control is not offered in a comparison.
+A revision the repository does not hold is answered with 400 and the message from Git, and the open comparison stays.
+A new comparison replaces the file list, so the client clears the exclusions, the drill, and the selection before it asks.
+`tests/diff-server.test.ts` covers the route and the ref list.
+
 ## The file list
 
 `git diff --name-status -z -M <base> <target>` gives the changed paths, the status letter, and the rename pairs.
@@ -98,6 +117,7 @@ Tokens follow the same shape: the added lines are tokenized together, and the re
 
 The common head and tail are trimmed first, and `MAX_DIFF_REGION_LINES` caps what remains.
 Above the cap the differing region counts as fully replaced, and the file is counted in `ScanMeta.diff.cappedFiles`.
+The CLI summary reports that count, and the page does not show it.
 Trimming before capping is what keeps a long generated file with a three-line edit from being read as a rewrite: the cap bounds the file that changed nearly everywhere, where the alignment costs quadratic time and tells the reader nothing.
 
 ## What does not diff
@@ -140,19 +160,23 @@ Net is signed, and it changes three things that scan mode takes for granted.
   The tree sort, `rankFiles()`, and the folder tiles all order by absolute weight, and `rank.minWeight` is a floor on magnitude, or a threshold would silently drop every deletion.
   The sign is shown beside the number rather than folded into the order.
 - The `--mass` custom property assumes a fill from 0 to 1.
-  In net the row draws two fills from a centre axis instead.
+  In net the row draws two fills instead, `--share-removed` left of a centre axis and `--share-added` right of it.
 
 ## The bars
 
-In churn, the bars are the bars of scan mode, and the split still applies.
+In every aspect that is not net, each row of the source tree keeps the single `--mass` bar of scan mode.
 
-In net, each row of the source tree draws from a centre axis: added to the right, removed to the left, both against the churn of the scope.
-This is more truthful than one signed bar.
-A file at `+500 / -480` is a rewrite and a file at `+20 / -0` is a small addition, and their nets are nearly the same number.
+In net, each row of the source tree shows one figure, the signed net, and beside it a band drawn from a centre axis: removed grows left of the axis and added grows right, as a number line reads.
+The band is why the lone figure is safe: a net of -6,448 reads the same whether nothing happened or 33,000 tokens were traded for 39,000, and the band tells those apart.
+The two halves are `--share-removed` and `--share-added`, which the server computes as `TreeRow.shareRemoved` and `TreeRow.shareAdded`.
+They divide `visibleChurn` in `src/server/aggregate.ts`, the churn the active filters leave in the drill scope, not the unfiltered `scopeBaseline` the percentages use.
+A code-only view of a large repository holds a small part of the project's churn, and against the unfiltered whole every band in it would round to nothing.
+Because the halves divide the scope's own churn, the scope's own row fills the whole band.
+The exact figures sit in the row's tooltip, and the band carries the same pair as its `aria-label`.
+Position carries the direction, because the two halves sit on opposite sides of the axis, so no reading depends on hue.
+Around one man in twelve cannot separate red from green.
 
-Position and an explicit `+` or `-` carry the meaning, and colour repeats it.
-Around one man in twelve cannot separate red from green, so no reading of the page depends on hue alone.
-
+The folder cards in `FolderDetail.tsx` say the same thing: in net a card prints `+added` and `-removed` under its figure.
 `FlavorBar` keeps its shape, and in diff mode it draws a better split than file kind: the change status, which is added, modified, deleted, or renamed.
 
 ## Where the aspect is chosen
@@ -166,12 +190,19 @@ Sorting one of the aspect columns chooses the aspect, exactly as sorting a measu
 
 ## The preview
 
-Inside a comparison a file has two contents, so `SourceDialog` shows the unified diff.
+Inside a comparison a file has two contents, so `SourceDialog` draws the change with `DiffView`.
 Showing the after-image alone would be a claim the page cannot support.
 
-`diffOneFile()` reads both sides again and renders the patch from the same aligner the figures came from, rather than shelling out to `git diff` a second time.
+`diffOneFile()` reads both sides again and `alignedLines()` interleaves them into one sequence, from the same aligner the figures came from, rather than shelling out to `git diff` a second time.
 One producer means the preview and the numbers beside it can never describe different changes, and it reaches an untracked file, which `git diff` cannot show at all.
-`tests/linediff.test.ts` replays the rendered patch onto the before-image over a random corpus and requires the after-image back.
+`tests/linediff.test.ts` reads each side back out of one alignment over a random corpus and requires the two files again.
+
+The route sends the file whole, unchanged lines included, because hunks answer a question the reader did not ask.
+A gutter holds the number on each side, so a reader can see where a passage sits and how far apart two changes are.
+`Unchanged lines` in the dialog head hides every line further than three from a change, and a band counts what it hid.
+
+`DiffView` highlights each side whole with `highlightToLines()`, then hands each row the line that belongs to it.
+Highlighting a row on its own would lose every construct that spans lines, and a diff grammar would colour the markers and leave the code grey.
 
 ## Testing
 

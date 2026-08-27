@@ -1,4 +1,4 @@
-import type { Aspect, ChangeStatus, Measure } from "../shared/api.ts";
+import type { Aspect, ChangeStatus, ComparisonRequest, Measure } from "../shared/api.ts";
 
 const integer = new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 });
 
@@ -11,6 +11,11 @@ export function compact(value: number): string {
   if (value < 1000) return String(value);
   if (value < 1_000_000) return `${(value / 1000).toFixed(value < 10_000 ? 1 : 0)}k`;
   return `${(value / 1_000_000).toFixed(value < 10_000_000 ? 1 : 0)}M`;
+}
+
+/** A count and the noun it agrees with: "1 file", "2 files". */
+export function countOf(value: number, noun: string): string {
+  return `${count(value)} ${noun}${value === 1 ? "" : "s"}`;
 }
 
 /** A 0-1 ratio as a percentage, keeping one decimal below 10 percent. */
@@ -119,9 +124,35 @@ export function signed(value: number): string {
   return `${value < 0 ? "-" : "+"}${integer.format(Math.abs(value))}`;
 }
 
+/**
+ * One side of a change, signed unless it is nothing.
+ *
+ * Nothing has no direction, and a red "-0" reads as a broken figure rather
+ * than as an absence.
+ */
+export function sideCount(value: number, sign: "+" | "-"): string {
+  return value === 0 ? "0" : `${sign}${count(value)}`;
+}
+
 /** Figures in the active aspect, signed only where the aspect is. */
 export function weightCount(value: number, aspect: Aspect): string {
   return aspect === "net" ? signed(value) : count(value);
+}
+
+/**
+ * A comparison in one line, the way the instrument bar names one.
+ *
+ * One labeller, so the picker's preview and the progress card cannot describe
+ * the same comparison in two ways.
+ */
+export function comparisonLabel(request: ComparisonRequest): string {
+  switch (request.kind) {
+    case "workingTree": return "HEAD -> working tree";
+    case "staged": return "HEAD -> index";
+    case "revisionToWorkingTree": return `${request.rev} -> working tree`;
+    case "revisionPair": return `${request.base} -> ${request.target}`;
+    case "mergeBase": return `${request.base} -> ${request.target}, from the merge base`;
+  }
 }
 
 const CHANGE_STATUS_LABELS: Record<ChangeStatus, string> = {

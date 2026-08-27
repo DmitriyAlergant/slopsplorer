@@ -9,6 +9,7 @@ const STORAGE_KEY = "slopsplorer.view-preferences.v4";
 const TREE_PANEL_STORAGE_KEY = "slopsplorer.tree-panel-ratio.v1";
 const WORKSPACE_HEIGHT_STORAGE_KEY = "slopsplorer.workspace-height.v1";
 const RANKING_HEIGHT_STORAGE_KEY = "slopsplorer.ranking-height.v1";
+const CHANGED_LINES_ONLY_STORAGE_KEY = "slopsplorer.changed-lines-only.v1";
 
 /**
  * Bounds on the two dragged heights.
@@ -53,6 +54,24 @@ export function readTreePanelRatio(storage: PreferenceStorage, fallback: number)
 export function writeTreePanelRatio(storage: PreferenceStorage, ratio: number): void {
   try {
     storage.setItem(TREE_PANEL_STORAGE_KEY, String(ratio));
+  } catch {
+    // Browsers may deny storage in private or locked-down contexts.
+  }
+}
+
+/** Whether the preview of a compared file hides the lines that did not change. */
+export function readChangedLinesOnly(storage: PreferenceStorage): boolean {
+  try {
+    return storage.getItem(CHANGED_LINES_ONLY_STORAGE_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+/** Remember that choice across visits, because it is how someone reads a diff. */
+export function writeChangedLinesOnly(storage: PreferenceStorage, changedOnly: boolean): void {
+  try {
+    storage.setItem(CHANGED_LINES_ONLY_STORAGE_KEY, String(changedOnly));
   } catch {
     // Browsers may deny storage in private or locked-down contexts.
   }

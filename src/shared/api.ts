@@ -198,9 +198,15 @@ export interface TreeRow {
   removed: number;
   /** 0-1 share of the active drill scope's unfiltered weight. Magnitude only. */
   shareOfScope: number;
-  /** 0-1 share the added half of a centre-axis bar fills. */
+  /**
+   * 0-1 lengths of the two halves of the row's centre-axis band.
+   *
+   * Every band divides one whole, the churn the filters leave in the scope, so
+   * a length means the same wherever the row sits. That whole is the filtered
+   * one rather than the unfiltered baseline the percentages use, because a
+   * code-only view of a large repository would draw every band at under a pixel.
+   */
   shareAdded: number;
-  /** 0-1 share the removed half of a centre-axis bar fills. */
   shareRemoved: number;
   hasChildren: boolean;
   expanded: boolean;
@@ -223,8 +229,6 @@ export interface FolderCard {
   shareOfProject: number;
   /** 0-1 share of the active drill scope's unfiltered weight. Magnitude only. */
   shareOfScope: number;
-  shareAdded: number;
-  shareRemoved: number;
   flavors: FlavorSlice[];
   /** How the change divides, for a diff. Empty for a scan. */
   statuses: StatusSlice[];
@@ -314,6 +318,8 @@ export type FileSource = "git-index" | "walk-gitignore" | "walk-all" | "git-diff
 export interface DiffMeta {
   /** How the comparison was named on the command line. */
   spec: string;
+  /** What was asked for, so the picker opens on the comparison being drawn. */
+  request: ComparisonRequest;
   /** Human label for the before side, such as a short commit or "HEAD". */
   base: string;
   /** Human label for the after side, such as "working tree" or a short commit. */
@@ -410,20 +416,78 @@ export interface OpenRootRequest {
   view: ViewRequest;
 }
 
-export interface SourceResponse {
+/**
+ * Two revisions, and which of the two ways they are compared.
+ *
+ * `revisionPair` is `git diff A B`. `mergeBase` is `git diff A...B`, which
+ * compares B to where it left A, and is what a pull request shows.
+ */
+export type RevisionRange =
+  | { kind: "revisionPair"; base: string; target: string }
+  | { kind: "mergeBase"; base: string; target: string };
+
+/**
+ * What to compare, before it is resolved against a repository.
+ *
+ * The command line parses argument text into one of these, and the comparison
+ * picker builds one directly, so neither has to write the other's grammar.
+ */
+export type ComparisonRequest =
+  | { kind: "workingTree" }
+  | { kind: "staged" }
+  | { kind: "revisionToWorkingTree"; rev: string }
+  | RevisionRange;
+
+/** A ref the page can offer as a side of a comparison. */
+export interface GitRef {
+  /** Name as Git resolves it: `main`, `origin/main`, `v1.2.0`. */
+  name: string;
+  kind: "branch" | "remote" | "tag";
+  /** Short commit the ref points at, so two names on one commit read as one place. */
+  shortSha: string;
+}
+
+/** What the comparison picker builds a comparison from. */
+export interface RepositoryRefs {
+  /** Branch HEAD is on, or `null` when HEAD is detached. */
+  headBranch: string | null;
+  headSha: string;
+  refs: GitRef[];
+}
+
+/** Replace the active comparison, keeping the repository and the preferences. */
+export interface CompareRequest {
+  comparison: ComparisonRequest;
+  view: ViewRequest;
+}
+
+/** One line of one file's change, as the preview draws it. */
+export interface DiffLine {
+  marker: " " | "-" | "+";
+  text: string;
+  /** 1-based number on the base side, or null when the line was added. */
+  beforeLine: number | null;
+  /** 1-based number on the target side, or null when the line was removed. */
+  afterLine: number | null;
+}
+
+interface SourceResponseBase {
   path: string;
-  /**
-   * File content, or the unified diff of the file when the index is a diff.
-   *
-   * A diff has two contents, so showing either one alone would be a claim the
-   * page cannot support. `mode` says which one this is.
-   */
-  content: string;
-  mode: "source" | "diff";
   truncated: boolean;
   totalBytes: number;
   language: string | null;
 }
+
+/**
+ * One file for the preview: its text in a scan, its change in a comparison.
+ *
+ * A compared file has two contents, so showing either one alone would be a
+ * claim the page cannot support. It is sent whole rather than as hunks,
+ * because the reader chooses whether to see the unchanged lines.
+ */
+export type SourceResponse =
+  | (SourceResponseBase & { mode: "source"; content: string })
+  | (SourceResponseBase & { mode: "diff"; lines: DiffLine[] });
 
 /** Instructions for installing the bundled agent skill, resolved by the server. */
 export interface SkillInstallResponse {

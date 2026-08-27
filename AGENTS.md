@@ -63,7 +63,7 @@ Each is explained where it belongs; the list exists so nobody breaks one by acci
 - `ScanMeta.diff` is the only thing that says which mode the page is in. A scan forces the aspect to `after`, because a scanned file has one content.
 - Churn is `added + removed` and net is `added - removed`, for every measure. Net is signed, so every share is drawn against churn, and every ordering and threshold uses magnitude.
 - In `tests/comment-corpus.test.ts` a split that differs from `cloc` carries a written reason and a split that matches does not, so neither drift passes silently.
-- `GET /api/source` serves a path only if the current scan holds it, and refuses a resolved real path outside the scan root. Inside a comparison it returns the unified diff, rendered from the same alignment the file's figures came from.
+- `GET /api/source` serves a path only if the current scan holds it, and refuses a resolved real path outside the scan root. Inside a comparison it returns the file as aligned lines, from the same alignment the file's figures came from, whole rather than as hunks, because the page decides how much of the unchanged text to draw.
 
 ## Agentic rules
 

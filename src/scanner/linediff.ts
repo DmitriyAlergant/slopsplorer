@@ -1,3 +1,5 @@
+import type { DiffLine } from "../shared/api.ts";
+
 /**
  * Which physical lines a change touched, on each side.
  *
@@ -192,90 +194,36 @@ export function diffLines(before: readonly string[], after: readonly string[]): 
   return { added, removed, capped };
 }
 
-/** One printed line of a unified diff, before it is grouped into hunks. */
-interface DiffOperation {
-  marker: " " | "-" | "+";
-  text: string;
-  beforeLine: number;
-  afterLine: number;
-}
-
-/** Lines of unchanged context kept on each side of a change. */
-const CONTEXT_LINES = 3;
-
 /**
- * Interleave two line arrays into one printable sequence.
+ * Interleave two line arrays into one printable sequence, whole.
  *
  * A removal is printed before the addition that replaces it, which is the
- * conventional order and the one a reader scans for.
+ * conventional order and the one a reader scans for. Nothing is dropped and no
+ * hunk is cut: the preview holds the whole file, so a reader can see what sits
+ * between two changes and can hide it again.
  */
-function interleave(before: readonly string[], after: readonly string[], alignment: LineDiff): DiffOperation[] {
+export function alignedLines(
+  before: readonly string[], after: readonly string[], alignment: LineDiff,
+): DiffLine[] {
   const removed = new Set(alignment.removed);
   const added = new Set(alignment.added);
-  const operations: DiffOperation[] = [];
+  const lines: DiffLine[] = [];
   let beforeCursor = 0;
   let afterCursor = 0;
   while (beforeCursor < before.length || afterCursor < after.length) {
     if (beforeCursor < before.length && removed.has(beforeCursor)) {
-      operations.push({ marker: "-", text: before[beforeCursor]!, beforeLine: beforeCursor + 1, afterLine: afterCursor });
+      lines.push({ marker: "-", text: before[beforeCursor]!, beforeLine: beforeCursor + 1, afterLine: null });
       beforeCursor += 1;
       continue;
     }
     if (afterCursor < after.length && added.has(afterCursor)) {
-      operations.push({ marker: "+", text: after[afterCursor]!, beforeLine: beforeCursor, afterLine: afterCursor + 1 });
+      lines.push({ marker: "+", text: after[afterCursor]!, beforeLine: null, afterLine: afterCursor + 1 });
       afterCursor += 1;
       continue;
     }
-    operations.push({ marker: " ", text: after[afterCursor]!, beforeLine: beforeCursor + 1, afterLine: afterCursor + 1 });
+    lines.push({ marker: " ", text: after[afterCursor]!, beforeLine: beforeCursor + 1, afterLine: afterCursor + 1 });
     beforeCursor += 1;
     afterCursor += 1;
   }
-  return operations;
-}
-
-/**
- * Render one file's change as a unified diff.
- *
- * Built from the same alignment the file's numbers were summed over, so the
- * preview and the figures beside it can never describe different changes. It
- * also reaches a file Git does not track yet, which `git diff` cannot show and
- * which is most of what uncommitted work is.
- */
-export function renderUnifiedDiff(
-  before: readonly string[], after: readonly string[], alignment: LineDiff,
-  beforePath: string, afterPath: string,
-): string {
-  const operations = interleave(before, after, alignment);
-  const changed = operations.map((operation) => operation.marker !== " ");
-  if (!changed.includes(true)) return "";
-
-  const hunks: string[] = [];
-  let position = 0;
-  while (position < operations.length) {
-    if (!changed[position]) {
-      position += 1;
-      continue;
-    }
-    const start = Math.max(0, position - CONTEXT_LINES);
-    let end = position;
-    // Absorb the next change when its own context would touch this hunk's,
-    // so two edits a line apart read as one passage rather than two.
-    for (let scan = position; scan < operations.length; scan += 1) {
-      if (!changed[scan]) continue;
-      if (scan - end > CONTEXT_LINES * 2) break;
-      end = scan;
-    }
-    const stop = Math.min(operations.length, end + CONTEXT_LINES + 1);
-    const body = operations.slice(start, stop);
-    const beforeCount = body.filter((operation) => operation.marker !== "+").length;
-    const afterCount = body.filter((operation) => operation.marker !== "-").length;
-    const beforeStart = body.find((operation) => operation.marker !== "+")?.beforeLine ?? 0;
-    const afterStart = body.find((operation) => operation.marker !== "-")?.afterLine ?? 0;
-    hunks.push(`@@ -${beforeStart},${beforeCount} +${afterStart},${afterCount} @@`);
-    for (const operation of body) hunks.push(`${operation.marker}${operation.text}`);
-    position = stop;
-  }
-
-  const header = [`--- ${before.length === 0 ? "/dev/null" : `a/${beforePath}`}`, `+++ ${after.length === 0 ? "/dev/null" : `b/${afterPath}`}`];
-  return `${[...header, ...hunks].join("\n")}\n`;
+  return lines;
 }

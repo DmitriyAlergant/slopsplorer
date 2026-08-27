@@ -1,9 +1,9 @@
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
-import type { ChangeStatus, DiffMeta, FileRow, ScanMeta } from "../shared/api.ts";
+import type { ChangeStatus, DiffLine, DiffMeta, FileRow, ScanMeta } from "../shared/api.ts";
 import { classifyFile, isGenerated, refineKindByContent } from "./classify.ts";
 import { GitObjectReader, listChangedFiles, objectSizes, type ChangedFile, type Comparison, type DiffSide } from "./gitdiff.ts";
-import { diffLines, renderUnifiedDiff } from "./linediff.ts";
+import { alignedLines, diffLines } from "./linediff.ts";
 import type { LineBucket } from "./lines.ts";
 import { splitLines } from "./lines.ts";
 import { measureFile, type FileMeasurement } from "./measure.ts";
@@ -112,13 +112,13 @@ async function readSides(
 }
 
 /**
- * The unified diff of one file, rendered from the alignment its figures came
- * from rather than from a second `git diff`.
+ * One file's change, line by line, aligned by the same aligner its figures
+ * came from rather than by a second `git diff`.
  *
  * One producer means the preview and the numbers beside it can never describe
  * different changes, and it reaches a file Git does not track yet.
  */
-export async function diffOneFile(options: DiffScanOptions, row: FileRow): Promise<string> {
+export async function diffOneFile(options: DiffScanOptions, row: FileRow): Promise<DiffLine[]> {
   const entry: ChangedFile = {
     path: row.path,
     basePath: row.previousPath ?? row.path,
@@ -135,7 +135,7 @@ export async function diffOneFile(options: DiffScanOptions, row: FileRow): Promi
     if (contents === null) throw new Error(`file is over the per-file size ceiling: ${row.path}`);
     const before = splitLines(contents.before);
     const after = splitLines(contents.after);
-    return renderUnifiedDiff(before, after, diffLines(before, after), entry.basePath, entry.path);
+    return alignedLines(before, after, diffLines(before, after));
   } finally {
     reader.dispose();
   }
@@ -251,6 +251,7 @@ export async function scanDiff(options: DiffScanOptions): Promise<ScanIndex> {
 
   const diff: DiffMeta = {
     spec: comparison.spec,
+    request: comparison.request,
     base: comparison.baseLabel,
     target: comparison.targetLabel,
     filesAdded: countOf("added"),

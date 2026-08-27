@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { diffLines, MAX_DIFF_REGION_LINES, renderUnifiedDiff } from "../src/scanner/linediff.ts";
+import { alignedLines, diffLines, MAX_DIFF_REGION_LINES } from "../src/scanner/linediff.ts";
 
 /** Longest common subsequence length, the size a minimal alignment must keep. */
 function longestCommonSubsequence(left: readonly string[], right: readonly string[]): number {
@@ -89,28 +89,8 @@ describe("line diff", () => {
   });
 });
 
-/** Replay a unified diff onto the before-image, the way `patch` would. */
-function applyUnifiedDiff(before: readonly string[], patch: string): string[] {
-  const result: string[] = [];
-  let cursor = 0;
-  for (const line of patch.split("\n")) {
-    if (line.startsWith("--- ") || line.startsWith("+++ ") || line === "") continue;
-    if (line.startsWith("@@")) {
-      const start = Number(/^@@ -(\d+)/.exec(line)![1]);
-      // Hunk starts are one-based, and a pure insertion at the top reports 0.
-      while (cursor < start - 1) result.push(before[cursor++]!);
-      continue;
-    }
-    if (line.startsWith("+")) result.push(line.slice(1));
-    else if (line.startsWith("-")) cursor += 1;
-    else { result.push(before[cursor]!); cursor += 1; }
-  }
-  while (cursor < before.length) result.push(before[cursor++]!);
-  return result;
-}
-
-describe("unified diff rendering", () => {
-  it("reconstructs the after-image exactly, over a random corpus", () => {
+describe("line alignment for the preview", () => {
+  it("reads back as both sides, over a random corpus", () => {
     const random = makeRandom(4242);
     for (let trial = 0; trial < 400; trial += 1) {
       const alphabet = 2 + Math.floor(random() * 6);
@@ -118,32 +98,37 @@ describe("unified diff rendering", () => {
       const before = Array.from({ length: Math.floor(random() * 40) }, line);
       const after = Array.from({ length: Math.floor(random() * 40) }, line);
 
-      const patch = renderUnifiedDiff(before, after, diffLines(before, after), "a.ts", "b.ts");
-      const rebuilt = patch === "" ? [...before] : applyUnifiedDiff(before, patch);
-      expect(rebuilt).toEqual(after);
+      const aligned = alignedLines(before, after, diffLines(before, after));
+      expect(aligned.filter((entry) => entry.marker !== "+").map((entry) => entry.text)).toEqual(before);
+      expect(aligned.filter((entry) => entry.marker !== "-").map((entry) => entry.text)).toEqual(after);
+
+      // Each gutter counts its own side from one, in order and without a gap.
+      const numbers = (side: "beforeLine" | "afterLine"): number[] =>
+        aligned.map((entry) => entry[side]).filter((number): number is number => number !== null);
+      expect(numbers("beforeLine")).toEqual(before.map((_, index) => index + 1));
+      expect(numbers("afterLine")).toEqual(after.map((_, index) => index + 1));
     }
   });
 
-  it("renders nothing at all when the two sides are the same", () => {
-    const lines = ["alpha", "beta"];
-    expect(renderUnifiedDiff(lines, lines, diffLines(lines, lines), "a.ts", "b.ts")).toBe("");
+  it("holds the whole file, unchanged lines included", () => {
+    const before = ["alpha", "beta", "gamma"];
+    const after = ["alpha", "BETA", "gamma"];
+    expect(alignedLines(before, after, diffLines(before, after))).toEqual([
+      { marker: " ", text: "alpha", beforeLine: 1, afterLine: 1 },
+      { marker: "-", text: "beta", beforeLine: 2, afterLine: null },
+      { marker: "+", text: "BETA", beforeLine: null, afterLine: 2 },
+      { marker: " ", text: "gamma", beforeLine: 3, afterLine: 3 },
+    ]);
   });
 
-  it("names the missing side /dev/null, so an added and a deleted file read correctly", () => {
-    const lines = ["alpha", "beta"];
-    const added = renderUnifiedDiff([], lines, diffLines([], lines), "a.ts", "b.ts");
-    expect(added.split("\n").slice(0, 3)).toEqual(["--- /dev/null", "+++ b/b.ts", "@@ -0,0 +1,2 @@"]);
-
-    const deleted = renderUnifiedDiff(lines, [], diffLines(lines, []), "a.ts", "b.ts");
-    expect(deleted.split("\n").slice(0, 3)).toEqual(["--- a/a.ts", "+++ /dev/null", "@@ -1,2 +0,0 @@"]);
+  it("prints a removal before the addition that replaces it", () => {
+    const aligned = alignedLines(["one"], ["two"], diffLines(["one"], ["two"]));
+    expect(aligned.map((entry) => entry.marker)).toEqual(["-", "+"]);
   });
 
-  it("merges two nearby edits into one passage rather than two hunks", () => {
-    const before = Array.from({ length: 20 }, (_, index) => `line ${index}`);
-    const after = [...before];
-    after[5] = "changed five";
-    after[8] = "changed eight";
-    const patch = renderUnifiedDiff(before, after, diffLines(before, after), "a.ts", "b.ts");
-    expect(patch.split("\n").filter((line) => line.startsWith("@@"))).toHaveLength(1);
+  it("marks nothing when the two sides are the same", () => {
+    const lines = ["alpha", "beta"];
+    const aligned = alignedLines(lines, lines, diffLines(lines, lines));
+    expect(aligned.every((entry) => entry.marker === " ")).toBe(true);
   });
 });

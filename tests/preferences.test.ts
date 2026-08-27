@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  readChangedLinesOnly,
   readPreferences,
   readRankingHeight,
   readTreePanelRatio,
   readWorkspaceHeight,
+  writeChangedLinesOnly,
   writePreferences,
   writeRankingHeight,
   writeTreePanelRatio,
@@ -113,5 +115,14 @@ describe("view preferences", () => {
     expect(readRankingHeight(storage, 480)).toBe(480);
     storage.value = "9000";
     expect(readRankingHeight(storage, 480)).toBe(480);
+  });
+
+  it("persists a preview that hides the unchanged lines, and shows them until it is asked to", () => {
+    const storage = new MemoryStorage();
+    expect(readChangedLinesOnly(storage)).toBe(false);
+    writeChangedLinesOnly(storage, true);
+    expect(readChangedLinesOnly(storage)).toBe(true);
+    writeChangedLinesOnly(storage, false);
+    expect(readChangedLinesOnly(storage)).toBe(false);
   });
 });

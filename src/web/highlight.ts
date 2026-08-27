@@ -3,7 +3,6 @@ import bash from "highlight.js/lib/languages/bash";
 import cpp from "highlight.js/lib/languages/cpp";
 import csharp from "highlight.js/lib/languages/csharp";
 import css from "highlight.js/lib/languages/css";
-import diff from "highlight.js/lib/languages/diff";
 import go from "highlight.js/lib/languages/go";
 import ini from "highlight.js/lib/languages/ini";
 import java from "highlight.js/lib/languages/java";
@@ -22,7 +21,7 @@ import yaml from "highlight.js/lib/languages/yaml";
 
 /** Only the grammars the scanner can surface are registered, to keep the bundle small. */
 for (const [name, language] of Object.entries({
-  bash, cpp, csharp, css, diff, go, ini, java, javascript, json, markdown, php,
+  bash, cpp, csharp, css, go, ini, java, javascript, json, markdown, php,
   python, ruby, rust, scss, sql, typescript, xml, yaml,
 })) {
   hljs.registerLanguage(name, language);
@@ -43,23 +42,53 @@ const BY_EXTENSION: ReadonlyMap<string, string> = new Map([
   ["sql", "sql"],
 ]);
 
+const ESCAPES: ReadonlyMap<string, string> = new Map([
+  ["&", "&amp;"], ["<", "&lt;"], [">", "&gt;"], ['"', "&quot;"], ["'", "&#x27;"],
+]);
+
 /** Render source as highlighted HTML, falling back to plain escaped text. */
 export function highlightSource(path: string, source: string): string {
   const extension = path.split(".").pop()?.toLowerCase() ?? "";
   const language = BY_EXTENSION.get(extension);
-  if (!language || !hljs.getLanguage(language)) {
-    return hljs.highlight(source, { language: "plaintext" }).value;
+  if (language === undefined) {
+    return source.replace(/[&<>"']/g, (character) => ESCAPES.get(character)!);
   }
   return hljs.highlight(source, { language, ignoreIllegals: true }).value;
 }
 
 /**
- * Render a unified diff, which is what a file inside a comparison is.
+ * The same highlighting, cut into one HTML string per line.
  *
- * The hunk syntax is the subject here rather than the file's own language: a
- * diff of a TypeScript file that lost its leading `+` and `-` markers would be
- * unreadable however well its keywords were coloured.
+ * A comparison draws its lines one row at a time, and highlighting each row on
+ * its own would lose every construct that spans lines: a block comment, a
+ * template string, a here-document. So the side is highlighted whole and the
+ * spans that cross a line break are closed and reopened around it.
  */
-export function highlightDiff(patch: string): string {
-  return hljs.highlight(patch, { language: "diff" }).value;
+export function highlightToLines(path: string, source: string): string[] {
+  const html = highlightSource(path, source);
+  const lines: string[] = [];
+  const open: string[] = [];
+  let current = "";
+  let cursor = 0;
+  while (cursor < html.length) {
+    const tagStart = html.indexOf("<", cursor);
+    const text = tagStart === -1 ? html.slice(cursor) : html.slice(cursor, tagStart);
+    const pieces = text.split("\n");
+    for (const [index, piece] of pieces.entries()) {
+      if (index > 0) {
+        lines.push(current + "</span>".repeat(open.length));
+        current = open.join("");
+      }
+      current += piece;
+    }
+    if (tagStart === -1) break;
+    const tagEnd = html.indexOf(">", tagStart);
+    const tag = html.slice(tagStart, tagEnd + 1);
+    if (tag.startsWith("</")) open.pop();
+    else open.push(tag);
+    current += tag;
+    cursor = tagEnd + 1;
+  }
+  lines.push(current + "</span>".repeat(open.length));
+  return lines;
 }

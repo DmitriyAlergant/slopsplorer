@@ -108,19 +108,28 @@ A scan has one content per file, so `buildView()` forces the aspect to `after` u
 | `POST /api/view` | Aggregate the current index for one `ViewRequest`. |
 | `POST /api/rescan` | Scan the same root again. Concurrent calls share one scan. |
 | `POST /api/open` | Replace the root with another absolute directory and scan it. |
-| `GET /api/source` | Return one file for the source dialog: its text in a scan, its unified diff in a comparison. |
+| `POST /api/compare` | Replace the comparison, keeping the repository, and measure it again. |
+| `GET /api/refs` | Return the branches, remote branches, and tags the comparison picker offers. |
+| `GET /api/source` | Return one file for the source dialog: its text in a scan, its aligned lines in a comparison. |
 | `GET /api/skill-install` | Return the command that installs the bundled agent skill. |
 | `GET /api/health` | Report that the process is up. |
 
 The index is the list of readable files.
 `/api/source` serves a path only if the current scan contains it, then resolves the real path and refuses anything that is outside the scan root, so a symlink added after the scan cannot read another part of the disk.
-Inside a comparison the file has two contents, so the route returns the unified diff instead, rendered by `diffOneFile()` from the same alignment the file's figures were summed over.
+Inside a comparison the file has two contents, so the route returns the file as aligned lines instead, built by `diffOneFile()` from the same alignment the file's figures were summed over.
+It sends every line, changed or not, and the page decides how much of the unchanged text to draw.
 
 `/api/open` always installs a scan producer.
 A directory is not a comparison, so keeping the old one would leave the page reporting churn for a tree nobody compared.
 
+`/api/compare` answers only when the open index is a comparison.
+A scan has no repository against which the page could name a revision, so a scan is refused with 400.
+It takes a `ComparisonRequest` and verifies it with `verifyComparisonRequest()`, the same check the command line runs.
+`/api/refs` is refused for a scan for the same reason.
+
 A rescan replaces the state only after it succeeds.
 A failed scan leaves the previous index in place, so the page keeps working.
+A running measurement is identified by its root and, for a comparison, its spec, so a second comparison of the same repository cannot join the first one and get the wrong figures back.
 
 ## The client
 
