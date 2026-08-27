@@ -1,1 +1,0 @@
-The instrument bar is re-dressed: the artwork sits beside the wordmark, Rescan and Recompare are one icon beside what they re-read, the drill trail is now the source tree's heading instead of a row above the panels, and the agent skill is a link at the foot of the page.
