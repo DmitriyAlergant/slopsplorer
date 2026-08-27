@@ -48,7 +48,7 @@ export function AskDialog({ open, agent, starting, failure, onClose, onAsk }: Pr
     <dialog ref={dialogRef} className="viewer viewer--narrow ask" onClose={onClose} onCancel={onClose}>
       <header className="viewer__head">
         <div>
-          <p className="eyebrow">{agent.label} {agent.version}</p>
+          <p className="eyebrow">{agent.label}</p>
           <h2>Ask about what you are looking at</h2>
         </div>
         <button type="button" className="button button--quiet" onClick={onClose}>Close</button>
@@ -76,6 +76,13 @@ export function AskDialog({ open, agent, starting, failure, onClose, onAsk }: Pr
           The agent is also told what you have on screen: the subject, the drill, the selection,
           the unit, the flavors counted, and the last file you opened.
         </p>
+
+        {agent.signedIn ? null : (
+          <p className="muted">
+            {agent.label} reported no sign-in when it was found. The question is still sent, and
+            the card says what the tool answered.
+          </p>
+        )}
 
         {failure ? <p className="empty">{failure}</p> : null}
 

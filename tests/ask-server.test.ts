@@ -37,7 +37,7 @@ const ECHO_AGENT: AgentDefinition = {
   readAnswer: async ({ answerPath }) => ({ markdown: await readFile(answerPath, "utf8"), costUsd: null }),
 };
 
-const AGENTS: AvailableAgent[] = [{ definition: ECHO_AGENT, version: "0.0.1" }];
+const AGENTS: AvailableAgent[] = [{ definition: ECHO_AGENT, version: "0.0.1", signedIn: true }];
 
 const VIEW: Partial<ViewRequest> = { kinds: ["code", "test", "text", "i18n", "data", "other"] };
 
@@ -112,7 +112,7 @@ describe("asking a local agent through the server", () => {
     const response = await fetch(`${serverUrl}/api/agents`);
     expect(response.status).toBe(200);
     expect((await response.json()) as AgentsResponse).toEqual({
-      agents: [{ id: "echo", label: "Echo", version: "0.0.1" }],
+      agents: [{ id: "echo", label: "Echo", signedIn: true }],
     });
   });
 

@@ -642,11 +642,7 @@ export function App(): React.JSX.Element {
         onCompare={handleCompare}
         agents={agents}
         agentId={chosenAgentId ?? ""}
-        onChooseAgent={(chosen) => {
-          chooseAgent(chosen);
-          setAskFailure(null);
-          setAskOpen(true);
-        }}
+        onChooseAgent={chooseAgent}
         onAsk={() => {
           setAskFailure(null);
           setAskOpen(true);

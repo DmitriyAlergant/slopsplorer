@@ -66,6 +66,9 @@ export function runCommand(
     cwd: options.cwd,
     stdio: ["ignore", "pipe", "pipe"],
     shell: false,
+    // Its own process group, so stopping an ask stops the tools the agent
+    // itself started. Signalling the agent alone would leave them running.
+    detached: process.platform !== "win32",
     env: inheritedPath === undefined
       ? process.env
       : { ...process.env, PATH: pathOutsidePackageBins(inheritedPath) },
@@ -82,14 +85,37 @@ export function runCommand(
     if (stderr.length < MAX_CAPTURED_BYTES) stderr += chunk;
   });
 
+  /**
+   * End the agent and everything it started.
+   *
+   * An agent runs its own tools as child processes, so the target is the group
+   * and not the one process. Windows has no group to signal, so `taskkill`
+   * walks the tree there instead.
+   */
+  const endTree = (force: boolean): void => {
+    if (child.pid === undefined || child.exitCode !== null || child.signalCode !== null) return;
+    if (process.platform === "win32") {
+      const arguments_ = ["/pid", String(child.pid), "/t", ...(force ? ["/f"] : [])];
+      spawn("taskkill", arguments_, { stdio: "ignore", shell: false }).unref();
+      return;
+    }
+    try {
+      process.kill(-child.pid, force ? "SIGKILL" : "SIGTERM");
+    } catch (cause) {
+      // The group ended between the check and the signal, which is the outcome
+      // asked for. Anything else is a real failure and belongs to the caller.
+      if ((cause as NodeJS.ErrnoException).code !== "ESRCH") throw cause;
+    }
+  };
+
   let killTimer: NodeJS.Timeout | null = null;
   let timedOut = false;
   const stop = (): void => {
     if (child.exitCode !== null || child.signalCode !== null) return;
-    child.kill("SIGTERM");
+    endTree(false);
     // A tool that ignores SIGTERM would otherwise stay "running" forever on a
     // page where the reader has already dismissed it.
-    killTimer = setTimeout(() => child.kill("SIGKILL"), STOP_GRACE_MS);
+    killTimer = setTimeout(() => endTree(true), STOP_GRACE_MS);
     killTimer.unref();
   };
 

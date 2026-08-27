@@ -8,6 +8,7 @@ import { discoverAgents } from "../src/agents/discover.ts";
 import type { ProcessResult } from "../src/agents/process.ts";
 import { pathOutsidePackageBins, runCommand } from "../src/agents/process.ts";
 import type { AskTask } from "../src/shared/api.ts";
+import { MARKED_AGENT_IDS } from "../src/web/components/AgentMark.tsx";
 
 const RUN_TIMEOUT_MS = 20_000;
 
@@ -59,6 +60,38 @@ const ANSWER_SCRIPT = `
 const REFUSE_SCRIPT = `process.stderr.write("the agent refused"); process.exit(3);`;
 
 const HANG_SCRIPT = `setInterval(() => {}, 1000);`;
+
+/**
+ * An agent that runs a tool of its own, the way a real one does. The child pid
+ * lands in the answer file, so a test can ask whether stopping the ask stopped
+ * what the agent started.
+ */
+const SPAWN_CHILD_SCRIPT = `
+  const [, answerPath] = process.argv.slice(1);
+  const child = require("node:child_process").spawn(
+    process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" },
+  );
+  require("node:fs").writeFileSync(answerPath, String(child.pid));
+  setInterval(() => {}, 1000);
+`;
+
+/** Whether a process id still names a live process. */
+function alive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function waitFor(condition: () => Promise<boolean> | boolean, what: string): Promise<void> {
+  const deadline = Date.now() + RUN_TIMEOUT_MS;
+  while (!(await condition())) {
+    if (Date.now() > deadline) throw new Error(what);
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+}
 
 async function settled(list: () => AskTask[], id: string): Promise<AskTask> {
   const deadline = Date.now() + RUN_TIMEOUT_MS;
@@ -169,10 +202,17 @@ describe("the agent definitions, continued", () => {
   });
 });
 
+describe("the marks the menu draws", () => {
+  it("has one for every agent that can be offered", () => {
+    expect([...MARKED_AGENT_IDS].sort()).toEqual(AGENT_DEFINITIONS.map((definition) => definition.id).sort());
+  });
+});
+
 describe("discovering what this host can run", () => {
   it("offers a tool that is installed and signed in", async () => {
     const found = await discoverAgents([fakeAgent("present", ANSWER_SCRIPT)], workingRoot);
-    expect(found.map((agent) => [agent.definition.id, agent.version])).toEqual([["present", "9.9.9"]]);
+    expect(found.map((agent) => [agent.definition.id, agent.version, agent.signedIn]))
+      .toEqual([["present", "9.9.9", true]]);
   });
 
   it("leaves out a tool that is not installed", async () => {
@@ -180,9 +220,10 @@ describe("discovering what this host can run", () => {
     expect(await discoverAgents([missing], workingRoot)).toEqual([]);
   });
 
-  it("leaves out a tool that is installed and signed out", async () => {
+  it("offers a tool that is installed and signed out, and says so", async () => {
     const signedOut = fakeAgent("signed-out", ANSWER_SCRIPT, { authExitCode: 1 });
-    expect(await discoverAgents([signedOut], workingRoot)).toEqual([]);
+    const found = await discoverAgents([signedOut], workingRoot);
+    expect(found.map((agent) => [agent.definition.id, agent.signedIn])).toEqual([["signed-out", false]]);
   });
 });
 
@@ -247,6 +288,30 @@ describe("the asks of one server run", () => {
     expect(store.dismiss(task.id)).toBe(true);
     expect(store.list()).toEqual([]);
     expect(store.dismiss(task.id)).toBe(false);
+  });
+
+  it("stops the tools the agent itself started", async () => {
+    const store = createAskStore();
+    const answerFile = path.join(workingRoot, "child-pid.txt");
+    const task = store.start({
+      definition: {
+        ...fakeAgent("spawner", SPAWN_CHILD_SCRIPT),
+        askArguments: ({ prompt }) => ["-e", SPAWN_CHILD_SCRIPT, prompt, answerFile],
+      },
+      question: "",
+      brief: "brief",
+      root: workingRoot,
+    });
+
+    let childPid = 0;
+    await waitFor(async () => {
+      const written = await readFile(answerFile, "utf8").catch(() => "");
+      childPid = Number(written.trim());
+      return Number.isInteger(childPid) && childPid > 0;
+    }, "the agent never started a tool of its own");
+
+    store.dismiss(task.id);
+    await waitFor(() => !alive(childPid), "the tool the agent started outlived the ask");
   });
 
   it("lists the newest ask first", async () => {

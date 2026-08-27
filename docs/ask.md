@@ -29,10 +29,13 @@ An entry says how to run the tool: how to ask it its version, how to ask it whet
 The tools agree about none of those four, so each entry answers them itself and no branch is shared.
 
 `discoverAgents()` runs the two probes once, before the server listens, and the command line prints what it found.
-A tool must pass both to be offered: it must start, and it must report that it can answer.
-Three of them say so directly, and opencode reports no sign-in of its own, so it is asked for its model list instead: an empty list is a tool that cannot answer whoever installed it.
+A tool that does not start is left out, because there is nothing to ask.
+A tool that starts is offered, and what the sign-in probe said travels with it as `signedIn`, which the menu draws on the row.
+Three of them report a sign-in directly, and opencode reports none of its own, so it is asked for its model list instead: an empty list is a tool that cannot answer whoever installed it.
 opencode ships free models, so it usually passes with no credential at all, which is deliberate on its part and the right answer to the question actually being asked.
-A tool that fails either is left out, because a button that fails only after the reader has typed a question is worse than no button.
+
+A tool that reports no sign-in can still be asked.
+The probe reads what the tool says about itself, the reader is the one who knows whether it is right, and a run that fails says why in the card.
 
 Discovery, and every ask, resolves the command outside the `node_modules/.bin` folders npm puts in front of `PATH`.
 `npx slopsplorer` is a script npm runs, so without that rule a stale copy of an agent in any ancestor folder would be chosen over the one the reader installed and signed in.
@@ -69,6 +72,7 @@ The tool passes the fifteen minute ceiling, and it is stopped and said to have b
 
 There is no cancelled state.
 The `x` on a floater stops the process if it still runs and drops the task either way, because that is what dismissing a thing means.
+An agent runs its own tools as child processes, so it is started in a process group of its own and the group is what gets signalled: `SIGTERM`, then `SIGKILL` three seconds later for whatever ignored it.
 Closing the server stops every ask, so no agent answers into a process that has gone.
 
 The store is memory only.
@@ -89,7 +93,12 @@ One list is the whole client state, so a reload finds the asks still running and
 ## The page
 
 The agent picker is a split control in the instrument bar: the wide half asks the chosen agent, and the chevron opens the list of the others.
+Choosing a row changes the agent and asks nothing, because the two acts are the two halves of the control.
 The choice is kept in local storage, so the reader chooses an agent once.
+
+A row carries the tool's own mark, its name, and what the sign-in probe believed.
+`AGENT_MARKS` in `src/web/components/AgentMark.tsx` holds the outlines, vendored from lobehub/lobe-icons so the page fetches nothing and no icon package is installed.
+Each is drawn in `currentColor`: the mark rests in ink, and it takes the page's colour where the row or the button already does.
 
 The dialog holds the question and nothing else.
 Everything about the page state is added by the server, so the brief cannot describe a view the browser has since left.

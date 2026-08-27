@@ -324,8 +324,8 @@ function printSummary(index: ScanIndex, maxFileBytes: number, agents: readonly A
     `scan       ${formatDuration(meta.durationMs)} via ${FILE_SOURCE_LABELS[meta.fileSource]}`,
     `grammars   ${meta.languages.length > 0 ? meta.languages.join(", ") : "none"}`,
     `agents     ${agents.length > 0
-      ? agents.map((agent) => `${agent.definition.command} ${agent.version}`).join(", ")
-      : "none installed and signed in"}`,
+      ? agents.map((agent) => `${agent.definition.command} ${agent.version}${agent.signedIn ? "" : " (signed out)"}`).join(", ")
+      : "none installed"}`,
   );
   process.stderr.write(`${lines.map((line) => `  ${line}`).join("\n")}\n`);
 }

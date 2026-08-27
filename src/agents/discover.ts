@@ -11,15 +11,19 @@ const PROBE_TIMEOUT_MS = 10_000;
 export interface AvailableAgent {
   definition: AgentDefinition;
   version: string;
+  /** Whether the tool answered the sign-in probe as able to reach a model. */
+  signedIn: boolean;
 }
 
 /**
- * Find which of the known agents this machine can actually answer with.
+ * Find which of the known agents this machine can run, and which of those it
+ * can answer with.
  *
  * Two questions, both asked of the tool itself rather than of its config files:
- * is it installed, and is it signed in. A tool that fails either is left out,
- * because offering it would put a button on the page that fails only after the
- * reader has typed a question.
+ * is it installed, and is it signed in. A tool that is not installed is left
+ * out, and a tool that is installed but reports no sign-in is offered with that
+ * said on its row, because the reader is the one who knows whether the probe
+ * is right about them.
  */
 export async function discoverAgents(
   definitions: readonly AgentDefinition[], cwd: string,
@@ -33,9 +37,9 @@ export async function discoverAgents(
     const auth = await runCommand(
       definition.command, definition.authArguments, { cwd, timeoutMs: PROBE_TIMEOUT_MS },
     ).finished;
-    if (auth.startFailure !== null || !definition.isSignedIn(auth)) return null;
+    const signedIn = auth.startFailure === null && definition.isSignedIn(auth);
 
-    return { definition, version: definition.readVersion(version) };
+    return { definition, version: definition.readVersion(version), signedIn };
   }));
   return found.filter((agent): agent is AvailableAgent => agent !== null);
 }

@@ -680,7 +680,9 @@ export function createSlopsplorerServer(options: SlopsplorerServerOptions): Slop
       }
       case "/api/agents": {
         const listed: AgentsResponse = {
-          agents: agents.map(({ definition, version }) => ({ id: definition.id, label: definition.label, version })),
+          agents: agents.map(({ definition, signedIn }) => ({
+            id: definition.id, label: definition.label, signedIn,
+          })),
         };
         sendJson(response, 200, listed);
         return;

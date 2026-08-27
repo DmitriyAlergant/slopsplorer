@@ -202,15 +202,17 @@ Outside one, the walker applies `.gitignore` itself, so a plain folder behaves t
 ## Ask an agent about it
 
 The map says where the weight sits, not why it sits there.
-If you have Claude Code, Codex, Cursor, or opencode installed and signed in, the **Ask** button in the header hands that question to one of them.
+If you have Claude Code, Codex, Cursor, or opencode installed, the **Ask** button in the header hands that question to one of them.
 
-Slopsplorer finds them at startup, and offers only a tool that starts and reports that it is signed in.
+Slopsplorer finds them at startup and asks each one whether it is signed in.
+The menu names every tool that starts, with its mark and what it answered, and a tool that reports no sign-in can still be asked: the answer comes back, or the card says what the tool complained about.
 Nothing is sent anywhere by Slopsplorer: the agent runs on your machine, under your own sign-in, in the folder being measured.
 
 You type the question.
 Slopsplorer adds what you have on screen - the scan or the comparison, the drill, the selection, the unit, the flavors counted, and the last file you opened - so the agent starts where you are instead of at the top of the repository.
 An answer takes minutes, so the question runs in the background and waits in a card at the corner of the window until it is ready.
 Open the card to read the answer, and open **What the agent was told** under it to see exactly what was sent.
+Dismissing a card stops the agent and the tools it started.
 
 Each tool is asked in the most restricted mode it offers: `plan` mode for Claude Code, the `read-only` sandbox for Codex, `ask` mode for Cursor, and the `plan` agent for opencode.
 The first three cannot write.

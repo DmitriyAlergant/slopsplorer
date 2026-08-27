@@ -855,18 +855,19 @@ export interface SkillInstallResponse {
 }
 
 /**
- * A coding agent installed on this machine, found runnable and signed in.
+ * A coding agent installed on this machine, and what its sign-in probe said.
  *
- * The page offers only what the host proved it can run, because an agent that
- * cannot answer is a button that fails after the reader has typed a question.
+ * The page offers what the host proved it can run. A tool that reports no
+ * sign-in is still offered, marked, and askable: the probe reads what the tool
+ * says about itself, and the reader is the one who knows whether it is right.
  */
 export interface AgentTool {
   /** Stable name of the tool, also the id an ask names. */
   id: string;
   /** How the tool calls itself, for the menu. */
   label: string;
-  /** Version the tool reported when it was found. */
-  version: string;
+  /** Whether the tool reported that it can reach a model. */
+  signedIn: boolean;
 }
 
 export interface AgentsResponse {

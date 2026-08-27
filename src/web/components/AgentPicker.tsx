@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { AgentTool } from "../../shared/api.ts";
+import { AgentMark } from "./AgentMark.tsx";
 import { MenuChevron } from "./MenuChevron.tsx";
 import { Tooltip, tooltipHandlers } from "./Tooltip.tsx";
 
@@ -7,10 +8,15 @@ interface Props {
   /** Every agent the host found. Never empty: the control is not drawn otherwise. */
   agents: readonly AgentTool[];
   agentId: string;
-  /** Choose an agent and ask it, which is what one row of the menu is. */
+  /** Choose the agent that answers. Choosing one asks nothing by itself. */
   onChoose: (agentId: string) => void;
   /** Ask whichever agent is already chosen. */
   onAsk: () => void;
+}
+
+/** What the probe believes about one tool, as the menu says it. */
+function signInWord(agent: AgentTool): string {
+  return agent.signedIn ? "signed in" : "signed out";
 }
 
 /**
@@ -46,14 +52,13 @@ export function AgentPicker({ agents, agentId, onChoose, onAsk }: Props): React.
   return (
     <div className="agent-picker" ref={groupRef}>
       <button type="button" className="agent-picker__ask" onClick={onAsk} {...tooltipHandlers}>
-        <svg
-          viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor"
-          strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"
-        >
-          <path d="M21 11.5a8.38 8.38 0 0 1-9 8.5 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.2A8.38 8.38 0 0 1 4 11.5 8.5 8.5 0 0 1 12.5 3 8.5 8.5 0 0 1 21 11.5z" />
-        </svg>
+        <AgentMark agentId={chosen.id} />
         Ask
-        <Tooltip>Ask {chosen.label} about what you are looking at.</Tooltip>
+        <Tooltip>
+          {chosen.signedIn
+            ? `Ask ${chosen.label} about what you are looking at.`
+            : `Ask ${chosen.label} about what you are looking at. It reported no sign-in, so the ask can fail.`}
+        </Tooltip>
       </button>
       <button
         type="button"
@@ -82,8 +87,11 @@ export function AgentPicker({ agents, agentId, onChoose, onAsk }: Props): React.
                 onChoose(agent.id);
               }}
             >
+              <AgentMark agentId={agent.id} size={15} />
               <span className="agent-picker__option-name">{agent.label}</span>
-              <span className="agent-picker__option-note">{agent.version}</span>
+              <span className="agent-picker__option-note" data-signed-in={agent.signedIn}>
+                {signInWord(agent)}
+              </span>
             </button>
           ))}
         </div>
