@@ -2,15 +2,18 @@
 
 ![Slopsplorer: a pig explorer in a pith helmet plants a flag on a summit of source files, beside a bar chart of the weight it found.](https://raw.githubusercontent.com/DmitriyAlergant/slopsplorer/main/docs/hero.jpg)
 
-Slopsplorer is an interactive codebase explorer focused on mapping where the weight of a codebase sits.
+Slopsplorer is an interactive map of where the slop sits in a codebase.
 
-Point it at a repository. It measures every file by tokenizer weight, line composition, and structure, then shows you which folders and which files carry the mass. At any measure (Tokens or LOC), the higher the number the bigger the slop. Sniff where it has accumulated.
+Point it at a repository.
+It weighs every file in tokens, lines, and structure, then shows you which folders and which files carry the mass.
+Code is slop until proven otherwise, and the bigger the number, the bigger the slop.
+Slopsplorer sniffs out where it piled up.
 
 ```bash
 npx slopsplorer /path/to/repository
 ```
 
-The scan runs, then Slopsplorer opens <http://127.0.0.1:8765> in your default browser.
+The scan runs, then Slopsplorer opens <http://127.0.0.1:8765> in your browser.
 
 ```bash
 # Install it if you use it often
@@ -22,11 +25,12 @@ slopsplorer .
 
 ![Slopsplorer reading its own repository: flavor filters above a source tree and a folder panel, then the headline readouts, the mass ribbon, and the heaviest-files table.](https://raw.githubusercontent.com/DmitriyAlergant/slopsplorer/main/docs/screenshot.png)
 
-*Slopsplorer reading its own source tree.*
+*Slopsplorer sniffing its own source tree.*
 
 ## Diff mode
 
-The same map, pointed at a change instead of a tree. Where does the weight of this branch sit, and how much of it must a reviewer read?
+The same map, pointed at a change instead of a tree.
+How much slop does this branch bring, and where does it land?
 
 ```bash
 slopsplorer --diff             # HEAD against the working tree, untracked files included
@@ -37,33 +41,41 @@ slopsplorer origin/main        # everything since origin/main, committed or not
 slopsplorer v1.4 v1.5          # any two revisions
 ```
 
-A positional is a folder when one exists at that path, and a revision otherwise, so a branch named like a directory needs no escape syntax. Use `-C <dir>` to name a repository elsewhere. Once the page is open, a picker on each side of the comparison points it at any other one, by branch, tag, or a commit typed by hand, without restarting the tool.
+An argument that names an existing folder is a path.
+Anything else is a revision.
+`-C <dir>` points at a repository elsewhere.
+On the page, a picker on each side switches the comparison to any other branch, tag, or commit.
 
-A switch beside the unit then picks which side of the change every figure describes:
+A switch beside the unit picks which side of the change every figure describes:
 
 | Aspect | Means |
 | --- | --- |
 | **Added** / **Removed** | one side on its own. |
 | **Net** | added - removed. What the change leaves behind, signed. The default. |
-| **Churn** | added + removed. The volume of the change, never negative. |
+| **Churn** | added + removed. How much moved, never negative. |
 | **After** | the whole file as the change leaves it. |
 
-In net, every row of the source tree draws a band from a centre axis, removed left and added right, because a rewrite at `+500 / -480` and an addition of `+20` have nearly the same net and are not the same change. Renames are followed rather than counted twice, and a file preview shows the unified diff.
+Net and churn differ for a reason: a rewrite at `+500 / -480` and an addition of `+20` have nearly the same net and are not the same change.
+Renames are followed rather than counted twice.
 
 ![Slopsplorer in diff mode: the aspect switch set to net, a source tree drawing removed and added bands from a centre axis, and a file table of added, removed, net, churn, and after tokens.](https://raw.githubusercontent.com/DmitriyAlergant/slopsplorer/main/docs/screenshot-diff.png)
 
 *Slopsplorer comparing a release tag against the working tree.*
 
+Click a file for its diff, whole, with the unchanged runs folded.
+
+![Slopsplorer's file comparison for src/shared/api.ts: two line-number columns, removed lines in red, added lines in green, and a fold strip for seven unchanged lines above.](https://raw.githubusercontent.com/DmitriyAlergant/slopsplorer/main/docs/screenshot-file-comparison.png)
+
+*One file inside the comparison, changed lines only.*
+
 ## Text report
 
-A coding agent cannot open the page.
+A coding agent cannot open the page, and it has some slop to answer for.
 `--report` prints the same map as text and exits, for a tree or for a change.
 
 ```bash
-slopsplorer --report                 # the current folder
-slopsplorer --report main...HEAD     # a pull request
-slopsplorer --report --unit loc      # lines of code instead of tokens
-slopsplorer --report --threshold 1   # expand deeper
+slopsplorer --report                                                    # the current folder, in tokens
+slopsplorer --report main...HEAD --unit loc --aspect net --threshold 1   # a pull request, in LOC, net, expanded deep
 ```
 
 The report has one section per flavor.
@@ -92,56 +104,40 @@ CODE  99k tokens, 48 files, 17% comment
 
 *Slopsplorer reporting its own source tree at `--threshold 8`.*
 
-## Three ways to filter and narrow-down
+## Three ways to narrow the hunt
 
-They are deliberately different, and they compose.
+They do different things, and they compose.
 
-- **The flavor switches and the search box** decide which files are counted at all.
+- **The flavor switches and the search box** decide which files count at all.
   - Code
   - Tests
   - Docs
   - i18n
   - Data, Config and Other files
-  - Generated files (e.g. lockfiles), default off
-- **The tree checkboxes** allow you to selectively exclude certain folders from totals and heavy files summary
-- **Drill Down** (**double-click**) focuses the entire explorer to the selected subfolder
-
-## What you see
-
-The page reads downwards. What you choose at the top decides every number below it.
-
-- **Filters** across the top: a path search, and one switch per flavor, with generated output as a switch of its own.
-- **A source tree**, where every row carries a bar showing its share of its parent, so weight is visible before you read the number. A `.` row holds the files that sit directly in a folder rather than in a subfolder.
-- **A folder panel** beside it, showing how the selected folder divides among its children as cards, then listing its own files. Each card's bar is scaled to the folder rather than to the project.
-- **Headline readouts**, then **a mass ribbon**: the current scope as one bar, split by the folders directly inside it and shaded darkest-first by rank. Clicking a segment selects that folder in the panel above.
-- **A heaviest-files table** for the current selection, sorted by any column, with a minimum threshold in the active measure. A dot marks a file whose lines are mostly commentary, a common shape for generated bulk.
-- **Read-only source previews**, capped at 512 KiB. Inside a comparison, the unified diff instead.
+  - Generated files (lockfiles and friends), off by default
+- **The tree checkboxes** drop a folder from every total and from the heaviest-files table.
+- **Drill down** (**double-click**) rescopes the page to one subfolder.
 
 ## What it counts
 
-Per file:
-
 | Metric | Counts |
 | --- | --- |
-| `tokens` | Tokenizer weight for the whole file, comments and whitespace included |
-| `lines` | Every line with content, comment lines included |
-| `codeLines` (LOC) | Content lines that are not entirely comment |
-| `commentLines` | Content lines that are. A line of code with a trailing comment counts as code |
-| `functions` / `classes` / `branches` | From tree-sitter, across 13 languages |
+| `tokens` | Tokenizer weight of the whole file, comments and whitespace included |
+| `lines` | Non-blank lines |
+| `codeLines` (LOC) | Non-blank lines that are not entirely comment |
+| `commentLines` | The rest. `lines = codeLines + commentLines` |
+| `functions` / `classes` / `branches` | From tree-sitter, for 13 languages |
 
-No line measure counts blank lines, and `lines = codeLines + commentLines` always.
+Pick one unit at the top of the page: Tokens, Lines, or LOC.
+Every total, bar, and ranking uses it.
+Tokens tell you what a context window will pay.
+LOC tells you how much logic is there, which is the question a comment-padded file dodges.
 
-Every total, bar, and ranking uses one unit: Tokens, Lines, or LOC.
-You pick the unit once, from the switch at the top of the page, and sorting a file table on one of those columns picks it too.
-Tokens answer what a review or a context window will cost.
-LOC answers how much logic is there, which is the question a comment-padded file distorts.
+A file outside the 13 grammars still gets tokens and lines, and reports zero structure rather than a guess.
+Comment spans come from the grammar where there is one, and from a marker table for some fifty other formats where there is not.
 
-Structure counts come from prebuilt WASM grammars for thirteen languages.
-A file outside them still gets token and line counts, and reports zero structure rather than a guess.
-Comment spans come from the grammar where there is one, and from a marker table covering some fifty other formats where there is not.
-
-Every file gets a flavor you can switch on and off: Code, Tests, Docs, i18n, Data & Config, or Other, with generated output as a switch of its own.
-Flavor comes from the file itself before it comes from where the file sits, so a fixture in a test folder is reported as the format it is rather than as test code.
+Every file gets a flavor: Code, Tests, Docs, i18n, Data & Config, or Other, with generated output as a switch of its own.
+The file decides its flavor before its folder does, so a fixture in a test folder counts as the format it is, not as test code.
 
 [docs/classification.md](docs/classification.md) has the full rules: which files enter a scan, how a grammar is chosen, and every deliberate divergence from `cloc`.
 
