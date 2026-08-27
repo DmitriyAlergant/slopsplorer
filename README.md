@@ -166,7 +166,7 @@ Outside one, the walker applies `.gitignore` itself, so a plain folder behaves t
 ## Agent skill
 
 Slopsplorer ships an agent skill that teaches a coding agent when to reach for it and how to read its output.
-The **Install agent skill** button gives you a command to run; the button itself installs nothing.
+The **Install the agent skill** link at the foot of the page gives you a command to run; the link itself installs nothing.
 The command copies the skill to `~/.claude/skills/slopsplorer` for Claude Code and to `~/.agents/skills/slopsplorer` for Codex and the other agent tools.
 On Windows you get the same command written for PowerShell.
 

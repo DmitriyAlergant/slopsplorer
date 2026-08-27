@@ -9,11 +9,11 @@ import {
   readPreferences, readTreePanelRatio, readWorkspaceHeight,
   writePreferences, writeTreePanelRatio, writeWorkspaceHeight,
 } from "./preferences.ts";
+import { isInsideFolder } from "./displayPath.ts";
 import { comparisonLabel } from "./format.ts";
 import { closeTooltip } from "./tooltip.ts";
 import { readRequest, selectionKey, writeRequest } from "./urlState.ts";
 import { FilterBar } from "./components/FilterBar.tsx";
-import { DrillBreadcrumbs } from "./components/DrillBreadcrumbs.tsx";
 import { FolderDetail } from "./components/FolderDetail.tsx";
 import { InstrumentBar } from "./components/InstrumentBar.tsx";
 import { MassRibbon } from "./components/MassRibbon.tsx";
@@ -47,6 +47,26 @@ function workspaceHeightFromStorage(): number {
   } catch {
     return DEFAULT_WORKSPACE_HEIGHT;
   }
+}
+
+/** Open `root` and every folder under it, and leave the rest of the tree as it is. */
+function withSubtreeExpanded(expanded: readonly string[], expandable: readonly string[], root: string): string[] {
+  const opened = new Set(expanded);
+  opened.add(root);
+  for (const path of expandable) {
+    if (isInsideFolder(path, root)) opened.add(path);
+  }
+  return [...opened];
+}
+
+/**
+ * Close every folder under `root`, and leave `root` itself open.
+ *
+ * Selecting a folder opens it, so closing the folder the button acts on would
+ * undo the selection that aimed the button.
+ */
+function withSubtreeCollapsed(expanded: readonly string[], root: string): string[] {
+  return expanded.filter((path) => path === root || !isInsideFolder(path, root));
 }
 
 export function App(): React.JSX.Element {
@@ -416,7 +436,6 @@ export function App(): React.JSX.Element {
         onRescan={handleRescan}
         onOpen={handleOpen}
         onCompare={handleCompare}
-        onInstallSkill={() => setSkillOpen(true)}
       />
 
       <FilterBar
@@ -427,15 +446,6 @@ export function App(): React.JSX.Element {
         onQueryChange={(query) => patch({ query })}
         onMeasureChange={setMeasure}
         onAspectChange={setAspect}
-      />
-
-      {/* The trail names the scope the tree beneath it is rooted in, and is the
-          way back up out of a drill, so it sits with the tree rather than with
-          the figures that summarise the scope further down. */}
-      <DrillBreadcrumbs
-        rootName={view?.meta.rootName ?? "Project"}
-        drillPath={request.drillPath}
-        onDrill={drill}
       />
 
       {error ? <p className="error-banner" role="status">{error}</p> : null}
@@ -449,18 +459,23 @@ export function App(): React.JSX.Element {
       >
         <SourceTree
           rows={view?.tree ?? []}
+          rootName={view?.meta.rootName ?? "Project"}
+          drillPath={request.drillPath}
           sort={request.treeSort}
           measure={view?.measure ?? request.measure}
           aspect={aspect}
           isDiff={isDiff}
+          selectedPath={request.selected.path}
           onSelect={select}
           onDrill={drill}
           onSortChange={(treeSort) => patch({ treeSort })}
           onToggleExpanded={toggleExpanded}
           onToggleFolder={toggleFolder}
           onToggleDirectFiles={toggleDirectFiles}
-          onExpandAll={() => patch({ expanded: view?.expandableFolderPaths ?? [""] })}
-          onCollapseAll={() => patch({ expanded: [""] })}
+          onExpandSubtree={(path) => patch({
+            expanded: withSubtreeExpanded(request.expanded, view?.expandableFolderPaths ?? [], path),
+          })}
+          onCollapseSubtree={(path) => patch({ expanded: withSubtreeCollapsed(request.expanded, path) })}
         />
         <WorkspaceSplitter ratio={treePanelRatio} onRatioChange={setTreePanelRatio} />
         <FolderDetail
@@ -504,6 +519,12 @@ export function App(): React.JSX.Element {
         selected={request.selected}
         onSelect={select}
       />
+
+      <p className="colophon">
+        <button type="button" className="link" onClick={() => setSkillOpen(true)}>
+          Install the agent skill
+        </button>
+      </p>
 
       <SourceDialog preview={preview} onClose={() => setPreview(null)} />
       <SkillInstallDialog

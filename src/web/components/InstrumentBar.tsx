@@ -12,7 +12,6 @@ interface Props {
   onRescan: () => void;
   onOpen: (root: string) => void;
   onCompare: (comparison: ComparisonRequest) => void;
-  onInstallSkill: () => void;
 }
 
 /** Where a file list came from, named in the reader's terms rather than ours. */
@@ -24,7 +23,7 @@ const FILE_SOURCE_LABELS: Readonly<Record<FileSource, string>> = {
 };
 
 /** The fixed readout strip: what was measured, how, and how long ago. */
-export function InstrumentBar({ meta, rescanning, scanning, onRescan, onOpen, onCompare, onInstallSkill }: Props): React.JSX.Element {
+export function InstrumentBar({ meta, rescanning, scanning, onRescan, onOpen, onCompare }: Props): React.JSX.Element {
   const [editingPath, setEditingPath] = useState(false);
   const [pathValue, setPathValue] = useState(meta?.rootPath ?? "");
   const pathInput = useRef<HTMLInputElement>(null);
@@ -58,6 +57,8 @@ export function InstrumentBar({ meta, rescanning, scanning, onRescan, onOpen, on
 
   return (
     <header className="instrument">
+      <img className="instrument__mark" src="/hero.jpg" alt="" width={59} height={64} />
+
       <div className="instrument__identity">
         <div className="instrument__title">
           {/* The wordmark says which of the two questions the page answers,
@@ -66,6 +67,37 @@ export function InstrumentBar({ meta, rescanning, scanning, onRescan, onOpen, on
           {/* What is compared outranks every other fact in the strip, so it
               sits beside the wordmark rather than among them. */}
           {diff ? <ComparisonPicker diff={diff} disabled={scanning} onCompare={onCompare} /> : null}
+          {/* Measuring again is the same act on either side of what it re-reads,
+              so it stays beside what it would re-read rather than across the bar. */}
+          <button
+            type="button"
+            className="instrument__remeasure"
+            onClick={onRescan}
+            disabled={scanning}
+            aria-label={diff ? "Recompare" : "Rescan"}
+            {...tooltipHandlers}
+          >
+            <svg
+              className={rescanning ? "spinning" : undefined}
+              viewBox="0 0 24 24"
+              width="15"
+              height="15"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
+              <path d="M21 3v5h-5" />
+              <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
+              <path d="M3 21v-5h5" />
+            </svg>
+            <Tooltip compact>
+              {rescanning ? (diff ? "Comparing" : "Rescanning") : (diff ? "Recompare" : "Rescan")}
+            </Tooltip>
+          </button>
         </div>
 
         {/* A comparison belongs to one repository, so only a scan can be
@@ -114,23 +146,10 @@ export function InstrumentBar({ meta, rescanning, scanning, onRescan, onOpen, on
           <dd>{meta ? FILE_SOURCE_LABELS[meta.fileSource] : "-"}</dd>
         </div>
         <div className="fact">
-          <dt>Grammars</dt>
-          <dd>{meta && meta.languages.length > 0 ? meta.languages.length : "-"}</dd>
-        </div>
-        <div className="fact">
           <dt>Scanned</dt>
           <dd>{meta ? since(meta.scannedAt) : "-"}</dd>
         </div>
       </dl>
-
-      <div className="instrument__actions">
-        <button type="button" className="button" onClick={onRescan} disabled={scanning}>
-          {rescanning ? (diff ? "Comparing" : "Rescanning") : (diff ? "Recompare" : "Rescan")}
-        </button>
-        <button type="button" className="button" onClick={onInstallSkill}>
-          Install agent skill
-        </button>
-      </div>
 
       {meta && meta.skippedLargeFiles > 0 ? (
         <p className="instrument__note">

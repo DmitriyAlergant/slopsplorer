@@ -10,3 +10,13 @@ export function pathRelativeTo(path: string, root: string): string {
   const prefix = `${root}/`;
   return path.startsWith(prefix) ? path.slice(prefix.length) : path;
 }
+
+/**
+ * Is `path` the folder `root` or a folder inside it?
+ *
+ * The scan root is the empty path and holds everything, so it answers true for
+ * every path rather than by a prefix test.
+ */
+export function isInsideFolder(path: string, root: string): boolean {
+  return root === "" || path === root || path.startsWith(`${root}/`);
+}

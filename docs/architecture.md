@@ -154,7 +154,8 @@ Two places keep the request:
 - `src/web/preferences.ts` keeps the parts that are personal habit, such as the measure and the sorted column, in local storage.
 
 The page reads in one direction, from top to bottom.
-The filters and the drill trail come first, then the workspace where the user navigates the tree, then the readouts and the proportion bar.
+The filters come first, then the workspace where the user navigates the tree, then the readouts and the proportion bar.
+The drill trail is the heading of the source tree panel, because it names what that tree is rooted in.
 Everything below the workspace describes what the workspace shows, so no part of the page needs a control that sits below it.
 The one deliberate exception is the proportion bar, whose segments select a folder in the folder panel above it.
 The bar is a view of the scope, so selecting from it is the same act as clicking the tree.

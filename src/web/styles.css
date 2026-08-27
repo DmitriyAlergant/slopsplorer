@@ -152,13 +152,20 @@ button { cursor: pointer; }
 
 .instrument {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: 28px;
-  padding-bottom: 20px;
-  border-bottom: 1px solid var(--rule);
+  gap: 18px;
+  padding-bottom: 2px;
 }
 .instrument__identity { min-width: 0; }
+/* The explorer who does the measuring, at the size of a mark rather than of a
+   picture: it names the tool and then gets out of the way. */
+.instrument__mark {
+  width: 59px;
+  height: 64px;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+}
 
 .wordmark {
   margin: 0;
@@ -210,7 +217,38 @@ button { cursor: pointer; }
   text-transform: uppercase;
 }
 .fact dd { margin: 2px 0 0; font-size: 12px; color: var(--ink-soft); }
-.instrument__actions { display: flex; gap: 8px; }
+.instrument__remeasure {
+  position: relative;
+  display: inline-grid; place-items: center;
+  flex: none;
+  width: 28px; height: 28px; padding: 0;
+  border: 1px solid var(--rule-firm); border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink-soft);
+  transition: border-color 120ms ease, color 120ms ease;
+}
+.instrument__remeasure:hover:not(:disabled) { border-color: var(--signal); color: var(--signal); }
+.instrument__remeasure:disabled { color: var(--ink-faint); cursor: progress; }
+/* One measurement is running, and the icon says so by turning. */
+.spinning { animation: spin 1.1s linear infinite; transform-origin: 50% 50%; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* The skill is a thing to install once, so it closes the page instead of
+   competing with the controls that read it. */
+.colophon {
+  margin: 26px 0 0;
+  text-align: center;
+  font-size: 11.5px;
+  color: var(--ink-faint);
+}
+.colophon .link {
+  display: inline;
+  color: inherit;
+  font-family: var(--font-sans);
+  font-size: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
 
 /* ---- Comparison picker -------------------------------------------------- */
 
@@ -523,7 +561,7 @@ button { cursor: pointer; }
   flex-wrap: wrap;
   align-items: center;
   gap: 14px;
-  padding: 12px 0;
+  padding: 18px 0;
 }
 .search { flex: 0 1 280px; min-width: 180px; }
 /*
@@ -667,25 +705,26 @@ button { cursor: pointer; }
   transition-delay: 0s;
 }
 
-
-/* Always on the page, empty at the root, so its height is reserved rather than
-   claimed on the first drill. Trimmed accordingly: it holds one line either way. */
+/* The heading of the source tree once it is drilled, so it holds the head's
+   line box rather than adding one, and the last step gives up its width last. */
 .drill-trail {
   display: flex;
   align-items: center;
   gap: 5px;
-  min-height: 24px;
-  margin: 14px 0 2px;
+  min-width: 0;
+  height: 17px;
   color: var(--ink-soft);
   font-family: var(--font-mono);
-  font-size: 11.5px;
-  overflow-x: auto;
+  font-size: 12px;
+  overflow: hidden;
   white-space: nowrap;
 }
-.drill-trail__step { display: inline-flex; align-items: center; gap: 5px; }
-.drill-trail__separator { color: var(--ink-faint); }
+.drill-trail > :not(:last-child) { flex: none; }
+.drill-trail__step { display: inline-flex; align-items: center; gap: 5px; min-width: 0; }
+.drill-trail__separator { flex: none; color: var(--ink-faint); }
 .drill-trail button {
-  padding: 3px 4px;
+  flex: none;
+  padding: 1px 4px;
   border: 0;
   border-radius: 4px;
   background: transparent;
@@ -693,7 +732,13 @@ button { cursor: pointer; }
   font: inherit;
 }
 .drill-trail button:hover { background: var(--sunk); color: var(--signal); }
-.drill-trail [aria-current="page"] { color: var(--ink); font-weight: 600; }
+.drill-trail [aria-current="page"] {
+  min-width: 0;
+  color: var(--ink);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
 /* ---- Panels ------------------------------------------------------------ */
 
@@ -1417,9 +1462,9 @@ button { cursor: pointer; }
 /* ---- Responsive -------------------------------------------------------- */
 
 @media (max-width: 1100px) {
-  .instrument { grid-template-columns: 1fr; gap: 14px; }
+  .instrument { grid-template-columns: auto minmax(0, 1fr); gap: 14px; }
   .instrument__title { flex-wrap: wrap; gap: 10px; }
-  .instrument__facts { flex-wrap: wrap; gap: 18px; }
+  .instrument__facts { grid-column: 1 / -1; flex-wrap: wrap; gap: 18px; }
   .workspace { grid-template-columns: 1fr; gap: var(--gap); }
   .workspace__splitter { display: none; }
   /* Set on the panels rather than on the variable: the dragged height is an
