@@ -121,6 +121,10 @@ The index is the list of readable files.
 Inside a comparison the file has two contents, so the route returns the file as aligned lines instead, built by `diffOneFile()` from the same alignment the file's figures were summed over.
 It sends every line, changed or not, and the page decides how much of the unchanged text to draw.
 
+`listen()` binds the first free port from the one it was given, up to `portAttempts` in a row.
+The command line passes 20 attempts for the default port, so a listener an earlier run left behind does not stop a scan, and 1 for a port the user named with `--port`, which is then used or the run fails.
+On a failure the command line asks `lsof` who holds each busy port and prints a `kill` command for the Node processes among them.
+
 `/api/open` always installs a scan producer.
 A directory is not a comparison, so keeping the old one would leave the page reporting churn for a tree nobody compared.
 

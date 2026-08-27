@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { readFile, realpath, stat } from "node:fs/promises";
 import { createServer as createHttpServer } from "node:http";
 import type { IncomingMessage, Server, ServerResponse } from "node:http";
+import type { AddressInfo } from "node:net";
 import path from "node:path";
 import { StringDecoder } from "node:string_decoder";
 import { fileURLToPath } from "node:url";
@@ -114,6 +115,12 @@ export interface SlopsplorerServerOptions {
   producer: IndexProducer;
   host: string;
   port: number;
+  /**
+   * Ports tried in order from `port`, so a stale listener on the default port
+   * does not stop a run. A port the user named passes 1, because moving off a
+   * chosen port would serve the page somewhere nobody asked for.
+   */
+  portAttempts: number;
   /** Serve the client through Vite in middleware mode instead of `dist/web`. */
   dev?: boolean;
 }
@@ -253,6 +260,58 @@ async function sendStaticFile(response: ServerResponse, filePath: string): Promi
  *
  * The index and its scan options move together so source reads can never use a new index with an old root, or vice versa.
  */
+
+const MAX_TCP_PORT = 65535;
+
+/** `EADDRINUSE`, whichever layer raised it. */
+export function isAddressInUse(cause: unknown): boolean {
+  return (cause as NodeJS.ErrnoException | null)?.code === "EADDRINUSE";
+}
+
+function bindPort(httpServer: Server, host: string, port: number): Promise<AddressInfo> {
+  return new Promise<AddressInfo>((resolve, reject) => {
+    const onError = (error: Error): void => {
+      httpServer.removeListener("listening", onListening);
+      reject(error);
+    };
+    const onListening = (): void => {
+      httpServer.removeListener("error", onError);
+      const bound = httpServer.address();
+      if (bound === null || typeof bound === "string") {
+        reject(new Error("server did not bind to a TCP port"));
+        return;
+      }
+      resolve(bound);
+    };
+    httpServer.once("error", onError);
+    httpServer.once("listening", onListening);
+    httpServer.listen(port, host);
+  });
+}
+
+/**
+ * Bind the first free port from `firstPort`.
+ *
+ * A failed bind leaves the server unlistened, so the next port is a second
+ * `listen()` on the same object. `EADDRINUSE` on the last port in the range
+ * reaches the caller, which is how a named port stays a named port.
+ */
+async function bindFirstFreePort(
+  httpServer: Server, host: string, firstPort: number, attempts: number,
+): Promise<AddressInfo> {
+  // Port 0 asks the operating system for a free port, so there is nothing to step through.
+  const span = firstPort === 0 ? 1 : Math.max(1, attempts);
+  for (let offset = 0; ; offset += 1) {
+    const port = firstPort + offset;
+    try {
+      return await bindPort(httpServer, host, port);
+    } catch (cause) {
+      const isLast = offset + 1 >= span || port + 1 > MAX_TCP_PORT;
+      if (isLast || !isAddressInUse(cause)) throw cause;
+    }
+  }
+}
+
 export function createSlopsplorerServer(options: SlopsplorerServerOptions): SlopsplorerServer {
   const packageRoot = resolvePackageRoot();
   const staticRoot = path.join(packageRoot, "dist", "web");
@@ -566,23 +625,12 @@ export function createSlopsplorerServer(options: SlopsplorerServerOptions): Slop
         });
       }
 
-      const address = await new Promise<ServerAddress>((resolve, reject) => {
-        httpServer.once("error", reject);
-        httpServer.listen(options.port, options.host, () => {
-          httpServer.removeListener("error", reject);
-          const bound = httpServer.address();
-          if (bound === null || typeof bound === "string") {
-            reject(new Error("server did not bind to a TCP port"));
-            return;
-          }
-          // A wildcard bind is not a usable address to click on.
-          const displayHost =
-            bound.address === "0.0.0.0" || bound.address === "::" ? "127.0.0.1" : bound.address;
-          const bracketed = displayHost.includes(":") ? `[${displayHost}]` : displayHost;
-          resolve({ host: bound.address, port: bound.port, url: `http://${bracketed}:${bound.port}` });
-        });
-      });
-      return address;
+      const bound = await bindFirstFreePort(httpServer, options.host, options.port, options.portAttempts);
+      // A wildcard bind is not a usable address to click on.
+      const displayHost =
+        bound.address === "0.0.0.0" || bound.address === "::" ? "127.0.0.1" : bound.address;
+      const bracketed = displayHost.includes(":") ? `[${displayHost}]` : displayHost;
+      return { host: bound.address, port: bound.port, url: `http://${bracketed}:${bound.port}` };
     },
     async close(): Promise<void> {
       // Start closing the listener first so a watch restart can reclaim the port,

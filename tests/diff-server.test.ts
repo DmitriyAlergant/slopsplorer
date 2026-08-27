@@ -70,7 +70,7 @@ beforeAll(async () => {
     concurrency: 2,
   };
   const index = await scanDiff(options);
-  server = createSlopsplorerServer({ index, producer: { kind: "diff", options }, host: "127.0.0.1", port: 0 });
+  server = createSlopsplorerServer({ index, producer: { kind: "diff", options }, host: "127.0.0.1", port: 0, portAttempts: 1 });
   serverUrl = (await server.listen()).url;
 }, SCAN_TIMEOUT_MS);
 

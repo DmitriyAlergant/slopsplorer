@@ -1,10 +1,10 @@
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
-import { connect, type Socket } from "node:net";
+import { createServer as createTcpServer, connect, type Socket } from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { scanSourceTree } from "../src/scanner/scan.ts";
-import { createSlopsplorerServer, type SlopsplorerServer } from "../src/server/server.ts";
+import { createSlopsplorerServer, isAddressInUse, type SlopsplorerServer } from "../src/server/server.ts";
 import type { SourceResponse, ViewResponse } from "../src/shared/api.ts";
 
 const SCAN_TIMEOUT_MS = 60_000;
@@ -66,7 +66,7 @@ beforeAll(async () => {
     concurrency: 2,
   };
   const index = await scanSourceTree(scanOptions);
-  server = createSlopsplorerServer({ index, producer: { kind: "scan", options: scanOptions }, host: "127.0.0.1", port: 0 });
+  server = createSlopsplorerServer({ index, producer: { kind: "scan", options: scanOptions }, host: "127.0.0.1", port: 0, portAttempts: 1 });
   serverUrl = (await server.listen()).url;
 }, SCAN_TIMEOUT_MS);
 
@@ -146,6 +146,7 @@ describe("development server shutdown", () => {
       producer: { kind: "scan", options: scanOptions },
       host: "127.0.0.1",
       port: 0,
+      portAttempts: 1,
       dev: true,
     });
     const address = await developmentServer.listen();
@@ -171,3 +172,66 @@ describe("development server shutdown", () => {
     expect(timedOut).toBe(false);
   });
 }, SCAN_TIMEOUT_MS);
+
+/** Hold a port the way a process left behind by an earlier run holds one. */
+function occupyPort(): Promise<{ port: number; release: () => Promise<void> }> {
+  return new Promise((resolve, reject) => {
+    const holder = createTcpServer();
+    holder.once("error", reject);
+    holder.listen(0, "127.0.0.1", () => {
+      const address = holder.address();
+      if (address === null || typeof address === "string") {
+        reject(new Error("the holder did not bind to a TCP port"));
+        return;
+      }
+      resolve({
+        port: address.port,
+        release: () => new Promise<void>((done) => holder.close(() => done())),
+      });
+    });
+  });
+}
+
+describe("binding a port", () => {
+  const scanOptions = {
+    tokenizer: "cl100k_base" as const,
+    allFiles: true,
+    exclude: [],
+    maxFileBytes: 2 * 1024 * 1024,
+    concurrency: 2,
+  };
+
+  it("walks forward to a free port when the first one is in use", async () => {
+    const held = await occupyPort();
+    const options = { ...scanOptions, root: initialRoot };
+    const index = await scanSourceTree(options);
+    const walker = createSlopsplorerServer({
+      index, producer: { kind: "scan", options }, host: "127.0.0.1", port: held.port, portAttempts: 5,
+    });
+    try {
+      const address = await walker.listen();
+      expect(address.port).toBeGreaterThan(held.port);
+      expect(address.port).toBeLessThanOrEqual(held.port + 4);
+      const health = await fetch(`${address.url}/api/health`);
+      expect(health.status).toBe(200);
+    } finally {
+      await walker.close();
+      await held.release();
+    }
+  }, SCAN_TIMEOUT_MS);
+
+  it("fails on the port it was given when it may try only one", async () => {
+    const held = await occupyPort();
+    const options = { ...scanOptions, root: initialRoot };
+    const index = await scanSourceTree(options);
+    const strict = createSlopsplorerServer({
+      index, producer: { kind: "scan", options }, host: "127.0.0.1", port: held.port, portAttempts: 1,
+    });
+    try {
+      await expect(strict.listen()).rejects.toSatisfy(isAddressInUse);
+    } finally {
+      await strict.close();
+      await held.release();
+    }
+  }, SCAN_TIMEOUT_MS);
+});

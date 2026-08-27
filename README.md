@@ -145,7 +145,8 @@ The file decides its flavor before its folder does, so a fixture in a test folde
 
 ```bash
 slopsplorer <path>              # defaults to the current folder
-  --port 9000                   # default 8765, use 0 for any free port
+  --port 9000                   # exact port, or 0 for any free one
+                                # default 8765, moves to the next free port when busy
   --host 0.0.0.0                # default 127.0.0.1
   --all-files                   # walk the filesystem and ignore .gitignore
   --exclude vendor              # exclude a directory name, repeatable

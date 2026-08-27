@@ -3,7 +3,7 @@ import { execFile } from "node:child_process";
 import { readFileSync, statSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { parseArgs } from "node:util";
+import { parseArgs, promisify } from "node:util";
 import { scanDiff, type DiffScanOptions } from "./scanner/diffScan.ts";
 import {
   GitError, parseComparisonSpec, parseRevisionArgument, repositoryRoot, resolveComparison,
@@ -14,16 +14,35 @@ import type { ScanIndex, ScanOptions, ScanProgress } from "./scanner/scan.ts";
 import { ASPECTS, type Aspect, type ComparisonRequest } from "./shared/api.ts";
 import { DEFAULT_TOKENIZER, isTokenizerName, TOKENIZERS } from "./scanner/tokenize.ts";
 import { buildReport, DEFAULT_REPORT_THRESHOLD, REPORT_UNITS, type ReportOptions } from "./server/report.ts";
-import { createSlopsplorerServer, resolvePackageRoot, type IndexProducer } from "./server/server.ts";
+import {
+  createSlopsplorerServer, isAddressInUse, resolvePackageRoot,
+  type IndexProducer, type ServerAddress,
+} from "./server/server.ts";
+
+const execFileAsync = promisify(execFile);
 
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_PORT = 8765;
+
+/** How far the default port may walk forward past listeners a previous run left behind. */
+const DEFAULT_PORT_ATTEMPTS = 20;
 
 /** Reading is IO-bound, so oversubscribing the core count is deliberate. */
 const DEFAULT_CONCURRENCY = Math.max(4, os.availableParallelism());
 
 /** Erase the whole progress line, so a shorter update cannot leave a tail behind. */
 const CLEAR_LINE = "\u001B[2K";
+
+/** Colour only where a person reads it: a pipe and NO_COLOR both get plain text. */
+const useColor = process.stderr.isTTY === true && process.env["NO_COLOR"] === undefined;
+
+function yellow(text: string): string {
+  return useColor ? `\u001B[33m${text}\u001B[0m` : text;
+}
+
+function boldYellow(text: string): string {
+  return useColor ? `\u001B[1;33m${text}\u001B[0m` : text;
+}
 
 const USAGE = `slopsplorer - local, token-weighted source tree explorer.
 
@@ -44,7 +63,9 @@ OPTIONS
   -C <dir>                Run as if started in <dir>. A comparison uses this to
                           locate the repository.
   --host <address>        Interface to bind. Default ${DEFAULT_HOST}.
-  --port <number>         Port to bind. Use 0 for any free port. Default ${DEFAULT_PORT}.
+  --port <number>         Port to bind. Use 0 for any free port. Default ${DEFAULT_PORT},
+                          which walks forward to the next free port when it is
+                          busy. A port named here is used or the run fails.
   --dev                   Serve the client through Vite with hot reload on the
                           same port.
   --all-files             Ignore Git and .gitignore. Built-in directory exclusions
@@ -113,6 +134,73 @@ function openInBrowser(url: string): void {
   execFile(command, commandArguments, () => {
     // Nothing to do: failing to open a browser is never a reason to stop serving.
   });
+}
+
+interface PortHolder {
+  port: number;
+  pid: number;
+  command: string;
+}
+
+/**
+ * Which processes listen on these ports.
+ *
+ * Best effort by design: `lsof` is absent on Windows and in some containers, and
+ * a hint about a busy port is never a reason to refuse to serve one.
+ */
+async function findPortHolders(ports: readonly number[]): Promise<PortHolder[]> {
+  const holders: PortHolder[] = [];
+  for (const port of ports) {
+    let stdout: string;
+    try {
+      ({ stdout } = await execFileAsync("lsof", ["-nP", `-iTCP:${port}`, "-sTCP:LISTEN", "-F", "pc"]));
+    } catch {
+      // No lsof, or nothing listens there any more. Either way there is nothing to name.
+      continue;
+    }
+    // One record per process: `p<pid>` opens it and `c<command>` names it.
+    let pid: number | null = null;
+    for (const line of stdout.split("\n")) {
+      if (line.startsWith("p")) pid = Number(line.slice(1));
+      else if (line.startsWith("c") && pid !== null) {
+        holders.push({ port, pid, command: line.slice(1) });
+        pid = null;
+      }
+    }
+  }
+  return holders;
+}
+
+/** The ports the search stepped over, which are exactly the busy ones. */
+function rangeOfPorts(from: number, until: number): number[] {
+  const ports: number[] = [];
+  for (let port = from; port < until; port += 1) ports.push(port);
+  return ports;
+}
+
+/**
+ * Say who holds the ports this run could not take, and how to reclaim them.
+ *
+ * The kill command covers the Node processes only. Another program on the port
+ * is named but not offered up, because it is not something this tool left behind.
+ */
+async function writeBusyPortNotice(ports: readonly number[], servingOn: number | null): Promise<void> {
+  const busy = ports.join(", ");
+  const headline = servingOn === null
+    ? `port ${busy} is in use`
+    : `${ports.length === 1 ? "port" : "ports"} ${busy} in use, serving on ${servingOn} instead`;
+  const lines = [yellow(`  ${headline}`)];
+
+  const holders = await findPortHolders(ports);
+  const commandWidth = Math.max(0, ...holders.map((holder) => holder.command.length));
+  for (const holder of holders) {
+    lines.push(yellow(`    ${holder.port}  ${holder.command.padEnd(commandWidth)}  pid ${holder.pid}`));
+  }
+  const nodePids = holders.filter((holder) => holder.command === "node").map((holder) => holder.pid);
+  if (nodePids.length > 0) {
+    lines.push(`  ${yellow("to reclaim:")} ${boldYellow(`kill ${nodePids.join(" ")}`)}`);
+  }
+  process.stderr.write(`\n${lines.join("\n")}\n`);
 }
 
 function formatCount(value: number): string {
@@ -423,8 +511,22 @@ async function main(): Promise<void> {
   }
   printSummary(index, maxFileBytes);
 
-  const server = createSlopsplorerServer({ index, producer, host, port, dev: values.dev === true });
-  const address = await server.listen();
+  // A port the user named is used or the run fails. The default one walks forward,
+  // because a listener a previous run left behind is not a reason to stop.
+  const portAttempts = values.port === undefined ? DEFAULT_PORT_ATTEMPTS : 1;
+  const server = createSlopsplorerServer({ index, producer, host, port, portAttempts, dev: values.dev === true });
+  let address: ServerAddress;
+  try {
+    address = await server.listen();
+  } catch (cause) {
+    if (!isAddressInUse(cause)) throw cause;
+    await writeBusyPortNotice([port], null);
+    fail(`port ${port} is in use. Choose another with --port, or drop --port to take the next free one.`);
+  }
+  // Port 0 asked the operating system to choose, so a different port is the answer, not a move.
+  if (port !== 0 && address.port !== port) {
+    await writeBusyPortNotice(rangeOfPorts(port, address.port), address.port);
+  }
   process.stderr.write(`\n  slopsplorer ready on ${address.url}\n\n`);
 
   const shouldOpenBrowser = values["no-open"] !== true && (values.open === true || values.dev !== true);
