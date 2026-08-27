@@ -20,21 +20,6 @@ const DIRECT_FILES_LABEL = ".";
 /** Bounds on the column count the client may ask for. */
 const MIN_CARD_COLUMNS = 1;
 const MAX_CARD_COLUMNS = 6;
-/** Tiles are capped at two rows, however wide the panel gets. */
-const CARD_ROWS = 2;
-
-/**
- * Choose a fixed column count and cap the tile list at two rows.
- *
- * The measured capacity stays fixed even when only one child exists, so a lone
- * card retains the same width instead of stretching across the whole panel.
- * When more than two rows exist, the final card absorbs everything beyond the
- * visible individual cards.
- */
-function planFolderCards(childCount: number, maxColumns: number): { columns: number; tiles: number } {
-  return { columns: maxColumns, tiles: Math.min(childCount, maxColumns * CARD_ROWS) };
-}
-
 export function flavorOf(file: FileRow): Flavor {
   return file.generated ? "generated" : file.kind;
 }
@@ -91,11 +76,9 @@ interface Totals {
   tokens: number;
   lines: number;
   codeLines: number;
-  commentLines: number;
   churnTokens: number;
   churnLines: number;
   churnCodeLines: number;
-  churnCommentLines: number;
   files: number;
   flavors: Map<Flavor, number>;
   statuses: Map<ChangeStatus, number>;
@@ -104,8 +87,8 @@ interface Totals {
 function emptyTotals(): Totals {
   return {
     weight: 0, added: 0, removed: 0,
-    tokens: 0, lines: 0, codeLines: 0, commentLines: 0,
-    churnTokens: 0, churnLines: 0, churnCodeLines: 0, churnCommentLines: 0,
+    tokens: 0, lines: 0, codeLines: 0,
+    churnTokens: 0, churnLines: 0, churnCodeLines: 0,
     files: 0, flavors: new Map(), statuses: new Map(),
   };
 }
@@ -118,11 +101,9 @@ function addFile(totals: Totals, file: FileRow, fields: ActiveFields): void {
   totals.tokens += file.tokens;
   totals.lines += file.lines;
   totals.codeLines += file.codeLines;
-  totals.commentLines += file.commentLines;
   totals.churnTokens += file[fields.churnTokens];
   totals.churnLines += file[fields.churnLines];
   totals.churnCodeLines += file[fields.churnCodeLines];
-  totals.churnCommentLines += file.addedCommentLines + file.removedCommentLines;
   totals.files += 1;
   // Slices are drawn from magnitude: a net of -400 is 400 of ink, and the sign
   // is carried by the figure beside the bar rather than folded into its width.
@@ -326,11 +307,9 @@ function mergeTotals(target: Totals, source: Totals): void {
   target.tokens += source.tokens;
   target.lines += source.lines;
   target.codeLines += source.codeLines;
-  target.commentLines += source.commentLines;
   target.churnTokens += source.churnTokens;
   target.churnLines += source.churnLines;
   target.churnCodeLines += source.churnCodeLines;
-  target.churnCommentLines += source.churnCommentLines;
   target.files += source.files;
   for (const [flavor, weight] of source.flavors) {
     target.flavors.set(flavor, (target.flavors.get(flavor) ?? 0) + weight);
@@ -400,9 +379,15 @@ function buildTree(
         sortWeight: Math.abs(aggregation.categoryDirectWeight.get(folder.path) ?? 0),
       });
     }
-    children.sort((left, right) => request.treeSort === "weight"
-      ? right.sortWeight - left.sortWeight || left.name.localeCompare(right.name)
-      : left.name.localeCompare(right.name));
+    // The `.` row heads every level it appears in, whichever order the level is
+    // sorted by: it is the one row that holds files rather than more folders, so
+    // a reader looking for the folder's own contents always finds it in one place.
+    children.sort((left, right) => {
+      if (left.rowKind !== right.rowKind) return left.rowKind === "files" ? -1 : 1;
+      return request.treeSort === "weight"
+        ? right.sortWeight - left.sortWeight || left.name.localeCompare(right.name)
+        : left.name.localeCompare(right.name);
+    });
     const isExpanded = queryActive || expanded.has(folder.path);
     rows.push({
       path: folder.path,
@@ -480,14 +465,14 @@ function buildFolderCard(
  * The panel for whatever the tree has selected.
  *
  * A `.` row is its own subject rather than a second way to name its folder: it
- * reports the folder's own files, drops the child-folder tiles that belong to
- * the subtree, and puts the folder itself into the heading trail.
+ * drops the child-folder tiles that belong to the subtree, and puts the folder
+ * itself into the heading trail. The file list beside the tiles is `rankFiles`,
+ * which narrows to the folder's own files for the same reason.
  */
 function buildDetail(
   index: ScanIndex,
   request: ViewRequest,
   aggregation: Aggregation,
-  fields: ActiveFields,
   visibleScopeWeight: number,
 ): DetailView {
   const isDiff = index.meta.diff !== null;
@@ -503,9 +488,14 @@ function buildDetail(
     .filter((entry) => entry.totals.files > 0)
     .sort((left, right) => byMagnitude(left.totals.weight, right.totals.weight));
 
-  const plan = planFolderCards(children.length, request.cardColumns);
-  if (plan.tiles < children.length) {
-    const shown = plan.tiles - 1;
+  // One row, so the tiles take a fixed height whatever the folder holds and the
+  // table below them starts in the same place. The measured capacity stays fixed
+  // even when one child exists, so a lone card keeps the width of a full row's
+  // tile instead of stretching across the panel. The last tile absorbs whatever
+  // does not fit.
+  const tiles = Math.min(children.length, cardColumns);
+  if (tiles < children.length) {
+    const shown = tiles - 1;
     for (const entry of children.slice(0, shown)) {
       cards.push(buildFolderCard(entry.node.name, entry.node.path, entry.totals, visibleScopeWeight, isDiff));
     }
@@ -517,11 +507,6 @@ function buildDetail(
       cards.push(buildFolderCard(entry.node.name, entry.node.path, entry.totals, visibleScopeWeight, isDiff));
     }
   }
-
-  const directFiles = folder.directFileIndices
-    .filter((fileIndex) => aggregation.included[fileIndex] === 1)
-    .map((fileIndex) => index.files[fileIndex]!)
-    .sort(byMetric(request.rank.metric, request.measure, fields));
 
   // The heading already names its own subject, so the trail stops one step
   // short of it: at the folder's parent, or at the folder itself for a `.`.
@@ -547,15 +532,12 @@ function buildDetail(
     tokens: totals.tokens,
     lines: totals.lines,
     codeLines: totals.codeLines,
-    commentLines: totals.commentLines,
     churnTokens: totals.churnTokens,
     churnLines: totals.churnLines,
     churnCodeLines: totals.churnCodeLines,
-    churnCommentLines: totals.churnCommentLines,
     shareOfScope: share(totals.weight, visibleScopeWeight),
     cards,
     cardColumns,
-    directFiles,
   };
 }
 
@@ -578,11 +560,12 @@ function byMetric(
 /**
  * Rank the heaviest files inside the selected folder.
  *
- * The ranking follows the tree selection, not just the visibility switches, so
- * selecting a folder narrows the list to that subtree. Selecting the `.`
- * row narrows it further to the files sitting directly in the folder. Because
- * descendants are contiguous in the path-sorted array, the subtree is a range
- * rather than a scan of the project.
+ * This is the file list of the folder panel, and the only one the page draws.
+ * It follows the tree selection, not just the visibility switches, so selecting
+ * a folder narrows the list to that subtree. Selecting the `.` row narrows it
+ * further to the files sitting directly in the folder. Because descendants are
+ * contiguous in the path-sorted array, the subtree is a range rather than a
+ * scan of the project.
  */
 function rankFiles(
   index: ScanIndex, request: ViewRequest, aggregation: Aggregation, fields: ActiveFields,
@@ -650,20 +633,11 @@ function buildSummary(
     selectedTokens: scopeTotals.tokens,
     selectedLines: scopeTotals.lines,
     selectedCodeLines: scopeTotals.codeLines,
-    selectedCommentLines: scopeTotals.commentLines,
     selectedChurnTokens: scopeTotals.churnTokens,
     selectedChurnLines: scopeTotals.churnLines,
     selectedChurnCodeLines: scopeTotals.churnCodeLines,
-    selectedChurnCommentLines: scopeTotals.churnCommentLines,
     ribbon,
   };
-}
-
-/** Human-readable name of the subtree the ranking covers. */
-function rankScopeLabel(index: ScanIndex, request: ViewRequest): string {
-  const folder = index.folderByPath.get(request.selected.path) ?? index.folderByPath.get("")!;
-  const base = folder.path || index.meta.rootName;
-  return request.selected.rowKind === "files" ? `${base}/${DIRECT_FILES_LABEL}` : base;
 }
 
 /** Build every surface the client renders, for one scope request. */
@@ -711,10 +685,9 @@ export function buildView(index: ScanIndex, request: ViewRequest): ViewResponse 
     rankMetric,
     summary: buildSummary(index, aggregation, baseline, scopeRoot, scopeBaseline, visibleScopeWeight),
     tree: buildTree(index, modeRequest, aggregation, exclusions, scopeRoot, visibleScopeWeight, visibleChurn),
-    detail: buildDetail(index, modeRequest, aggregation, fields, visibleScopeWeight),
+    detail: buildDetail(index, modeRequest, aggregation, visibleScopeWeight),
     ranked: ranked.rows,
     rankedTotal: ranked.total,
-    rankScope: rankScopeLabel(index, modeRequest),
     expandableFolderPaths: index.folders
       .filter((folder) => (
         folder.path === scopeRoot.path || scopePrefix === "" || folder.path.startsWith(scopePrefix)

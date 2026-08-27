@@ -86,12 +86,12 @@ The browser never receives a file it does not display.
 
 - Visibility. The flavor switches and the search text decide which files are counted at all.
 - Inclusion. The tree checkboxes decide which of the visible files count toward the totals. Exclusion is inherited by every folder below the excluded one.
-- Aggregation. Tree rows, folder cards, the detail panel, the headline figures, and the ranked file list are all built from the same totals.
+- Aggregation. Tree rows, folder cards, the folder panel, the headline figures, and the ranked file list are all built from the same totals.
 
 ## The wire contract
 
 `ViewRequest` carries the flavor switches, the search text, the checkbox exclusions, the expanded folders, the drill path, the selection, the sorted column, the measure, and the aspect.
-`ViewResponse` carries the tree rows, the detail panel, the ranked files, the headline figures, and the scan metadata.
+`ViewResponse` carries the tree rows, the folder panel, its ranked files, the headline figures, and the scan metadata.
 
 The measured quantity on the wire is always `weight`, never `tokens`.
 `ViewResponse` repeats the measure, the aspect, and the sorted column it used, so a label in the client cannot describe one unit while the numbers beside it are in another unit and a newer request is still in flight.
@@ -113,13 +113,19 @@ A scan has one content per file, so `buildView()` forces the aspect to `after` u
 | `POST /api/compare` | Replace the comparison, keeping the repository, and measure it again. |
 | `GET /api/refs` | Return the branches, remote branches, and tags the comparison picker offers. |
 | `GET /api/source` | Return one file for the source dialog: its text in a scan, its aligned lines in a comparison. |
-| `GET /api/skill-install` | Return the command that installs the bundled agent skill. |
+| `GET /api/skill-install` | Return the command that installs the bundled agent skill, written for the shell of the host platform. |
+| `GET /api/skill-source` | Return the bundled `SKILL.md` for the preview dialog. |
 | `GET /api/health` | Report that the process is up. |
 
 The index is the list of readable files.
 `/api/source` serves a path only if the current scan contains it, then resolves the real path and refuses anything that is outside the scan root, so a symlink added after the scan cannot read another part of the disk.
 Inside a comparison the file has two contents, so the route returns the file as aligned lines instead, built by `diffOneFile()` from the same alignment the file's figures were summed over.
 It sends every line, changed or not, and the page decides how much of the unchanged text to draw.
+
+The skill ships with the package and not with the scan, so `/api/skill-source` reads it by a fixed name instead of through that allowlist, and the same dialog draws it.
+`buildSkillInstall()` writes the install command for the platform the server runs on: `cp` chained with `&&` for a POSIX shell, `Copy-Item` chained with `;` under `$ErrorActionPreference` for PowerShell.
+It copies the skill into `~/.claude/skills`, which Claude Code reads, and into `~/.agents/skills`, which Codex and the other tools that follow the open skill layout read.
+Two copies and no symlink, because an unprivileged Windows user cannot always make one.
 
 `listen()` binds the first free port from the one it was given, up to `portAttempts` in a row.
 The command line passes 20 attempts for the default port, so a listener an earlier run left behind does not stop a scan, and 1 for a port the user named with `--port`, which is then used or the run fails.
@@ -148,10 +154,19 @@ Two places keep the request:
 - `src/web/preferences.ts` keeps the parts that are personal habit, such as the measure and the sorted column, in local storage.
 
 The page reads in one direction, from top to bottom.
-The filters and the drill trail come first, then the workspace where the user navigates the tree, then the readouts and the proportion bar, then the ranking.
+The filters and the drill trail come first, then the workspace where the user navigates the tree, then the readouts and the proportion bar.
 Everything below the workspace describes what the workspace shows, so no part of the page needs a control that sits below it.
-The one deliberate exception is the proportion bar, whose segments select a folder in the detail panel above it.
+The one deliberate exception is the proportion bar, whose segments select a folder in the folder panel above it.
 The bar is a view of the scope, so selecting from it is the same act as clicking the tree.
+
+There is one file table, and it is inside the folder panel.
+The panel divides its subject twice: the tiles divide it by child folder, and the table lists every file under it, heaviest first.
+A separate ranking panel used to repeat the tiles as rows, which put the same subtree on the page twice.
+The strip above the ranked table holds the threshold that thins it, because that control belongs to the rows it removes.
+
+The scope strip under the workspace draws the same columns as the folder head, in the same order, and one is read the same way in both places.
+Only the subject differs: the folder head describes the selection, and the strip describes the whole drill scope.
+The two figures no other panel can state - how much of the project the scope and the filters keep, and how much of that is comment - stand to the right of the columns rather than among them.
 
 Three controls narrow the view, and they do different things:
 
@@ -166,6 +181,7 @@ Selection is clamped to the drill scope on both sides.
 
 A `.` row is its own subject and not a second way to name its folder.
 Selecting it reports the folder's own files: the heading reads `root/folder/.`, the child-folder cards disappear because they belong to the subtree and not to the loose files, and every figure in the panel is the loose files' own.
+It is the first row of every level it appears in, above the subfolders and whichever order the level is sorted by, because it is the one row that holds files rather than more folders.
 
 ## Where the measure is chosen
 
@@ -174,13 +190,16 @@ The measure and the aspect are properties of every figure on the page, so each i
 The aspect switch is only drawn inside a comparison, because a scanned file has one content.
 A control per panel would let several widgets each claim to decide what the page counts.
 
-`ViewRequest.rank.metric` is the sorted column of both file tables, and it is coupled to the measure and the aspect in one direction each way.
+`ViewRequest.rank.metric` is the sorted column of the file table, and it is coupled to the measure and the aspect in one direction each way.
 Sorting on `tokens`, `lines`, or `codeLines` makes that column the measure; sorting on `churn`, `net`, `added`, `removed`, or `after` makes that column the aspect.
 Choosing one moves the sort to it, unless the tables are sorted on a metric it does not cover, such as comment lines or function count, which is a deliberate choice and stays where it is.
-Either way the threshold resets, because a floor of 2,000 tokens is not a floor of 2,000 lines and a floor of 2,000 churn tokens is not a floor of 2,000 net tokens.
+Either way the threshold under the table resets, because a floor of 2,000 tokens is not a floor of 2,000 lines and a floor of 2,000 churn tokens is not a floor of 2,000 net tokens.
 
 A scan and a diff draw different columns, so a stored preference or a pasted link can name one the open index has not got.
 `buildView()` clamps the metric to the mode and echoes what it used in `ViewResponse.rankMetric`, and the client adopts that, which keeps the sort caret under a heading that exists.
+
+`aspectTotals()` in `src/shared/api.ts` applies the two identities that make net and churn out of the two sides.
+The folder head and the scope strip both call it, so a strip that states all five sides at once cannot disagree with the server about what any of them is.
 
 ## Dependencies
 

@@ -151,17 +151,34 @@ describe("folder aggregation", () => {
   });
 
   it("sorts each source-tree level by name or descending weight", () => {
-    const nameRows = buildView(index, request({ expanded: [""], treeSort: "name" })).tree
-      .filter((row) => row.depth === 1);
-    expect(nameRows.map((row) => row.name)).toEqual(
-      nameRows.map((row) => row.name).sort((left, right) => left.localeCompare(right)),
+    const folderNames = (view: ReturnType<typeof buildView>): string[] => view.tree
+      .filter((row) => row.depth === 1 && row.rowKind === "folder")
+      .map((row) => row.name);
+
+    const byName = buildView(index, request({ expanded: [""], treeSort: "name" }));
+    expect(folderNames(byName)).toEqual(
+      folderNames(byName).sort((left, right) => left.localeCompare(right)),
     );
 
-    const weightRows = buildView(index, request({ expanded: [""], treeSort: "weight" })).tree
-      .filter((row) => row.depth === 1);
-    expect(weightRows.map((row) => row.weight)).toEqual(
-      weightRows.map((row) => row.weight).sort((left, right) => right - left),
-    );
+    const byWeight = buildView(index, request({ expanded: [""], treeSort: "weight" }));
+    const folderWeights = byWeight.tree
+      .filter((row) => row.depth === 1 && row.rowKind === "folder")
+      .map((row) => row.weight);
+    expect(folderWeights).toEqual([...folderWeights].sort((left, right) => right - left));
+  });
+
+  it("puts a folder's own files above its subfolders, whichever order the level is in", () => {
+    for (const treeSort of ["name", "weight"] as const) {
+      const rows = buildView(index, request({ expanded: ["", "src"], treeSort })).tree;
+      // The root's loose file is README.md, which is lighter than either folder
+      // and sorts after neither of them by name, so only the rule puts it first.
+      const rootLevel = rows.filter((row) => row.depth === 1);
+      expect(rootLevel[0]!.rowKind, treeSort).toBe("files");
+      expect(rootLevel.slice(1).every((row) => row.rowKind === "folder"), treeSort).toBe(true);
+
+      const srcLevel = rows.filter((row) => row.depth === 2 && row.path.startsWith("src"));
+      expect(srcLevel[0]!.rowKind, treeSort).toBe("files");
+    }
   });
 
   it("keeps weight-sorted rows in place when their scope checkbox is cleared", () => {
@@ -294,21 +311,18 @@ describe("file ranking", () => {
     expect(view.rankedTotal).toBe(5);
   });
 
-  it("orders a folder's own files by the same column, so the two tables never disagree", () => {
+  it("orders a folder's own files by the same column the subtree list uses", () => {
     const byTokens = buildView(index, request({
-      selected: { rowKind: "folder", path: "src" },
+      selected: { rowKind: "files", path: "src" },
       rank: { metric: "tokens", minWeight: 0, limit: 100 },
     }));
-    expect(byTokens.detail.directFiles.map((file) => file.path))
-      .toEqual(["src/main.ts", "src/util.ts"]);
-    expect(byTokens.detail.directFiles[0]!.path).toBe(byTokens.ranked[0]!.path);
+    expect(byTokens.ranked.map((file) => file.path)).toEqual(["src/main.ts", "src/util.ts"]);
 
     const byComments = buildView(index, request({
-      selected: { rowKind: "folder", path: "src" },
+      selected: { rowKind: "files", path: "src" },
       rank: { metric: "commentLines", minWeight: 0, limit: 100 },
     }));
-    expect(byComments.detail.directFiles.map((file) => file.path))
-      .toEqual(["src/util.ts", "src/main.ts"]);
+    expect(byComments.ranked.map((file) => file.path)).toEqual(["src/util.ts", "src/main.ts"]);
   });
 
   it("ranks only what is in scope, so an excluded folder cannot reappear in the top-files list", () => {
@@ -419,7 +433,7 @@ describe("primary measure", () => {
     // by lines and almost none by code lines.
     const shareOfSrcFiles = (measure: "tokens" | "lines" | "codeLines"): number => {
       const view = buildView(index, request({ measure, selected: { rowKind: "files", path: "src" } }));
-      const util = view.detail.directFiles.find((file) => file.path === "src/util.ts")!;
+      const util = view.ranked.find((file) => file.path === "src/util.ts")!;
       return util[measure] / view.detail.weight;
     };
 
@@ -442,7 +456,7 @@ describe("primary measure", () => {
     const view = buildView(index, request({ measure: "codeLines", selected: { rowKind: "folder", path: "src" } }));
     expect(view.detail.weight).toBe(view.detail.codeLines);
     expect(view.detail.tokens).toBe(measured("tokens", "src/main.ts", "src/util.ts", "src/deep/helper.ts"));
-    expect(view.detail.lines).toBe(view.detail.codeLines + view.detail.commentLines);
+    expect(view.detail.lines).toBe(measured("lines", "src/main.ts", "src/util.ts", "src/deep/helper.ts"));
   });
 
   it("splits a tile's flavor bar in the active measure, so the slices still add up to the tile", () => {
@@ -570,7 +584,7 @@ describe("drill scope", () => {
     }));
 
     expect(view.detail.title).toBe("src");
-    expect(view.rankScope).toBe("src");
+    expect(view.ranked.every((file) => file.path.startsWith("src/"))).toBe(true);
     expect(view.tree[0]!.selected).toBe(true);
   });
 });
@@ -584,7 +598,6 @@ describe("ranking scope", () => {
     expect(justSrc.ranked.length).toBeGreaterThan(0);
     expect(justSrc.ranked.every((file) => file.path.startsWith("src/"))).toBe(true);
     expect(justSrc.rankedTotal).toBeLessThan(wholeTree.rankedTotal);
-    expect(justSrc.rankScope).toBe("src");
   });
 
   it("narrows to a folder's own files when the `.` row is selected", () => {
@@ -593,7 +606,6 @@ describe("ranking scope", () => {
 
     expect(subtree.ranked.some((file) => file.path.startsWith("src/deep/"))).toBe(true);
     expect(directOnly.ranked.every((file) => file.path.lastIndexOf("/") === "src".length)).toBe(true);
-    expect(directOnly.rankScope).toBe("src/.");
   });
 
   it("still honours the visibility switches inside the selected folder", () => {
@@ -644,7 +656,7 @@ describe("folder tile grid", () => {
     for (const cardColumns of [1, 2, 3, 4, 5, 6]) {
       const view = buildView(index, request({ cardColumns, showGenerated: true }));
       expect(view.detail.cardColumns).toBe(cardColumns);
-      expect(view.detail.cards.length).toBeLessThanOrEqual(cardColumns * 2);
+      expect(view.detail.cards.length).toBeLessThanOrEqual(cardColumns);
     }
   });
 
@@ -654,6 +666,19 @@ describe("folder tile grid", () => {
     expect(view.detail.cardColumns).toBe(6);
     expect(view.detail.cards.length).toBe(3);
     expect(view.detail.cards.some((card) => card.path === null)).toBe(false);
+  });
+
+  it("collapses the folders past the first row into one tile", () => {
+    // The root holds src, tests, and dist once generated output is shown.
+    const view = buildView(index, request({ cardColumns: 2, showGenerated: true }));
+    expect(view.detail.cards).toHaveLength(2);
+    expect(view.detail.cards[1]!.path).toBeNull();
+    expect(view.detail.cards[1]!.name).toBe("2 more folders");
+  });
+
+  it("draws no tiles for a folder with no subfolders, so the page can hold the row", () => {
+    const view = buildView(index, request({ selected: { rowKind: "folder", path: "src/deep" } }));
+    expect(view.detail.cards).toEqual([]);
   });
 
   it("keeps every folder's weight in the totals even when tiles are collapsed", () => {
@@ -700,8 +725,11 @@ describe("folder heading", () => {
     expect(direct.detail.shareOfScope)
       .toBeCloseTo(direct.detail.weight / direct.summary.selectedWeight, 10);
 
-    expect(direct.rankScope).toBe("src/.");
-    expect(folder.rankScope).toBe("src");
+    // The panel's file list narrows with it: the subtree for a folder row, and
+    // the loose files alone for the `.` row.
+    expect(folder.ranked.map((file) => file.path)).toContain("src/deep/helper.ts");
+    expect(direct.ranked.map((file) => file.path))
+      .toEqual(["src/main.ts", "src/util.ts"]);
   });
 
   it("keeps the root's own-files row addressable from the scan root", () => {

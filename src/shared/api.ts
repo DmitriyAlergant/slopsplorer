@@ -91,6 +91,37 @@ export function weightField(measure: Measure, aspect: Aspect): WeightField {
   return WEIGHT_FIELDS[measure][aspect];
 }
 
+/**
+ * The two sides of a change, and the after-image in each measure.
+ *
+ * `DetailView` and `SummaryView` both carry these, which is what lets one
+ * function state every aspect of either of them.
+ */
+export interface MeasuredSides {
+  added: number;
+  removed: number;
+  tokens: number;
+  lines: number;
+  codeLines: number;
+}
+
+/**
+ * Every aspect figure of one scope, in one measure.
+ *
+ * The two identities in the `Aspect` docstring are applied here and nowhere
+ * else, so a strip that states all five sides at once cannot disagree with the
+ * server about what net and churn are.
+ */
+export function aspectTotals(sides: MeasuredSides, measure: Measure): Record<Aspect, number> {
+  return {
+    added: sides.added,
+    removed: sides.removed,
+    net: sides.added - sides.removed,
+    churn: sides.added + sides.removed,
+    after: sides[measure],
+  };
+}
+
 /** Every weight field, so the scanner can build one prefix sum for each. */
 export const WEIGHT_FIELD_NAMES: readonly WeightField[] =
   MEASURES.flatMap((measure) => ASPECTS.map((aspect) => weightField(measure, aspect)));
@@ -287,11 +318,9 @@ export interface DetailView {
   tokens: number;
   lines: number;
   codeLines: number;
-  commentLines: number;
   churnTokens: number;
   churnLines: number;
   churnCodeLines: number;
-  churnCommentLines: number;
   /**
    * 0-1 share of the drill scope as the filters leave it. Magnitude only.
    *
@@ -303,7 +332,6 @@ export interface DetailView {
   cards: FolderCard[];
   /** Fixed column capacity measured from the panel width. */
   cardColumns: number;
-  directFiles: FileRow[];
 }
 
 export interface SummaryView {
@@ -326,11 +354,9 @@ export interface SummaryView {
   selectedTokens: number;
   selectedLines: number;
   selectedCodeLines: number;
-  selectedCommentLines: number;
   selectedChurnTokens: number;
   selectedChurnLines: number;
   selectedChurnCodeLines: number;
-  selectedChurnCommentLines: number;
   /** Top-level segments of the drill scope's proportion ribbon. */
   ribbon: FolderCard[];
 }
@@ -424,11 +450,16 @@ export interface ViewResponse {
   summary: SummaryView;
   tree: TreeRow[];
   detail: DetailView;
+  /**
+   * The folder panel's file list: every file of the selection, ranked.
+   *
+   * A folder selection covers its whole subtree, and a `.` selection covers the
+   * files sitting directly in the folder. The panel draws these under the child
+   * folder tiles, so the tiles and the rows divide one subject between them.
+   */
   ranked: FileRow[];
   /** Total matches before `rank.limit` was applied. */
   rankedTotal: number;
-  /** The subtree the ranking covers, for labelling the panel. */
-  rankScope: string;
   /** Every folder the current filters leave visible, so the client can expand all. */
   expandableFolderPaths: string[];
 }
@@ -513,13 +544,18 @@ export type SourceResponse =
   | (SourceResponseBase & { mode: "source"; content: string })
   | (SourceResponseBase & { mode: "diff"; lines: DiffLine[] });
 
+/** One directory the install command writes a copy of the skill into. */
+export interface SkillInstallTarget {
+  /** The agent tool that reads the directory. */
+  tool: string;
+  path: string;
+}
+
 /** Instructions for installing the bundled agent skill, resolved by the server. */
 export interface SkillInstallResponse {
   skillName: string;
-  /** Copy-pasteable shell command that performs the install. */
+  /** Copy-pasteable command, written for the shell of the machine the server runs on. */
   command: string;
-  /** Canonical install location, shared across agent tools. */
-  targetPath: string;
-  /** Symlink pointing at `targetPath` for Claude Code's user-level skills. */
-  linkPath: string;
+  /** Every directory the command copies the skill into. */
+  targets: SkillInstallTarget[];
 }

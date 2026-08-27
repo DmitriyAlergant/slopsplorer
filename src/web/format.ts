@@ -200,15 +200,28 @@ export function comparisonLabel(request: ComparisonRequest): string {
   }
 }
 
-const CHANGE_STATUS_LABELS: Record<ChangeStatus, string> = {
-  added: "new",
-  modified: "edit",
-  deleted: "gone",
-  renamed: "moved",
-  unchanged: "same",
+/**
+ * How each status is drawn, and how it is read aloud.
+ *
+ * The letter is Git's own, from `git status --short` and `git diff
+ * --name-status`, so a reader arrives already knowing it and the column needs
+ * no legend. The prose is what a screen reader gets, because a letter alone
+ * says nothing without the convention behind it.
+ */
+const CHANGE_STATUS_NAMES: Record<ChangeStatus, { letter: string; prose: string }> = {
+  added: { letter: "A", prose: "added" },
+  modified: { letter: "M", prose: "modified" },
+  deleted: { letter: "D", prose: "deleted" },
+  renamed: { letter: "R", prose: "renamed" },
+  unchanged: { letter: "=", prose: "unchanged" },
 };
 
-/** Short tag for the status column, sized for a table cell. */
-export function statusLabel(status: ChangeStatus): string {
-  return CHANGE_STATUS_LABELS[status];
+/** Git's one-letter mark for the status column. */
+export function statusLetter(status: ChangeStatus): string {
+  return CHANGE_STATUS_NAMES[status].letter;
+}
+
+/** What the letter stands for, in running text. */
+export function statusName(status: ChangeStatus): string {
+  return CHANGE_STATUS_NAMES[status].prose;
 }

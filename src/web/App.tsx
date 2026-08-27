@@ -5,9 +5,9 @@ import type {
 import { ASPECTS, MEASURES } from "../shared/api.ts";
 import { compare, fetchView, openRoot, rescan } from "./api.ts";
 import {
-  DEFAULT_RANKING_HEIGHT, DEFAULT_WORKSPACE_HEIGHT, MAX_WORKSPACE_HEIGHT, MIN_WORKSPACE_HEIGHT,
-  readPreferences, readRankingHeight, readTreePanelRatio, readWorkspaceHeight,
-  writePreferences, writeRankingHeight, writeTreePanelRatio, writeWorkspaceHeight,
+  DEFAULT_WORKSPACE_HEIGHT, MAX_WORKSPACE_HEIGHT, MIN_WORKSPACE_HEIGHT,
+  readPreferences, readTreePanelRatio, readWorkspaceHeight,
+  writePreferences, writeTreePanelRatio, writeWorkspaceHeight,
 } from "./preferences.ts";
 import { comparisonLabel } from "./format.ts";
 import { closeTooltip } from "./tooltip.ts";
@@ -16,10 +16,9 @@ import { FilterBar } from "./components/FilterBar.tsx";
 import { DrillBreadcrumbs } from "./components/DrillBreadcrumbs.tsx";
 import { FolderDetail } from "./components/FolderDetail.tsx";
 import { InstrumentBar } from "./components/InstrumentBar.tsx";
-import { LargestFiles } from "./components/LargestFiles.tsx";
 import { MassRibbon } from "./components/MassRibbon.tsx";
 import { SkillInstallDialog } from "./components/SkillInstallDialog.tsx";
-import { SourceDialog } from "./components/SourceDialog.tsx";
+import { SourceDialog, type Preview } from "./components/SourceDialog.tsx";
 import { SourceTree } from "./components/SourceTree.tsx";
 import { DEFAULT_TREE_PANEL_RATIO, HeightSplitter, WorkspaceSplitter } from "./components/Splitter.tsx";
 
@@ -50,14 +49,6 @@ function workspaceHeightFromStorage(): number {
   }
 }
 
-function rankingHeightFromStorage(): number {
-  try {
-    return readRankingHeight(window.localStorage, DEFAULT_RANKING_HEIGHT);
-  } catch {
-    return DEFAULT_RANKING_HEIGHT;
-  }
-}
-
 export function App(): React.JSX.Element {
   const [request, setRequest] = useState<ViewRequest>(requestFromLocation);
   const [view, setView] = useState<ViewResponse | null>(null);
@@ -66,11 +57,10 @@ export function App(): React.JSX.Element {
   const [rescanning, setRescanning] = useState(false);
   const [openingRoot, setOpeningRoot] = useState<string | null>(null);
   const [comparingLabel, setComparingLabel] = useState<string | null>(null);
-  const [sourcePath, setSourcePath] = useState<string | null>(null);
+  const [preview, setPreview] = useState<Preview | null>(null);
   const [skillOpen, setSkillOpen] = useState(false);
   const [treePanelRatio, setTreePanelRatio] = useState(treePanelRatioFromStorage);
   const [workspaceHeight, setWorkspaceHeight] = useState(workspaceHeightFromStorage);
-  const [rankingHeight, setRankingHeight] = useState(rankingHeightFromStorage);
   const requestRef = useRef(request);
   requestRef.current = request;
   const lastSelectionRef = useRef(selectionKey(request));
@@ -120,10 +110,6 @@ export function App(): React.JSX.Element {
   useEffect(() => {
     writeWorkspaceHeight(window.localStorage, workspaceHeight);
   }, [workspaceHeight]);
-
-  useEffect(() => {
-    writeRankingHeight(window.localStorage, rankingHeight);
-  }, [rankingHeight]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -196,7 +182,7 @@ export function App(): React.JSX.Element {
       .then((next) => {
         setRequest(nextRequest);
         setView(next);
-        setSourcePath(null);
+        setPreview(null);
         setError(null);
       })
       .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause)))
@@ -479,6 +465,8 @@ export function App(): React.JSX.Element {
         <WorkspaceSplitter ratio={treePanelRatio} onRatioChange={setTreePanelRatio} />
         <FolderDetail
           detail={view?.detail ?? null}
+          files={view?.ranked ?? []}
+          filesTotal={view?.rankedTotal ?? 0}
           measure={view?.measure ?? request.measure}
           aspect={aspect}
           isDiff={isDiff}
@@ -489,7 +477,9 @@ export function App(): React.JSX.Element {
           directFilesOnly={request.selected.rowKind === "files"}
           canDrill={request.selected.rowKind === "folder" && request.selected.path !== request.drillPath}
           onDrill={() => drill(request.selected.path)}
-          onOpenSource={setSourcePath}
+          rank={request.rank}
+          onRankChange={setRank}
+          onOpenSource={(path) => setPreview({ kind: "file", path })}
           onCapacityChange={setCardColumns}
         />
       </div>
@@ -504,8 +494,8 @@ export function App(): React.JSX.Element {
         defaultHeight={DEFAULT_WORKSPACE_HEIGHT}
       />
 
-      {/* Below the workspace, because the page reads downstream: the filters and
-          the tree decide what is counted, and every figure here is the result. */}
+      {/* Last, because the page reads downstream: the filters and the tree decide
+          what is counted, the workspace shows it, and this states the total. */}
       <MassRibbon
         summary={view?.summary ?? null}
         measure={view?.measure ?? request.measure}
@@ -515,26 +505,12 @@ export function App(): React.JSX.Element {
         onSelect={(path) => select("folder", path)}
       />
 
-      <LargestFiles
-        files={view?.ranked ?? []}
-        measure={view?.measure ?? request.measure}
-        aspect={aspect}
-        isDiff={isDiff}
-        total={view?.rankedTotal ?? 0}
-        scopePath={request.selected.path}
-        directFilesOnly={request.selected.rowKind === "files"}
-        rootName={view?.meta.rootName ?? ""}
-        displayRoot={request.drillPath}
-        rank={request.rank}
-        height={rankingHeight}
-        onHeightChange={setRankingHeight}
-        onRankChange={setRank}
-        onSortChange={setRankMetric}
-        onOpenSource={setSourcePath}
+      <SourceDialog preview={preview} onClose={() => setPreview(null)} />
+      <SkillInstallDialog
+        open={skillOpen}
+        onClose={() => setSkillOpen(false)}
+        onPreviewSkill={() => setPreview({ kind: "skill" })}
       />
-
-      <SourceDialog path={sourcePath} onClose={() => setSourcePath(null)} />
-      <SkillInstallDialog open={skillOpen} onClose={() => setSkillOpen(false)} />
       {reaiming ? (
         <div className="progress-modal" role="dialog" aria-modal="true" aria-labelledby="reaim-title">
           <div className="progress-modal__card">

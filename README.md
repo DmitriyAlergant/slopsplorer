@@ -23,7 +23,7 @@ cd vibe-coded-repo
 slopsplorer .
 ```
 
-![Slopsplorer reading its own repository: flavor filters above a source tree and a folder panel, then the headline readouts, the mass ribbon, and the heaviest-files table.](https://raw.githubusercontent.com/DmitriyAlergant/slopsplorer/main/docs/screenshot.png)
+![Slopsplorer reading its own repository: flavor filters above a source tree and a folder panel that holds the subfolder tiles and the heaviest files, then the headline readouts and the mass ribbon.](https://raw.githubusercontent.com/DmitriyAlergant/slopsplorer/main/docs/screenshot.png)
 
 *Slopsplorer sniffing its own source tree.*
 
@@ -115,7 +115,7 @@ They do different things, and they compose.
   - i18n
   - Data, Config and Other files
   - Generated files (lockfiles and friends), off by default
-- **The tree checkboxes** drop a folder from every total and from the heaviest-files table.
+- **The tree checkboxes** drop a folder from every total and from the file table.
 - **Drill down** (**double-click**) rescopes the page to one subfolder.
 
 ## What it counts
@@ -167,7 +167,8 @@ Outside one, the walker applies `.gitignore` itself, so a plain folder behaves t
 
 Slopsplorer ships an agent skill that teaches a coding agent when to reach for it and how to read its output.
 The **Install agent skill** button gives you a command to run; the button itself installs nothing.
-The skill goes to `~/.agents/skills/slopsplorer`, with a symlink from `~/.claude/skills/slopsplorer`, so any agent tool can find it.
+The command copies the skill to `~/.claude/skills/slopsplorer` for Claude Code and to `~/.agents/skills/slopsplorer` for Codex and the other agent tools.
+On Windows you get the same command written for PowerShell.
 
 ## Safety
 

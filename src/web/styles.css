@@ -36,19 +36,24 @@
 
   /*
    * Change colours. Nothing on the page depends on hue alone: an added figure
-   * carries a "+" and a removed one carries a "-", and around one man in
-   * twelve cannot separate red from green.
+   * carries a "+" and a removed one carries a "-", the status column carries
+   * Git's letter, and around one man in twelve cannot separate red from green.
+   *
+   * The four are held apart in hue and in chroma, because the smallest thing
+   * they colour is one character: added is a warm green rather than a spring
+   * one, and modified is a deep blue rather than a pale cyan, so the A and the
+   * M beside each other are two colours and not two shades of one.
    */
-  --status-added: oklch(0.57 0.13 152);
-  --status-modified: oklch(0.60 0.11 240);
-  --status-deleted: oklch(0.58 0.15 22);
-  --status-renamed: oklch(0.58 0.13 305);
+  --status-added: oklch(0.56 0.16 145);
+  --status-modified: oklch(0.54 0.16 258);
+  --status-deleted: oklch(0.56 0.19 25);
+  --status-renamed: oklch(0.55 0.17 312);
   --status-unchanged: oklch(0.68 0.02 265);
 
   --font-mono: ui-monospace, "SF Mono", SFMono-Regular, "JetBrains Mono", Menlo, Consolas, monospace;
   --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 
-  --workspace-height: 660px;
+  --workspace-height: 780px;
   --radius: 10px;
   --radius-sm: 6px;
   --gap: 16px;
@@ -77,10 +82,10 @@
     --flavor-data: oklch(0.76 0.11 82);
     --flavor-other: oklch(0.60 0.02 265);
     --flavor-generated: oklch(0.70 0.13 12);
-    --status-added: oklch(0.72 0.14 152);
-    --status-modified: oklch(0.72 0.11 240);
-    --status-deleted: oklch(0.70 0.15 22);
-    --status-renamed: oklch(0.70 0.13 305);
+    --status-added: oklch(0.74 0.17 145);
+    --status-modified: oklch(0.70 0.15 258);
+    --status-deleted: oklch(0.70 0.18 25);
+    --status-renamed: oklch(0.71 0.17 312);
     --status-unchanged: oklch(0.60 0.02 265);
   }
 }
@@ -399,7 +404,33 @@ button { cursor: pointer; }
    resizes, so the grip reads as the panels' edge rather than the strip's. */
 .ribbon { margin: 14px 0 0; }
 .readouts { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 26px; }
-.ribbon__readouts { margin-bottom: 14px; }
+/* The same shape as the folder head: the columns on the left, and the figures
+   only this strip can state pinned to the right. */
+.ribbon__head {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 24px;
+  margin-bottom: 14px;
+}
+.ribbon__identity { flex: 1; min-width: 0; }
+.ribbon__eyebrow { margin: 0 0 5px; text-align: left; }
+/*
+ * Equal tracks rather than content widths, for the reason the folder head uses
+ * them: the strip redraws whenever the unit or the side of the change moves,
+ * and a column sized by its own figure moves every column after it.
+ */
+.ribbon__readouts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
+  gap: 14px 18px;
+  /* Labels on one baseline, so moving the emphasis grows one figure upward
+     instead of moving every figure beside it. */
+  align-items: end;
+}
+/* A fixed width whether or not it holds a figure, so the columns to its left
+   keep their places when the aspect switch moves to net and back. */
+.ribbon__actions {
+  display: flex; flex: 0 0 96px; flex-direction: column; align-items: flex-end; gap: 8px;
+}
+.ribbon__actions .readout { align-items: flex-end; }
 .readout { display: flex; flex-direction: column; gap: 1px; }
 .readout__value { font-size: 20px; font-weight: 600; letter-spacing: -0.02em; }
 .readout[data-emphasis="true"] .readout__value { font-size: 30px; font-weight: 700; }
@@ -415,6 +446,9 @@ button { cursor: pointer; }
    After the sign rules, because it overrides their colour at equal weight. */
 .readout[data-emphasis="false"] .readout__value { color: var(--ink-faint); font-weight: 500; }
 .readout[data-emphasis="true"] .readout__label { color: var(--ink-soft); }
+/* An empty figure keeps its line, so nothing beside or below it moves when the
+   page has no honest number to state. Net has no whole, so it has no share. */
+.readout__value:empty::after { content: "\00a0"; }
 .readout__label {
   color: var(--ink-faint);
   font-size: 9.5px;
@@ -620,12 +654,14 @@ button { cursor: pointer; }
 }
 
 
+/* Always on the page, empty at the root, so its height is reserved rather than
+   claimed on the first drill. Trimmed accordingly: it holds one line either way. */
 .drill-trail {
   display: flex;
   align-items: center;
   gap: 5px;
-  min-height: 30px;
-  margin: 22px 0 0;
+  min-height: 24px;
+  margin: 14px 0 2px;
   color: var(--ink-soft);
   font-family: var(--font-mono);
   font-size: 11.5px;
@@ -693,9 +729,9 @@ button { cursor: pointer; }
  */
 .tree, .detail { display: flex; flex-direction: column; height: var(--workspace-height); }
 .panel__head { flex: none; }
-/* The margin the folder caption used to carry, now that the table follows the
-   tiles directly. */
-.detail .table-scroll { flex: 1 1 auto; min-height: 0; max-height: none; margin-top: 18px; }
+/* The caption strip above the table carries the gap, so the table itself only
+   has to take the height the panel leaves it. */
+.detail .table-scroll { flex: 1 1 auto; min-height: 0; max-height: none; }
 .panel {
   border: 1px solid var(--rule);
   border-radius: var(--radius);
@@ -917,12 +953,7 @@ button { cursor: pointer; }
 
 /* ---- Folder detail ----------------------------------------------------- */
 
-.detail {
-  position: relative;
-  z-index: 2;
-  padding: 0;
-  overflow: visible;
-}
+.detail { padding: 0; }
 .detail__head {
   flex: none;
   display: flex; align-items: flex-start; justify-content: space-between; gap: 24px;
@@ -983,8 +1014,9 @@ button { cursor: pointer; }
  */
 .detail__readouts {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
-  gap: 16px; margin-top: 9px;
+  grid-template-columns: repeat(auto-fit, minmax(76px, 1fr));
+  gap: 10px 12px; margin-top: 9px;
+  align-items: end;
 }
 .detail__readouts .readout__value { font-size: 15px; }
 .detail__readouts .readout[data-emphasis="true"] .readout__value { font-size: 19px; }
@@ -996,11 +1028,30 @@ button { cursor: pointer; }
   font-family: var(--font-mono); font-variant-numeric: tabular-nums;
   font-size: 30px; font-weight: 700; letter-spacing: -0.03em;
 }
-.detail__caption {
+/* The file table's own strip: what the rows below are, and the floor under them. */
+.detail__files-head {
   flex: none;
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
   margin: 18px 20px 8px;
+}
+.detail__caption {
+  margin: 0;
   color: var(--ink-faint);
   font-size: 11px; letter-spacing: 0.05em; text-transform: uppercase;
+}
+/* A qualifier on the caption rather than a caption of its own, so it reads as
+   part of the same line and not as a second claim. */
+.detail__caption-note { margin-left: 10px; color: var(--rule-firm); }
+.detail__threshold { display: flex; flex: none; align-items: center; gap: 8px; }
+.detail__threshold span {
+  color: var(--ink-faint);
+  font-size: 9.5px; letter-spacing: 0.11em; text-transform: uppercase;
+}
+.detail__threshold input {
+  width: 96px; padding: 5px 8px;
+  border: 1px solid var(--rule-firm); border-radius: var(--radius-sm);
+  background: var(--surface);
+  font-size: 12px; font-variant-numeric: tabular-nums;
 }
 
 .cards {
@@ -1020,6 +1071,9 @@ button { cursor: pointer; }
 }
 .card:hover { border-color: var(--signal); }
 .card--aggregate { background: var(--sunk); border-style: dashed; }
+/* Holds the row rather than states a figure, so it takes a tile's box and none
+   of a tile's ink. */
+.card--placeholder { border-style: dashed; color: var(--ink-faint); }
 .card__name {
   min-width: 0;
   font-family: var(--font-mono); font-size: 12.5px; font-weight: 600;
@@ -1080,7 +1134,14 @@ button { cursor: pointer; }
 /* ---- Metrics tables ---------------------------------------------------- */
 
 /* Chains to the page past its own ends, for the reason `.tree__scroll` gives. */
-.table-scroll { max-height: 480px; overflow: auto; border-top: 1px solid var(--rule); }
+/* Eleven columns in a panel the reader can narrow to a third of the window, so
+   the box scrolls sideways. A hairline scrollbar rather than the platform's
+   overlay one, which stays invisible until it is already too late to find. */
+.table-scroll {
+  max-height: 480px; overflow: auto;
+  border-top: 1px solid var(--rule);
+  scrollbar-width: thin;
+}
 .metrics { width: 100%; border-collapse: collapse; font-size: 12px; }
 .metrics th {
   position: sticky; top: 0; z-index: 1;
@@ -1089,7 +1150,7 @@ button { cursor: pointer; }
   font-size: 9.5px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase;
 }
 .metrics th, .metrics td {
-  padding: 7px 12px;
+  padding: 7px 9px;
   border-bottom: 1px solid var(--rule);
   text-align: right; white-space: nowrap;
 }
@@ -1104,7 +1165,7 @@ button { cursor: pointer; }
   justify-content: flex-end;
   gap: 4px;
   width: 100%;
-  padding: 7px 12px;
+  padding: 7px 9px;
   border: 0;
   background: transparent;
   color: inherit;
@@ -1121,7 +1182,10 @@ button { cursor: pointer; }
 .metrics td[data-sign="positive"] { color: var(--status-added); }
 .metrics td[data-sign="negative"] { color: var(--status-deleted); }
 .metrics td[data-sign="zero"] { color: var(--ink-faint); }
-.metrics__path { width: 100%; max-width: 0; }
+/* The name column takes what the numbers leave, and never less than this: a
+   row whose path is squeezed to nothing names no file at all. Below that width
+   the table is wider than the panel and the box scrolls sideways. */
+.metrics__path { width: 100%; max-width: 0; min-width: 210px; }
 .metrics__file { display: flex; align-items: center; gap: 7px; min-width: 0; }
 .metrics__file .link { min-width: 0; }
 .metrics__file .detail__tool { width: 18px; height: 18px; }
@@ -1150,11 +1214,23 @@ button { cursor: pointer; }
 [data-flavor="data"].tag { --tag-color: var(--flavor-data); }
 [data-flavor="other"].tag { --tag-color: var(--flavor-other); }
 [data-flavor="generated"].tag { --tag-color: var(--flavor-generated); }
-[data-status="added"].tag { --tag-color: var(--status-added); }
-[data-status="modified"].tag { --tag-color: var(--status-modified); }
-[data-status="deleted"].tag { --tag-color: var(--status-deleted); }
-[data-status="renamed"].tag { --tag-color: var(--status-renamed); }
-[data-status="unchanged"].tag { --tag-color: var(--status-unchanged); }
+/*
+ * The status is a letter and not a tag. The flavor beside it is a tag, and two
+ * pills in two columns read as one system when they answer two questions.
+ */
+.status {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 12.5px; font-weight: 700;
+  color: var(--status-color);
+}
+[data-status="added"].status { --status-color: var(--status-added); }
+[data-status="modified"].status { --status-color: var(--status-modified); }
+[data-status="deleted"].status { --status-color: var(--status-deleted); }
+[data-status="renamed"].status { --status-color: var(--status-renamed); }
+[data-status="unchanged"].status { --status-color: var(--status-unchanged); }
+/* One character wide, so the column takes the width of its own heading. */
+.metrics th.metrics__change, .metrics td.metrics__change { width: 1%; text-align: center; }
 
 /* Marks a file whose lines are mostly commentary, a common shape for generated bulk. */
 .dot {
@@ -1164,28 +1240,6 @@ button { cursor: pointer; }
   background: var(--signal);
   vertical-align: middle;
 }
-
-/* ---- Ranking ----------------------------------------------------------- */
-
-.ranking { margin-top: 28px; }
-/* The cap the boundary below the table drags. The panel stays content-sized
-   under it, so a short list does not leave an empty box behind. */
-.ranking .table-scroll { max-height: var(--ranking-height, 480px); }
-/* Inside the panel rather than under it: it is the list's own bottom edge. */
-.ranking .workspace__splitter--row { margin: 0; height: 16px; }
-.ranking__controls { display: flex; gap: 14px; align-items: flex-end; }
-.ranking__controls label { display: flex; flex-direction: column; gap: 3px; }
-.ranking__controls span {
-  color: var(--ink-faint);
-  font-size: 9.5px; letter-spacing: 0.11em; text-transform: uppercase;
-}
-.ranking__controls select, .ranking__controls input {
-  padding: 6px 9px;
-  border: 1px solid var(--rule-firm); border-radius: var(--radius-sm);
-  background: var(--surface);
-  font-size: 12px;
-}
-.ranking__controls input { width: 110px; font-variant-numeric: tabular-nums; }
 
 /* ---- Dialogs ----------------------------------------------------------- */
 
@@ -1324,6 +1378,7 @@ button { cursor: pointer; }
   font-size: 11.5px; line-height: 1.65;
   white-space: pre-wrap; word-break: break-all;
 }
+.install-actions { display: flex; align-items: center; gap: 14px; }
 .install-facts { display: grid; gap: 8px; margin: 18px 0; }
 .install-facts dt {
   color: var(--ink-faint);
@@ -1367,11 +1422,10 @@ button { cursor: pointer; }
 @media (max-width: 680px) {
   .app { width: calc(100% - 24px); padding-top: 18px; }
   .filters { position: static; grid-template-columns: 1fr; gap: 10px; }
-  .ribbon__readouts { gap: 20px; }
   .readout[data-emphasis="true"] .readout__value { font-size: 24px; }
-  .detail__head { flex-direction: column; gap: 10px; }
-  .detail__actions { flex-direction: row; align-items: center; }
-  .ranking__controls { flex-wrap: wrap; }
+  .ribbon__head, .detail__head { flex-direction: column; gap: 10px; }
+  .ribbon__actions, .detail__actions { flex-direction: row; align-items: center; gap: 20px; }
+  .detail__files-head { flex-wrap: wrap; gap: 10px; }
   .instrument__path-hint { display: none; }
 }
 

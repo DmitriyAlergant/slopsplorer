@@ -62,7 +62,7 @@ export function InstrumentBar({ meta, rescanning, scanning, onRescan, onOpen, on
         <div className="instrument__title">
           {/* The wordmark says which of the two questions the page answers,
               because every figure below it means something different in each. */}
-          <h1 className="wordmark">{diff ? "Slopsplorer Diff" : "Slopsplorer"}</h1>
+          <h1 className="wordmark">{diff ? "Slopsplorer diff" : "Slopsplorer"}</h1>
           {/* What is compared outranks every other fact in the strip, so it
               sits beside the wordmark rather than among them. */}
           {diff ? <ComparisonPicker diff={diff} disabled={scanning} onCompare={onCompare} /> : null}
