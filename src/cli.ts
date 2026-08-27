@@ -70,7 +70,7 @@ REPORT
                           section. Default ${DEFAULT_REPORT_THRESHOLD}.
 
 EXAMPLES
-  slopsplorer                     Scan the current folder.
+  slopsplorer .                   Scan the current folder. The same with no argument.
   slopsplorer --report            Print a text report of the current folder.
   slopsplorer --report --diff     Print a text report of the working-tree change.
   slopsplorer ../other-project    Scan a folder elsewhere.
