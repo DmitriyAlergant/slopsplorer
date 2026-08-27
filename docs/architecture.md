@@ -11,10 +11,12 @@ For that mode, read [diff-mode.md](./diff-mode.md).
 
 The whole program is one Node process.
 It has four parts: a scanner, an aggregator, a small HTTP server, and a React client.
+A fifth part runs the coding agents the host already has, so the page can hand a question about the tree to one of them.
 The client never computes a total.
 It sends the scope it wants to see, and it draws the numbers that come back.
 
 For the rules that decide what each file is, read [classification.md](./classification.md).
+For the questions the page can hand to a local agent, read [ask.md](./ask.md).
 For commands, conventions, and release steps, read [AGENTS.md](../AGENTS.md).
 
 ## Parts
@@ -22,6 +24,7 @@ For commands, conventions, and release steps, read [AGENTS.md](../AGENTS.md).
 ```
 src/scanner/   list files -> classify -> parse and measure -> ScanIndex
 src/server/    ScanIndex + ViewRequest -> buildView -> ViewResponse
+src/agents/    find the installed agents -> run one per question -> its answer
 src/web/       ViewRequest state -> POST /api/view -> render
 src/shared/    api.ts, the wire contract that both sides import
 ```
@@ -115,6 +118,10 @@ A scan has one content per file, so `buildView()` forces the aspect to `after` u
 | `GET /api/source` | Return one file for the source dialog: its text in a scan, its aligned lines in a comparison. |
 | `GET /api/skill-install` | Return the command that installs the bundled agent skill, written for the shell of the host platform. |
 | `GET /api/skill-source` | Return the bundled `SKILL.md` for the preview dialog. |
+| `GET /api/agents` | Return the local coding agents this host can run. |
+| `POST /api/ask` | Start one agent on one question about the open index. |
+| `GET /api/asks` | Return every ask of this server run, newest first. |
+| `POST /api/ask-dismiss` | Stop one ask if it runs, and drop it either way. |
 | `GET /api/health` | Report that the process is up. |
 
 The index is the list of readable files.

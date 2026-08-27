@@ -1,8 +1,9 @@
 import type { Aspect, FileRow, Measure, MeasuredMetric, RankMetric } from "../../shared/api.ts";
-import { rankMetricsFor, weightField } from "../../shared/api.ts";
+import {
+  FILE_KIND_DETAILS, aspectHeading, measureAbbreviation, rankMetricsFor, weightField,
+} from "../../shared/api.ts";
 import { pathRelativeTo } from "../displayPath.ts";
-import { FILE_KIND_DETAILS } from "../fileKinds.ts";
-import { aspectHeading, count, measureAbbreviation, percent, signed, statusLetter, statusName } from "../format.ts";
+import { count, percent, signed, statusLetter, statusName } from "../format.ts";
 import { CopyPathButton } from "./CopyPathButton.tsx";
 import { SortCaret } from "./SortCaret.tsx";
 import { Tooltip, tooltipHandlers } from "./Tooltip.tsx";

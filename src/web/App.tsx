@@ -1,20 +1,26 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
-  Aspect, CommitSpine, ComparisonRequest, FileKind, Measure, RankMetric, RowKind, TreeRow, ViewRequest,
-  ViewResponse,
+  AgentTool, Aspect, AskTask, CommitSpine, ComparisonRequest, FileKind, Measure, RankMetric, RowKind,
+  TreeRow, ViewRequest, ViewResponse,
 } from "../shared/api.ts";
 import { ASPECTS, MEASURES, spansRequest } from "../shared/api.ts";
-import { compare, fetchSpine, fetchView, openRoot, rescan } from "./api.ts";
+import {
+  compare, dismissAsk, fetchAgents, fetchAsks, fetchSpine, fetchView, openRoot, rescan, startAsk,
+} from "./api.ts";
 import {
   DEFAULT_WORKSPACE_HEIGHT, MAX_WORKSPACE_HEIGHT, MIN_WORKSPACE_HEIGHT,
   DEFAULT_SPINE_HEIGHT,
-  readPreferences, readSpineExpanded, readSpineHeight, readTreePanelRatio, readWorkspaceHeight,
-  writePreferences, writeSpineExpanded, writeSpineHeight, writeTreePanelRatio, writeWorkspaceHeight,
+  readAskAgent, readPreferences, readSpineExpanded, readSpineHeight, readTreePanelRatio,
+  readWorkspaceHeight, writeAskAgent, writePreferences, writeSpineExpanded, writeSpineHeight,
+  writeTreePanelRatio, writeWorkspaceHeight,
 } from "./preferences.ts";
 import { isInsideFolder } from "./displayPath.ts";
 import { comparisonLabel } from "./format.ts";
 import { closeTooltip } from "./tooltip.ts";
 import { readRequest, selectionKey, writeRequest } from "./urlState.ts";
+import { AnswerDialog } from "./components/AnswerDialog.tsx";
+import { AskDialog } from "./components/AskDialog.tsx";
+import { AskDock } from "./components/AskDock.tsx";
 import { FilterBar } from "./components/FilterBar.tsx";
 import { FolderDetail } from "./components/FolderDetail.tsx";
 import { InstrumentBar } from "./components/InstrumentBar.tsx";
@@ -27,6 +33,14 @@ import { DEFAULT_TREE_PANEL_RATIO, HeightSplitter, WorkspaceSplitter } from "./c
 
 /** Long enough to coalesce a burst of typing, short enough to feel immediate. */
 const REQUEST_DEBOUNCE_MS = 80;
+
+/**
+ * How often a running ask is asked whether it has finished.
+ *
+ * An agent takes minutes, so this is about how soon the floater turns rather
+ * than about the answer arriving any sooner.
+ */
+const ASK_POLL_MS = 1200;
 
 function requestFromLocation(): ViewRequest {
   try {
@@ -98,6 +112,20 @@ export function App(): React.JSX.Element {
   const [comparingLabel, setComparingLabel] = useState<string | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [skillOpen, setSkillOpen] = useState(false);
+  const [agents, setAgents] = useState<readonly AgentTool[]>([]);
+  const [agentId, setAgentId] = useState<string | null>(() => {
+    try {
+      return readAskAgent(window.localStorage);
+    } catch {
+      return null;
+    }
+  });
+  const [askOpen, setAskOpen] = useState(false);
+  const [askStarting, setAskStarting] = useState(false);
+  const [askFailure, setAskFailure] = useState<string | null>(null);
+  const [tasks, setTasks] = useState<readonly AskTask[]>([]);
+  const [openAnswerId, setOpenAnswerId] = useState<string | null>(null);
+  const [lastViewedPath, setLastViewedPath] = useState<string | null>(null);
   const [spine, setSpine] = useState<CommitSpine | null>(null);
   const [spineLoading, setSpineLoading] = useState(false);
   const [spineExpanded, setSpineExpanded] = useState(spineExpandedFromStorage);
@@ -109,6 +137,8 @@ export function App(): React.JSX.Element {
   const spineRef = useRef(spine);
   spineRef.current = spine;
   const lastSelectionRef = useRef(selectionKey(request));
+  const lastViewedPathRef = useRef(lastViewedPath);
+  lastViewedPathRef.current = lastViewedPath;
 
   /**
    * Mirror the view state into the URL so it can be linked and revisited.
@@ -179,6 +209,42 @@ export function App(): React.JSX.Element {
     };
   }, [request]);
 
+  /**
+   * What this host can ask, and what it was already asked.
+   *
+   * The agents were found once, before the server started listening, so this
+   * is a read of that list and never a search of its own. The asks come back
+   * too, which is what lets a reload find an answer that arrived while the
+   * page was closed.
+   */
+  useEffect(() => {
+    let cancelled = false;
+    const fail = (cause: unknown): void => {
+      if (!cancelled) setError(cause instanceof Error ? cause.message : String(cause));
+    };
+    fetchAgents().then((found) => { if (!cancelled) setAgents(found.agents); }, fail);
+    fetchAsks().then((held) => { if (!cancelled) setTasks(held.tasks); }, fail);
+    return () => { cancelled = true; };
+  }, []);
+
+  // Only while something runs: a dock of finished asks has nothing to learn.
+  const asksRunning = tasks.some((task) => task.state === "running");
+  useEffect(() => {
+    if (!asksRunning) return;
+    let cancelled = false;
+    const poll = (): void => {
+      fetchAsks().then(
+        (held) => { if (!cancelled) setTasks(held.tasks); },
+        (cause: unknown) => { if (!cancelled) setError(cause instanceof Error ? cause.message : String(cause)); },
+      );
+    };
+    const timer = setInterval(poll, ASK_POLL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [asksRunning]);
+
   // A new view re-lays out the tree and the tables, so whatever a tooltip was
   // describing may no longer sit under the pointer.
   useEffect(closeTooltip, [view]);
@@ -243,6 +309,53 @@ export function App(): React.JSX.Element {
       })
       .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause)))
       .finally(() => setRescanning(false));
+  }, []);
+
+  /** The agent the reader last chose, or the first one this host offers. */
+  const chosenAgent = agents.find((agent) => agent.id === agentId) ?? agents[0];
+  const chosenAgentId = chosenAgent?.id ?? null;
+
+  const chooseAgent = useCallback((chosen: string) => {
+    setAgentId(chosen);
+    writeAskAgent(window.localStorage, chosen);
+  }, []);
+
+  /**
+   * Start one agent on one question.
+   *
+   * The request goes with it, so the brief the server writes describes the
+   * page as it is at the moment of asking and not as it is when the answer
+   * arrives. The dialog closes at once, because the answer is minutes away
+   * and the dock is where it will appear.
+   */
+  const handleAsk = useCallback((question: string) => {
+    if (chosenAgentId === null) return;
+    setAskStarting(true);
+    setAskFailure(null);
+    startAsk({
+      agentId: chosenAgentId,
+      question,
+      view: requestRef.current,
+      lastViewedPath: lastViewedPathRef.current,
+    })
+      .then((task) => {
+        setTasks((previous) => [task, ...previous]);
+        setAskOpen(false);
+      })
+      .catch((cause: unknown) => setAskFailure(cause instanceof Error ? cause.message : String(cause)))
+      .finally(() => setAskStarting(false));
+  }, [chosenAgentId]);
+
+  const handleDismissAsk = useCallback((id: string) => {
+    setOpenAnswerId((open) => (open === id ? null : open));
+    dismissAsk(id)
+      .then((held) => setTasks(held.tasks))
+      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause)));
+  }, []);
+
+  const openFile = useCallback((path: string) => {
+    setLastViewedPath(path);
+    setPreview({ kind: "file", path });
   }, []);
 
   /**
@@ -527,6 +640,17 @@ export function App(): React.JSX.Element {
         onRescan={handleRescan}
         onOpen={handleOpen}
         onCompare={handleCompare}
+        agents={agents}
+        agentId={chosenAgentId ?? ""}
+        onChooseAgent={(chosen) => {
+          chooseAgent(chosen);
+          setAskFailure(null);
+          setAskOpen(true);
+        }}
+        onAsk={() => {
+          setAskFailure(null);
+          setAskOpen(true);
+        }}
       />
 
       {view && view.meta.diff && spine === null && spineLoading ? <PendingSpineBand /> : null}
@@ -603,7 +727,7 @@ export function App(): React.JSX.Element {
           onDrill={() => drill(request.selected.path)}
           rank={request.rank}
           onRankChange={setRank}
-          onOpenSource={(path) => setPreview({ kind: "file", path })}
+          onOpenSource={openFile}
           onCapacityChange={setCardColumns}
         />
       </div>
@@ -634,6 +758,28 @@ export function App(): React.JSX.Element {
           Install the agent skill
         </button>
       </p>
+
+      <AskDock
+        tasks={tasks}
+        onOpen={(task) => setOpenAnswerId(task.id)}
+        onDismiss={handleDismissAsk}
+      />
+
+      {chosenAgent !== undefined ? (
+        <AskDialog
+          open={askOpen}
+          agent={chosenAgent}
+          starting={askStarting}
+          failure={askFailure}
+          onClose={() => setAskOpen(false)}
+          onAsk={handleAsk}
+        />
+      ) : null}
+
+      <AnswerDialog
+        task={tasks.find((task) => task.id === openAnswerId) ?? null}
+        onClose={() => setOpenAnswerId(null)}
+      />
 
       <SourceDialog preview={preview} onClose={() => setPreview(null)} />
       <SkillInstallDialog

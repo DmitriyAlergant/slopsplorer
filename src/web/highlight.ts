@@ -46,13 +46,29 @@ const ESCAPES: ReadonlyMap<string, string> = new Map([
   ["&", "&amp;"], ["<", "&lt;"], [">", "&gt;"], ['"', "&quot;"], ["'", "&#x27;"],
 ]);
 
+function escapeText(source: string): string {
+  return source.replace(/[&<>"']/g, (character) => ESCAPES.get(character)!);
+}
+
 /** Render source as highlighted HTML, falling back to plain escaped text. */
 export function highlightSource(path: string, source: string): string {
   const extension = path.split(".").pop()?.toLowerCase() ?? "";
   const language = BY_EXTENSION.get(extension);
-  if (language === undefined) {
-    return source.replace(/[&<>"']/g, (character) => ESCAPES.get(character)!);
-  }
+  if (language === undefined) return escapeText(source);
+  return hljs.highlight(source, { language, ignoreIllegals: true }).value;
+}
+
+/**
+ * The same highlighting for a fenced block, whose language is written on the
+ * fence rather than implied by a file name.
+ *
+ * The fence may carry an extension, a language name, or a word nothing here
+ * knows, and only the first two can be highlighted.
+ */
+export function highlightLanguage(fenceLanguage: string, source: string): string {
+  const named = fenceLanguage.toLowerCase();
+  const language = BY_EXTENSION.get(named) ?? named;
+  if (hljs.getLanguage(language) === undefined) return escapeText(source);
   return hljs.highlight(source, { language, ignoreIllegals: true }).value;
 }
 

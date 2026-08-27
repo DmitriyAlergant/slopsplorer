@@ -15,6 +15,9 @@
 /** Present on the panel that is currently showing. */
 const OPEN = "data-open";
 
+/** Present when the panel had to sit above its control instead of below it. */
+const ABOVE = "data-above";
+
 let openPanel: HTMLElement | null = null;
 
 /** Where the pointer stood when the last press happened, if it is still holding tooltips shut. */
@@ -27,24 +30,39 @@ function panelOf(anchor: HTMLElement): HTMLElement | null {
   return anchor.querySelector<HTMLElement>(".tooltip");
 }
 
+/** Kept clear of every window edge, so a panel is never cut in half by one. */
+const GUTTER = 12;
+
+/** The gap between a control and the panel that describes it. */
+const OFFSET = 10;
+
 /**
  * Centre the panel under its control and pull it back inside the viewport.
  *
  * The arrow shifts by the same amount in the opposite direction, so it keeps
  * pointing at the control it belongs to.
+ *
+ * A control near the foot of the window has no room under it, so the panel goes
+ * above it instead and the arrow moves to the other edge. The dock of asks sits
+ * there, and so does the proportion bar at the end of the page.
  */
 function place(anchor: HTMLElement, panel: HTMLElement): void {
   const anchorBounds = anchor.getBoundingClientRect();
   panel.style.setProperty("--tooltip-left", `${anchorBounds.left + anchorBounds.width / 2}px`);
-  panel.style.setProperty("--tooltip-top", `${anchorBounds.bottom + 10}px`);
+  panel.style.setProperty("--tooltip-top", `${anchorBounds.bottom + OFFSET}px`);
   panel.style.setProperty("--tooltip-shift", "0px");
+  panel.removeAttribute(ABOVE);
 
-  const gutter = 12;
   const bounds = panel.getBoundingClientRect();
-  const shift = bounds.left < gutter
-    ? gutter - bounds.left
-    : Math.min(0, window.innerWidth - gutter - bounds.right);
+  const shift = bounds.left < GUTTER
+    ? GUTTER - bounds.left
+    : Math.min(0, window.innerWidth - GUTTER - bounds.right);
   panel.style.setProperty("--tooltip-shift", `${shift}px`);
+
+  if (anchorBounds.bottom + OFFSET + bounds.height > window.innerHeight - GUTTER) {
+    panel.style.setProperty("--tooltip-top", `${anchorBounds.top - OFFSET - bounds.height}px`);
+    panel.setAttribute(ABOVE, "");
+  }
 }
 
 function show(anchor: HTMLElement): void {

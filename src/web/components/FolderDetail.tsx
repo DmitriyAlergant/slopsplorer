@@ -1,9 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { Aspect, DetailView, FileRow, FileScope, Measure, RankMetric, RowKind, ViewRequest } from "../../shared/api.ts";
-import { ASPECTS, FILE_SCOPES, MEASURES, aspectTotals } from "../../shared/api.ts";
-import {
-  aspectFigure, count, countOf, measureHeading, percent, weightAbbreviation, weightCount, weightHeading, weightName,
-} from "../format.ts";
+import { ASPECTS, FILE_SCOPES, MEASURES, aspectTotals, measureHeading, weightAbbreviation, weightHeading, weightName } from "../../shared/api.ts";
+import { aspectFigure, count, countOf, percent, weightCount } from "../format.ts";
 import { CopyPathButton } from "./CopyPathButton.tsx";
 import { FileTable } from "./FileTable.tsx";
 import { FlavorBar } from "./FlavorBar.tsx";

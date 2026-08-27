@@ -7,6 +7,8 @@ import path from "node:path";
 import { StringDecoder } from "node:string_decoder";
 import { fileURLToPath } from "node:url";
 import type { ViteDevServer } from "vite";
+import { createAskStore } from "../agents/ask.ts";
+import type { AvailableAgent } from "../agents/discover.ts";
 import { diffOneFile, scanDiff } from "../scanner/diffScan.ts";
 import type { DiffScanOptions } from "../scanner/diffScan.ts";
 import { GitError, listRefs, resolveComparison, verifyComparisonRequest } from "../scanner/gitdiff.ts";
@@ -14,11 +16,12 @@ import { buildSpine } from "../scanner/spine.ts";
 import { scanSourceTree } from "../scanner/scan.ts";
 import type { ScanIndex, ScanOptions } from "../scanner/scan.ts";
 import type {
-  CommitSpine, CompareRequest, ComparisonRequest, DiffLine, OpenRootRequest, SkillInstallResponse,
-  SourceResponse,
+  AgentsResponse, AskListResponse, AskRequest, CommitSpine, CompareRequest, ComparisonRequest, DiffLine,
+  OpenRootRequest, SkillInstallResponse, SourceResponse,
 } from "../shared/api.ts";
 import { spansRequest } from "../shared/api.ts";
 import { buildView, parseViewRequest } from "./aggregate.ts";
+import { composeBrief } from "./brief.ts";
 
 /** Ceiling on `POST` bodies. A view request is a few kilobytes even for a huge tree. */
 const MAX_REQUEST_BODY_BYTES = 1024 * 1024;
@@ -138,6 +141,11 @@ export interface SlopsplorerServerOptions {
   portAttempts: number;
   /** Serve the client through Vite in middleware mode instead of `dist/web`. */
   dev?: boolean;
+  /**
+   * The agents the host was found able to run, discovered before the server
+   * started. Empty when none answered, which hides the ask control.
+   */
+  agents?: readonly AvailableAgent[];
 }
 
 export interface ServerAddress {
@@ -393,6 +401,8 @@ export function createSlopsplorerServer(options: SlopsplorerServerOptions): Slop
   let heldSpine: CommitSpine | null = null;
   let spineInFlight: { spec: string; promise: Promise<CommitSpine | null> } | null = null;
   let vite: ViteDevServer | null = null;
+  const agents = options.agents ?? [];
+  const askStore = createAskStore();
 
   /**
    * What a running measurement is of, so a repeat of it can join it.
@@ -493,6 +503,25 @@ export function createSlopsplorerServer(options: SlopsplorerServerOptions): Slop
     if (typeof body !== "object" || body === null) throw new BadRequestError("request body must be an object");
     const candidate = body as { comparison?: unknown; view?: unknown };
     return { comparison: parseComparisonRequest(candidate.comparison), view: parseViewRequest(candidate.view) };
+  }
+
+  /**
+   * Read an ask out of an untrusted body.
+   *
+   * The view goes through the same `parseViewRequest` every other route uses,
+   * so the brief describes a scope the aggregator would agree to draw.
+   */
+  function parseAskRequest(body: unknown): AskRequest {
+    if (typeof body !== "object" || body === null) throw new BadRequestError("request body must be an object");
+    const candidate = body as { agentId?: unknown; question?: unknown; view?: unknown; lastViewedPath?: unknown };
+    if (typeof candidate.agentId !== "string") throw new BadRequestError("`agentId` must name an agent");
+    if (typeof candidate.question !== "string") throw new BadRequestError("`question` must be text");
+    return {
+      agentId: candidate.agentId,
+      question: candidate.question,
+      view: parseViewRequest(candidate.view),
+      lastViewedPath: typeof candidate.lastViewedPath === "string" ? candidate.lastViewedPath : null,
+    };
   }
 
   async function handleSource(response: ServerResponse, url: URL): Promise<void> {
@@ -649,6 +678,51 @@ export function createSlopsplorerServer(options: SlopsplorerServerOptions): Slop
         await handleSource(response, url);
         return;
       }
+      case "/api/agents": {
+        const listed: AgentsResponse = {
+          agents: agents.map(({ definition, version }) => ({ id: definition.id, label: definition.label, version })),
+        };
+        sendJson(response, 200, listed);
+        return;
+      }
+      case "/api/ask": {
+        if (request.method !== "POST") {
+          sendJson(response, 405, { error: "use POST" });
+          return;
+        }
+        const ask = parseAskRequest(await readJsonBody(request));
+        const agent = agents.find((candidate) => candidate.definition.id === ask.agentId);
+        if (agent === undefined) {
+          throw new BadRequestError(`no agent named "${ask.agentId}" was found on this machine`);
+        }
+        // The agent runs in the root the page is describing, so a comparison
+        // and a scan both put it where the files it will read actually are.
+        sendJson(response, 200, askStore.start({
+          definition: agent.definition,
+          question: ask.question,
+          brief: composeBrief(scanState.index, ask),
+          root: scanState.index.meta.rootPath,
+        }));
+        return;
+      }
+      case "/api/asks": {
+        const tasks: AskListResponse = { tasks: askStore.list() };
+        sendJson(response, 200, tasks);
+        return;
+      }
+      case "/api/ask-dismiss": {
+        if (request.method !== "POST") {
+          sendJson(response, 405, { error: "use POST" });
+          return;
+        }
+        const body = await readJsonBody(request);
+        const id = (body as { id?: unknown })?.id;
+        if (typeof id !== "string") throw new BadRequestError("`id` must name an ask");
+        askStore.dismiss(id);
+        const remaining: AskListResponse = { tasks: askStore.list() };
+        sendJson(response, 200, remaining);
+        return;
+      }
       case "/api/skill-install": {
         sendJson(response, 200, skillInstall);
         return;
@@ -762,6 +836,9 @@ export function createSlopsplorerServer(options: SlopsplorerServerOptions): Slop
         // Keep-alive sockets would otherwise hold the close open until they time out.
         httpServer.closeAllConnections();
       });
+      // An agent process outlives the page that started it unless it is stopped
+      // here, and it would answer into a server that no longer exists.
+      askStore.stopAll();
       const activeVite = vite;
       vite = null;
       await Promise.all([httpClosed, activeVite?.close() ?? Promise.resolve()]);

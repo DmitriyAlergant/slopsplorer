@@ -13,6 +13,27 @@ export type Flavor = FileKind | "generated";
 
 export const FILE_KINDS: readonly FileKind[] = ["code", "test", "text", "i18n", "data", "other"];
 
+interface FileKindDetails {
+  label: string;
+  description: string;
+}
+
+/**
+ * The words every surface uses for a flavor, and what each one holds.
+ *
+ * Beside the wire values they name, and shared for the same reason the unit
+ * names are: the brief an ask sends has to call a flavor what the switch the
+ * reader clicked calls it.
+ */
+export const FILE_KIND_DETAILS: Readonly<Record<FileKind, FileKindDetails>> = {
+  code: { label: "Code", description: "Source and application code." },
+  test: { label: "Tests", description: "Test code: source files in a test folder, plus anything named by a test convention. Fixtures keep the flavor of their own format." },
+  text: { label: "Docs", description: "Markdown and other prose documentation." },
+  i18n: { label: "i18n", description: "Translation catalogues and locale files, including source files that are almost entirely translated strings." },
+  data: { label: "Data & Config", description: "Structured data and configuration formats such as JSON, YAML, TOML, XML, CSV, and dependency manifests, plus source files that are almost entirely string literals." },
+  other: { label: "Other", description: "Scannable text files that do not fit another flavor, such as HTML." },
+};
+
 export type TreeSort = "name" | "weight";
 
 export const TREE_SORTS: readonly TreeSort[] = ["name", "weight"];
@@ -118,6 +139,104 @@ export function aspectTotals(sides: MeasuredSides, measure: Measure): Record<Asp
     churn: sides.added + sides.removed,
     after: sides[measure],
   };
+}
+
+/**
+ * The words every surface uses for a unit.
+ *
+ * Here rather than in the client, because the page is not the only reader of
+ * them: the brief an ask hands to a local agent has to name the unit exactly
+ * as the panel the reader is looking at does.
+ */
+
+/**
+ * How each measure is named in prose, in a heading, and in a tight cell.
+ *
+ * One table rather than three, so a new measure cannot arrive with a label
+ * missing from one surface and present in another.
+ */
+const MEASURE_NAMES: Record<Measure, { prose: string; heading: string; abbreviation: string }> = {
+  tokens: { prose: "tokens", heading: "Tokens", abbreviation: "tok" },
+  lines: { prose: "lines", heading: "Lines", abbreviation: "lines" },
+  codeLines: { prose: "LOC", heading: "LOC", abbreviation: "LOC" },
+};
+
+/** Name for running text: "42,000 tokens", "1,200 LOC". */
+export function measureName(measure: Measure): string {
+  return MEASURE_NAMES[measure].prose;
+}
+
+/** Title-case name for a control, a button, or a column heading. */
+export function measureHeading(measure: Measure): string {
+  return MEASURE_NAMES[measure].heading;
+}
+
+/** Shortest form, for a tile caption where the number matters more than the unit. */
+export function measureAbbreviation(measure: Measure): string {
+  return MEASURE_NAMES[measure].abbreviation;
+}
+
+/**
+ * How each aspect is named beside a unit and explained in the menu.
+ *
+ * One table for all three surfaces, so a new aspect cannot arrive with a label
+ * on one of them and nothing on the others.
+ */
+const ASPECT_NAMES: Record<Aspect, { heading: string; prose: string; description: string }> = {
+  churn: {
+    heading: "Churn",
+    prose: "churn",
+    description: "Added plus removed. The volume of the change, and never negative.",
+  },
+  net: {
+    heading: "Net",
+    prose: "net",
+    description: "Added minus removed. What the change leaves behind, and signed.",
+  },
+  added: { heading: "Added", prose: "added", description: "Only the lines the change introduced." },
+  removed: { heading: "Removed", prose: "removed", description: "Only the lines the change took away." },
+  after: {
+    heading: "After",
+    prose: "after",
+    description: "The whole file as the change leaves it, the same figure a scan reports.",
+  },
+};
+
+export function aspectHeading(aspect: Aspect): string {
+  return ASPECT_NAMES[aspect].heading;
+}
+
+export function aspectDescription(aspect: Aspect): string {
+  return ASPECT_NAMES[aspect].description;
+}
+
+/**
+ * Name the numbers column, which is one unit in a scan and a unit and a side
+ * in a diff.
+ */
+export function weightHeading(measure: Measure, aspect: Aspect, isDiff: boolean): string {
+  return isDiff
+    ? `${ASPECT_NAMES[aspect].heading} ${MEASURE_NAMES[measure].abbreviation}`
+    : MEASURE_NAMES[measure].heading;
+}
+
+/** Name for running text: "42,000 churn tokens", "1,200 LOC". */
+export function weightName(measure: Measure, aspect: Aspect, isDiff: boolean): string {
+  return isDiff && aspect !== "after"
+    ? `${ASPECT_NAMES[aspect].prose} ${MEASURE_NAMES[measure].prose}`
+    : MEASURE_NAMES[measure].prose;
+}
+
+/**
+ * Shortest form that still says which side it is: "net tok", "removed lines".
+ *
+ * A tile states one figure, and the switch that chose it is at the top of the
+ * page, so the figure has to name its own side or it means nothing on its own.
+ */
+export function weightAbbreviation(measure: Measure, aspect: Aspect, isDiff: boolean): string {
+  return isDiff
+    ? `${ASPECT_NAMES[aspect].prose} ${MEASURE_NAMES[measure].abbreviation}`
+    : MEASURE_NAMES[measure].abbreviation;
 }
 
 /** Every weight field, so the scanner can build one prefix sum for each. */
@@ -733,4 +852,83 @@ export interface SkillInstallResponse {
   command: string;
   /** Every directory the command copies the skill into. */
   targets: SkillInstallTarget[];
+}
+
+/**
+ * A coding agent installed on this machine, found runnable and signed in.
+ *
+ * The page offers only what the host proved it can run, because an agent that
+ * cannot answer is a button that fails after the reader has typed a question.
+ */
+export interface AgentTool {
+  /** Stable name of the tool, also the id an ask names. */
+  id: string;
+  /** How the tool calls itself, for the menu. */
+  label: string;
+  /** Version the tool reported when it was found. */
+  version: string;
+}
+
+export interface AgentsResponse {
+  agents: AgentTool[];
+}
+
+/** Ask one of the discovered agents a question about what the page is showing. */
+export interface AskRequest {
+  agentId: string;
+  /**
+   * The reader's own question. May be empty.
+   *
+   * The brief alone already names a subject, so an empty question asks the
+   * agent to describe what the reader is looking at.
+   */
+  question: string;
+  /** The state of the page, which the server turns into the brief the agent reads. */
+  view: ViewRequest;
+  /** Last file the reader opened in the preview, or `null` when they opened none. */
+  lastViewedPath: string | null;
+}
+
+/**
+ * Where one ask has got to.
+ *
+ * There is no cancelled state: dismissing a running ask stops the process and
+ * drops the task, because the `x` on the floater means "I am done with this".
+ */
+export type AskState = "running" | "answered" | "failed";
+
+/** One ask, as the floater and the answer dialog draw it. */
+export interface AskTask {
+  id: string;
+  agentId: string;
+  agentLabel: string;
+  /** The question as it was typed, empty when the reader asked none. */
+  question: string;
+  /** Everything the agent was given, so the page can show exactly what was asked. */
+  brief: string;
+  state: AskState;
+  /** ISO-8601 timestamp of the moment the agent process started. */
+  startedAt: string;
+  finishedAt: string | null;
+  /** The agent's answer in Markdown, once the state is `answered`. */
+  answer: string | null;
+  /** Why the run failed, once the state is `failed`. */
+  failure: string | null;
+  /** What the run cost, when the tool reports it. */
+  costUsd: number | null;
+}
+
+/**
+ * Every ask this server run holds, newest first.
+ *
+ * One list is the whole client state, so a reload finds the asks still running
+ * and the answers already back.
+ */
+export interface AskListResponse {
+  tasks: AskTask[];
+}
+
+/** Stop an ask if it still runs, and drop it from the list either way. */
+export interface DismissAskRequest {
+  id: string;
 }

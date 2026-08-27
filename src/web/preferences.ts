@@ -11,6 +11,7 @@ const WORKSPACE_HEIGHT_STORAGE_KEY = "slopsplorer.workspace-height.v1";
 const CHANGED_LINES_ONLY_STORAGE_KEY = "slopsplorer.changed-lines-only.v1";
 const SPINE_EXPANDED_STORAGE_KEY = "slopsplorer.spine-expanded.v1";
 const SPINE_HEIGHT_STORAGE_KEY = "slopsplorer.spine-height.v1";
+const ASK_AGENT_STORAGE_KEY = "slopsplorer.ask-agent.v1";
 
 /**
  * Bounds on the two dragged heights.
@@ -194,6 +195,28 @@ export function writePreferences(storage: PreferenceStorage, request: ViewReques
   };
   try {
     storage.setItem(STORAGE_KEY, JSON.stringify(preferences));
+  } catch {
+    // Browsers may deny storage in private or locked-down contexts.
+  }
+}
+
+/**
+ * The agent the reader asked last, or `null` when they have asked nobody.
+ *
+ * Which agent is not checked here: the host decides what it can run, and a
+ * name it no longer offers is discarded by the page that draws the menu.
+ */
+export function readAskAgent(storage: PreferenceStorage): string | null {
+  try {
+    return storage.getItem(ASK_AGENT_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function writeAskAgent(storage: PreferenceStorage, agentId: string): void {
+  try {
+    storage.setItem(ASK_AGENT_STORAGE_KEY, agentId);
   } catch {
     // Browsers may deny storage in private or locked-down contexts.
   }

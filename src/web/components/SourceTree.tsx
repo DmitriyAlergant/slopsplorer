@@ -1,7 +1,8 @@
 import { useEffect, useLayoutEffect, useRef } from "react";
 import type { Aspect, Measure, TreeRow, TreeSort } from "../../shared/api.ts";
+import { weightHeading } from "../../shared/api.ts";
 import { isInsideFolder } from "../displayPath.ts";
-import { count, sideCount, weightCount, weightHeading } from "../format.ts";
+import { count, sideCount, weightCount } from "../format.ts";
 import { DrillBreadcrumbs } from "./DrillBreadcrumbs.tsx";
 import { SortCaret } from "./SortCaret.tsx";
 import { Tooltip, tooltipHandlers } from "./Tooltip.tsx";

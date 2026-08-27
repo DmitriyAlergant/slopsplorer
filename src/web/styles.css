@@ -933,7 +933,11 @@ button { cursor: pointer; }
 }
 /* A path or a short label reads better as one line than as a padded block. */
 .tooltip[data-compact="true"] {
-  width: auto;
+  /* `max-content` and not `auto`: an auto-width fixed box placed near the right
+     edge is laid out in the sliver of room left of that edge, and a short label
+     comes out one letter per line. The width is taken from the text, and the
+     shift then brings the whole box back inside the window. */
+  width: max-content;
   max-width: min(420px, calc(100vw - 24px));
   min-height: 0;
   padding: 6px 9px;
@@ -953,6 +957,12 @@ button { cursor: pointer; }
   border-left: 1px solid var(--tooltip-rule);
   background: inherit;
   transform: translate(-50%, 5px) rotate(45deg);
+}
+/* Flipped with the panel, so the arrow still points at the control. */
+.tooltip[data-above]::before {
+  bottom: auto;
+  top: 100%;
+  transform: translate(-50%, -5px) rotate(225deg);
 }
 /* Opened from an event rather than from `:hover`. See src/web/tooltip.ts. */
 .tooltip[data-open] {
@@ -1591,8 +1601,17 @@ button { cursor: pointer; }
  * overrides the user agent's `dialog:not([open]) { display: none }` and leaves
  * the closed dialog rendered inline at the foot of the page.
  */
+/*
+ * An answer is prose of an unknown length, so the panel is as tall as what it
+ * holds. A fixed height would leave a one-line answer in an empty window.
+ */
+.viewer--answer {
+  width: min(940px, calc(100% - 40px));
+  height: fit-content;
+  max-height: 88vh;
+}
 .viewer[open] { display: flex; }
-.viewer--narrow .viewer__body { flex: 0 1 auto; }
+.viewer--narrow .viewer__body, .viewer--answer .viewer__body { flex: 0 1 auto; }
 .viewer::backdrop { background: oklch(0.15 0.02 265 / 0.55); backdrop-filter: blur(3px); }
 .viewer__head {
   flex: none;
@@ -1711,6 +1730,198 @@ button { cursor: pointer; }
   padding: 1px 4px; border-radius: 3px; background: var(--sunk);
 }
 
+/* ---- Asking a local agent ---------------------------------------------- */
+
+/* The facts about the measurement, and the one act that is about all of it. */
+.instrument__right { display: flex; align-items: center; gap: 24px; }
+
+/*
+ * One split control: the wide half asks, the chevron chooses who answers. The
+ * two halves share a border, so they read as one control and not as two.
+ */
+.agent-picker { position: relative; display: flex; flex: none; }
+.agent-picker__ask, .agent-picker__more {
+  position: relative;
+  border: 1px solid var(--rule-firm);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 12.5px;
+  transition: border-color 120ms ease, color 120ms ease;
+}
+.agent-picker__ask {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 7px 12px;
+  border-right: 0;
+  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+}
+.agent-picker__more {
+  display: grid; place-items: center;
+  padding: 0 8px;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  color: var(--ink-soft);
+}
+.agent-picker__ask:hover, .agent-picker__more:hover { border-color: var(--signal); color: var(--signal); }
+/* The hovered half owns the shared edge, so the seam never reads as a gap. */
+.agent-picker__ask:hover + .agent-picker__more { border-left-color: var(--signal); }
+.agent-picker__more[aria-expanded="true"] { border-color: var(--signal); color: var(--signal); }
+
+.agent-picker__panel {
+  position: absolute; top: calc(100% + 8px); right: 0; z-index: 60;
+  min-width: 208px;
+  display: flex; flex-direction: column;
+  padding: 5px;
+  border: 1px solid var(--rule-firm); border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: 0 12px 32px oklch(0.15 0.02 265 / 0.18);
+}
+.agent-picker__option {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 18px;
+  padding: 7px 9px;
+  border: 0; border-radius: var(--radius-sm);
+  background: transparent;
+  text-align: left;
+}
+.agent-picker__option:hover { background: var(--sunk); }
+.agent-picker__option[aria-current="true"] .agent-picker__option-name { color: var(--signal); font-weight: 600; }
+.agent-picker__option-name { font-size: 12.5px; }
+.agent-picker__option-note {
+  color: var(--ink-faint);
+  font-family: var(--font-mono); font-size: 10.5px;
+}
+
+.ask__question {
+  display: block; width: 100%; margin: 0 0 14px; padding: 10px 12px;
+  border: 1px solid var(--rule-firm); border-radius: var(--radius-sm);
+  background: var(--surface); color: var(--ink);
+  font-family: var(--font-sans); font-size: 13px; line-height: 1.55;
+  resize: vertical;
+}
+
+/*
+ * An ask takes minutes, so it waits here instead of holding the page still.
+ * Newest sits nearest the corner, which is where the eye returns.
+ */
+.dock {
+  position: fixed; right: 20px; bottom: 20px; z-index: 90;
+  display: flex; flex-direction: column-reverse; gap: 8px;
+  width: min(330px, calc(100% - 40px));
+}
+.dock__task {
+  display: flex; align-items: stretch;
+  border: 1px solid var(--rule-firm); border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: 0 8px 24px oklch(0.15 0.02 265 / 0.16);
+  overflow: hidden;
+}
+/* Colour says the state and nothing else: green for an answer that is ready,
+   red for a run that failed, and the resting rule while one is still thinking. */
+.dock__task[data-state="answered"] { border-color: var(--status-added); }
+.dock__task[data-state="failed"] { border-color: var(--status-deleted); }
+.dock__open {
+  position: relative;
+  display: flex; flex: 1 1 auto; align-items: center; gap: 10px;
+  min-width: 0; padding: 10px 4px 10px 12px;
+  border: 0; background: transparent; text-align: left;
+}
+.dock__mark {
+  display: grid; place-items: center;
+  flex: none; width: 18px; height: 18px;
+  color: var(--ink-faint); font-size: 12px; font-weight: 700;
+}
+.dock__task[data-state="answered"] .dock__mark { color: var(--status-added); font-size: 13px; }
+.dock__task[data-state="failed"] .dock__mark { color: var(--status-deleted); }
+.dock__spinner {
+  width: 13px; height: 13px;
+  border: 2px solid var(--rule-firm); border-top-color: var(--signal); border-radius: 50%;
+  animation: progress-spin 700ms linear infinite;
+}
+.dock__copy { display: block; min-width: 0; }
+.dock__question {
+  display: block;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 12.5px;
+}
+.dock__open:hover .dock__question { color: var(--signal); }
+.dock__meta {
+  display: block; margin-top: 2px;
+  color: var(--ink-faint); font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+}
+.dock__dismiss {
+  position: relative;
+  flex: none; width: 30px;
+  border: 0; border-left: 1px solid var(--rule);
+  background: transparent; color: var(--ink-faint); font-size: 11px;
+}
+.dock__dismiss:hover { color: var(--signal); }
+
+/*
+ * An answer is prose a model wrote, so it is set as prose: one measure, plain
+ * rules, and code that keeps the same face the file previews use.
+ */
+.answer { color: var(--ink); font-size: 13.5px; line-height: 1.62; }
+.answer > :first-child { margin-top: 0; }
+.answer > :last-child { margin-bottom: 0; }
+.answer h1, .answer h2, .answer h3, .answer h4, .answer h5, .answer h6 {
+  margin: 22px 0 8px;
+  font-family: var(--font-mono); font-weight: 700; letter-spacing: -0.02em;
+}
+.answer h1 { font-size: 17px; }
+.answer h2 { font-size: 15.5px; }
+.answer h3 { font-size: 14px; }
+.answer h4, .answer h5, .answer h6 { font-size: 13px; }
+.answer p { margin: 0 0 12px; color: var(--ink); font-size: 13.5px; }
+.answer ul, .answer ol { margin: 0 0 12px; padding-left: 22px; }
+.answer li { margin: 0 0 5px; }
+.answer li[data-task] { list-style: none; margin-left: -22px; }
+.answer li[data-task] input { margin-right: 7px; }
+.answer blockquote {
+  margin: 0 0 12px; padding: 2px 0 2px 14px;
+  border-left: 2px solid var(--rule-firm);
+  color: var(--ink-soft);
+}
+.answer hr { margin: 18px 0; border: 0; border-top: 1px solid var(--rule); }
+.answer a { color: var(--signal); }
+.answer__code {
+  padding: 1px 4px; border-radius: 3px; background: var(--sunk);
+  font-family: var(--font-mono); font-size: 11.5px;
+}
+.answer__pre {
+  margin: 0 0 14px; padding: 12px 14px;
+  border: 1px solid var(--rule); border-radius: var(--radius-sm);
+  background: var(--sunk);
+  overflow-x: auto;
+  font-family: var(--font-mono); font-size: 11.5px; line-height: 1.6; tab-size: 2;
+}
+.answer__pre code { padding: 0; background: none; font-size: inherit; }
+.answer__table { width: 100%; margin: 0 0 14px; border-collapse: collapse; font-size: 12.5px; }
+.answer__table th, .answer__table td {
+  padding: 6px 10px; border-bottom: 1px solid var(--rule); text-align: left;
+}
+.answer__table th { color: var(--ink-faint); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; }
+.answer__image { max-width: 100%; border-radius: var(--radius-sm); }
+.answer__failure {
+  margin: 0 0 14px; padding: 12px 14px;
+  border: 1px solid var(--status-deleted); border-radius: var(--radius-sm);
+  color: var(--ink);
+  white-space: pre-wrap; word-break: break-word;
+  font-family: var(--font-mono); font-size: 11.5px; line-height: 1.55;
+}
+/* What the agent was told, under what it said: the reader wrote the question
+   and knows it, but never has to take the rest of the brief on trust. */
+.answer__brief { margin-top: 22px; border-top: 1px solid var(--rule); padding-top: 14px; }
+.answer__brief summary {
+  color: var(--ink-faint); font-size: 10px; letter-spacing: 0.11em; text-transform: uppercase;
+  cursor: pointer;
+}
+.answer__brief pre {
+  margin: 12px 0 0; padding: 12px 14px;
+  border-radius: var(--radius-sm); background: var(--sunk);
+  color: var(--ink-soft);
+  white-space: pre-wrap; word-break: break-word;
+  font-family: var(--font-mono); font-size: 11px; line-height: 1.6;
+}
+
 /* ---- Syntax highlighting ----------------------------------------------- */
 
 .hljs-comment, .hljs-quote { color: var(--ink-faint); font-style: italic; }
@@ -1751,6 +1962,8 @@ button { cursor: pointer; }
   .ribbon__actions, .detail__actions { flex-direction: row; align-items: center; gap: 20px; }
   .detail__files-head { flex-wrap: wrap; gap: 10px; }
   .instrument__path-hint { display: none; }
+  .instrument__right { gap: 14px; }
+  .dock { right: 12px; bottom: 12px; width: calc(100% - 24px); }
 }
 
 @media (prefers-reduced-motion: reduce) {

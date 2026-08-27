@@ -1,6 +1,7 @@
 import type {
-  CommitSpine, CompareRequest, ComparisonRequest, OpenRootRequest, RepositoryRefs, SkillInstallResponse,
-  SourceResponse, ViewRequest, ViewResponse,
+  AgentsResponse, AskListResponse, AskRequest, AskTask, CommitSpine, CompareRequest, ComparisonRequest,
+  DismissAskRequest, OpenRootRequest, RepositoryRefs, SkillInstallResponse, SourceResponse, ViewRequest,
+  ViewResponse,
 } from "../shared/api.ts";
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
@@ -74,4 +75,25 @@ export function fetchSkillInstall(): Promise<SkillInstallResponse> {
 /** The bundled SKILL.md, shaped like any other file the preview dialog draws. */
 export function fetchSkillSource(): Promise<SourceResponse> {
   return request<SourceResponse>("/api/skill-source");
+}
+
+/** The local coding agents the host found runnable and signed in. */
+export function fetchAgents(): Promise<AgentsResponse> {
+  return request<AgentsResponse>("/api/agents");
+}
+
+/** Start one agent on one question. It returns as soon as the process is running. */
+export function startAsk(ask: AskRequest): Promise<AskTask> {
+  return postJson<AskTask>("/api/ask", ask);
+}
+
+/** Every ask of this server run, newest first. */
+export function fetchAsks(): Promise<AskListResponse> {
+  return request<AskListResponse>("/api/asks");
+}
+
+/** Stop an ask if it still runs, and drop it either way. */
+export function dismissAsk(id: string): Promise<AskListResponse> {
+  const body: DismissAskRequest = { id };
+  return postJson<AskListResponse>("/api/ask-dismiss", body);
 }

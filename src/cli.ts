@@ -4,6 +4,8 @@ import { readFileSync, statSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { parseArgs, promisify } from "node:util";
+import { AGENT_DEFINITIONS } from "./agents/definitions.ts";
+import { discoverAgents, type AvailableAgent } from "./agents/discover.ts";
 import { scanDiff, type DiffScanOptions } from "./scanner/diffScan.ts";
 import {
   fetchPullRequest, GitError, parseComparisonSpec, parsePullRequestUrl, parseRevisionArgument,
@@ -281,7 +283,7 @@ const FILE_SOURCE_LABELS: Readonly<Record<FileSourceName, string>> = {
   "git-diff": "git diff",
 };
 
-function printSummary(index: ScanIndex, maxFileBytes: number): void {
+function printSummary(index: ScanIndex, maxFileBytes: number, agents: readonly AvailableAgent[]): void {
   const { meta } = index;
   const skipped = meta.skippedLargeFiles > 0
     ? `, ${formatCount(meta.skippedLargeFiles)} skipped over ${formatCount(maxFileBytes)} bytes`
@@ -321,6 +323,9 @@ function printSummary(index: ScanIndex, maxFileBytes: number): void {
   lines.push(
     `scan       ${formatDuration(meta.durationMs)} via ${FILE_SOURCE_LABELS[meta.fileSource]}`,
     `grammars   ${meta.languages.length > 0 ? meta.languages.join(", ") : "none"}`,
+    `agents     ${agents.length > 0
+      ? agents.map((agent) => `${agent.definition.command} ${agent.version}`).join(", ")
+      : "none installed and signed in"}`,
   );
   process.stderr.write(`${lines.map((line) => `  ${line}`).join("\n")}\n`);
 }
@@ -576,12 +581,17 @@ async function main(): Promise<void> {
     process.stdout.write(buildReport(index, reportOptions));
     return;
   }
-  printSummary(index, maxFileBytes);
+  // Asked of the tools themselves, and only for a run that serves a page: a
+  // report has nobody to offer an agent to.
+  const agents = await discoverAgents(AGENT_DEFINITIONS, workingDirectory);
+  printSummary(index, maxFileBytes, agents);
 
   // A port the user named is used or the run fails. The default one walks forward,
   // because a listener a previous run left behind is not a reason to stop.
   const portAttempts = values.port === undefined ? DEFAULT_PORT_ATTEMPTS : 1;
-  const server = createSlopsplorerServer({ index, producer, host, port, portAttempts, dev: values.dev === true });
+  const server = createSlopsplorerServer({
+    index, producer, host, port, portAttempts, dev: values.dev === true, agents,
+  });
   let address: ServerAddress;
   try {
     address = await server.listen();

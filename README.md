@@ -199,6 +199,21 @@ Inside a Git worktree the file list comes from the Git index plus untracked file
 Outside one, the walker applies `.gitignore` itself, so a plain folder behaves the same way.
 `--all-files` disables both.
 
+## Ask an agent about it
+
+The map says where the weight sits, not why it sits there.
+If you have Claude Code or Codex installed and signed in, the **Ask** button in the header hands that question to one of them.
+
+Slopsplorer finds them at startup, and offers only a tool that starts and reports that it is signed in.
+Nothing is sent anywhere by Slopsplorer: the agent runs on your machine, under your own sign-in, in the folder being measured.
+
+You type the question.
+Slopsplorer adds what you have on screen - the scan or the comparison, the drill, the selection, the unit, the flavors counted, and the last file you opened - so the agent starts where you are instead of at the top of the repository.
+An answer takes minutes, so the question runs in the background and waits in a card at the corner of the window until it is ready.
+Open the card to read the answer, and open **What the agent was told** under it to see exactly what was sent.
+
+The agent is asked in a mode that cannot write: Claude Code in `plan` mode, Codex in its `read-only` sandbox.
+
 ## Agent skill
 
 Slopsplorer ships an agent skill that teaches a coding agent when to reach for it and how to read its output.
@@ -210,6 +225,7 @@ On Windows you get the same command written for PowerShell.
 
 The server binds to loopback by default and is read-only.
 It serves only files that were part of the scan, and refuses any path outside it.
+An agent it starts for you is asked in a read-only mode, and your question is passed as one argument rather than through a shell.
 
 ## Development
 

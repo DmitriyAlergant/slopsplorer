@@ -30,6 +30,8 @@ src/scanner/     walk -> classify -> tokenize + measure -> ScanIndex
                  git diff -> align lines -> tokenize + measure -> ScanIndex
 src/server/      ScanIndex + ViewRequest -> buildView -> ViewResponse
                  ScanIndex + ReportOptions -> buildReport -> text on stdout
+                 ScanIndex + AskRequest -> composeBrief -> the text a local agent reads
+src/agents/      find the installed agents -> run one per question -> its answer
 src/web/         ViewRequest state -> POST /api/view -> render
 src/shared/      the wire contract both sides import
 ```
@@ -43,6 +45,7 @@ Two design docs hold the detail, and they are the technical memory of this repos
 - [docs/diff-mode.md](docs/diff-mode.md) - the second producer of an index: the command line, the line diff, churn and net, signed weight.
 - [docs/commit-band.md](docs/commit-band.md) - the commits inside a comparison: the span, the band above the filter bar, and where the spine is held.
 - [docs/report.md](docs/report.md) - the second consumer of an index: `--report`, the sections, the one rule that decides how deep the walk goes.
+- [docs/ask.md](docs/ask.md) - handing a question to a local coding agent: discovery, the brief, the one process per ask, and how an answer is drawn.
 
 `README.md` is the user-facing page, and `skill/SKILL.md` is the agent skill that ships inside the package.
 Both describe behavior to someone outside the code, so a change in what a number means has to reach them too.
@@ -67,6 +70,8 @@ Each is explained where it belongs; the list exists so nobody breaks one by acci
 - `ScanMeta.diff` is the only thing that says which mode the page is in. A scan forces the aspect to `after`, because a scanned file has one content.
 - Churn is `added + removed` and net is `added - removed`, for every measure. Net is signed, so every share is drawn against churn, and every ordering and threshold uses magnitude.
 - In `tests/comment-corpus.test.ts` a split that differs from `cloc` carries a written reason and a split that matches does not, so neither drift passes silently.
+- An agent is offered only when the host proved it can run it and that it is signed in, and it is resolved outside the `node_modules/.bin` folders npm puts in front of `PATH`. It is asked in a mode that cannot write, and its question is one argument of an argument list, never a shell command.
+- An answer is Markdown a model wrote, so it is drawn as React elements and never injected as HTML. The only string handed to the browser as HTML is the highlighter's, from text it escaped first.
 - `GET /api/source` serves a path only if the current scan holds it, and refuses a resolved real path outside the scan root. Inside a comparison it returns the file as aligned lines, from the same alignment the file's figures came from, whole rather than as hunks, because the page decides how much of the unchanged text to draw.
 
 ## Agentic rules
