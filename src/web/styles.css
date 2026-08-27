@@ -736,11 +736,11 @@ button { cursor: pointer; }
 /* ---- Source tree ------------------------------------------------------- */
 
 /*
- * `overscroll-behavior` is what keeps the sticky heading below still. Past
- * either end of the list a rubber-band scroll drags the whole box, heading
- * included, and it also hands the leftover scroll to the page behind it.
+ * Scroll chains to the page. The panel is tall and covers most of the window,
+ * so a box that holds the wheel once it reaches its own end, or that never had
+ * anything to scroll, would leave the pointer standing on dead page.
  */
-.tree__scroll { flex: 1 1 auto; min-height: 0; overflow: auto; overscroll-behavior: none; padding: 6px; }
+.tree__scroll { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 6px; }
 /*
  * The headings share the row grid and scroll with the list, so a heading always
  * stands over the column it orders however wide the panel gets.
@@ -1079,7 +1079,8 @@ button { cursor: pointer; }
 
 /* ---- Metrics tables ---------------------------------------------------- */
 
-.table-scroll { max-height: 480px; overflow: auto; overscroll-behavior: none; border-top: 1px solid var(--rule); }
+/* Chains to the page past its own ends, for the reason `.tree__scroll` gives. */
+.table-scroll { max-height: 480px; overflow: auto; border-top: 1px solid var(--rule); }
 .metrics { width: 100%; border-collapse: collapse; font-size: 12px; }
 .metrics th {
   position: sticky; top: 0; z-index: 1;
