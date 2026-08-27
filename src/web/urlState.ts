@@ -47,7 +47,7 @@ export function readRequest(search: string, stored: ViewPreferences | null = nul
       ? rawKinds.split(",").filter(isFileKind)
       : !embeddedPreferences && stored !== null ? stored.kinds : [...FILE_KINDS],
     measure: measure ?? (!embeddedPreferences && stored !== null ? stored.measure : "tokens"),
-    aspect: aspect ?? (!embeddedPreferences && stored !== null ? stored.aspect : "churn"),
+    aspect: aspect ?? (!embeddedPreferences && stored !== null ? stored.aspect : "net"),
     showGenerated: params.has("gen")
       ? params.get("gen") === "1"
       : !embeddedPreferences && stored !== null ? stored.showGenerated : false,
@@ -81,7 +81,7 @@ export function writeRequest(request: ViewRequest): string {
   const params = new URLSearchParams();
   const preferencesDifferFromDefaults =
     request.kinds.length !== FILE_KINDS.length || request.showGenerated
-    || request.treeSort !== "name" || request.measure !== "tokens" || request.aspect !== "churn"
+    || request.treeSort !== "name" || request.measure !== "tokens" || request.aspect !== "net"
     || request.rank.metric !== "tokens";
   if (preferencesDifferFromDefaults) params.set("prefs", "1");
   if (request.selected.path) params.set("path", request.selected.path);
@@ -96,7 +96,7 @@ export function writeRequest(request: ViewRequest): string {
   for (const folder of request.excludedDirectFiles) params.append("xf", folder);
   if (request.treeSort !== "name") params.set("tree", request.treeSort);
   if (request.measure !== "tokens") params.set("measure", request.measure);
-  if (request.aspect !== "churn") params.set("aspect", request.aspect);
+  if (request.aspect !== "net") params.set("aspect", request.aspect);
   if (request.rank.metric !== "tokens") params.set("rank", request.rank.metric);
   if (request.rank.minWeight > 0) params.set("min", String(request.rank.minWeight));
   return params.toString();

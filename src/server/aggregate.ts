@@ -738,7 +738,7 @@ export function parseViewRequest(body: unknown): ViewRequest {
   const metric = RANK_METRICS.find((candidate) => candidate === rank["metric"]) ?? "tokens";
   const treeSort = TREE_SORTS.find((candidate) => candidate === raw["treeSort"]) ?? "name";
   const measure = MEASURES.find((candidate) => candidate === raw["measure"]) ?? "tokens";
-  const aspect = ASPECTS.find((candidate) => candidate === raw["aspect"]) ?? "churn";
+  const aspect = ASPECTS.find((candidate) => candidate === raw["aspect"]) ?? "net";
   return {
     kinds: FILE_KINDS.filter((kind) => stringArray(raw["kinds"]).includes(kind)),
     measure,

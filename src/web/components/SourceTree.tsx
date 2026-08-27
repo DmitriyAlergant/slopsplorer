@@ -1,7 +1,6 @@
 import { useEffect, useRef } from "react";
 import type { Aspect, Measure, TreeRow, TreeSort } from "../../shared/api.ts";
-import { count, weightCount } from "../format.ts";
-import { WeightHeading } from "./WeightHeading.tsx";
+import { count, weightCount, weightHeading } from "../format.ts";
 import { SortCaret } from "./SortCaret.tsx";
 import { Tooltip, tooltipHandlers } from "./Tooltip.tsx";
 
@@ -16,7 +15,6 @@ interface Props {
   onSelect: (rowKind: "folder" | "files", path: string) => void;
   onDrill: (path: string) => void;
   onSortChange: (sort: TreeSort) => void;
-  onAspectChange: (aspect: Aspect) => void;
   onToggleExpanded: (path: string) => void;
   onToggleFolder: (row: TreeRow) => void;
   onToggleDirectFiles: (row: TreeRow) => void;
@@ -54,7 +52,7 @@ function ScopeCheckbox({ row, onChange }: { row: TreeRow; onChange: () => void }
 
 /** The folder hierarchy, with every row measured against the active scope root. */
 export function SourceTree({
-  rows, sort, measure, aspect, isDiff, onSelect, onDrill, onSortChange, onAspectChange, onToggleExpanded, onToggleFolder, onToggleDirectFiles, onExpandAll, onCollapseAll,
+  rows, sort, measure, aspect, isDiff, onSelect, onDrill, onSortChange, onToggleExpanded, onToggleFolder, onToggleDirectFiles, onExpandAll, onCollapseAll,
 }: Props): React.JSX.Element {
   const expandableRows = rows.filter((row) => row.rowKind === "folder" && row.hasChildren);
   const allExpanded = expandableRows.length > 0 && expandableRows.every((row) => row.expanded);
@@ -95,16 +93,21 @@ export function SourceTree({
             Name
             {sort === "name" ? <SortCaret ascending /> : null}
           </button>
-          {/* The numbers column has no separate sort control: the heading orders
-              the tree by what it names, and in a diff also chooses it. */}
-          <WeightHeading
-            measure={measure}
-            aspect={aspect}
-            isDiff={isDiff}
-            sorted={sort === "weight"}
-            onSort={() => onSortChange("weight")}
-            onAspectChange={onAspectChange}
-          />
+          {/* The heading names the column and orders the tree by it. What that
+              column holds is chosen in the filter bar, which owns both the unit
+              and the side of the change. */}
+          <button
+            type="button"
+            className="tree__column tree__column--weight"
+            aria-pressed={sort === "weight"}
+            aria-label={`Sort by ${weightHeading(measure, aspect, isDiff).toLowerCase()}, heaviest first`}
+            onClick={() => onSortChange("weight")}
+          >
+            {/* Ahead of the label, so the label keeps the right edge it shares
+                with the numbers running below it. */}
+            <SortCaret placeholder={sort !== "weight"} />
+            {weightHeading(measure, aspect, isDiff)}
+          </button>
         </div>
 
         {rows.length === 0 ? (

@@ -178,7 +178,7 @@ describe("aggregating a scan the same way", () => {
     expect(buildView(scanIndex, request({ rank: { metric: "churn", minWeight: 0, limit: 100 } })).rankMetric)
       .toBe("tokens");
     expect(buildView(diffIndex, request({ rank: { metric: "commentLines", minWeight: 0, limit: 100 } })).rankMetric)
-      .toBe("churn");
+      .toBe("net");
     expect(buildView(diffIndex, request({ rank: { metric: "functions", minWeight: 0, limit: 100 } })).rankMetric)
       .toBe("functions");
   });

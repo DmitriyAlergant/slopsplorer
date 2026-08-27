@@ -52,7 +52,9 @@ export function LargestFiles({ files, measure, aspect, isDiff, total, scopePath,
             folder panel puts its figures under the name they describe. */}
         <div>
           <h2>{isDiff ? "Heaviest changes" : "Heaviest files"}</h2>
-          <p className="panel__scope">Within {scopeLabel}</p>
+          {/* The scope is a place, so the whole line carries the signal colour
+              the rest of the page uses for one. */}
+          <p className="panel__scope">within {scopeLabel}</p>
         </div>
         <div className="ranking__controls">
           <label>

@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import type { Aspect, DetailView, Measure, RankMetric } from "../../shared/api.ts";
+import { ASPECTS, MEASURES } from "../../shared/api.ts";
 import {
-  count, countOf, measureAbbreviation, measureName, percent, sideCount, signed, weightCount, weightName,
+  aspectFigure, count, countOf, measureHeading, percent, weightAbbreviation, weightCount, weightHeading, weightName,
 } from "../format.ts";
 import { CopyPathButton } from "./CopyPathButton.tsx";
 import { FileTable } from "./FileTable.tsx";
 import { FlavorBar } from "./FlavorBar.tsx";
+import { Readout } from "./Readout.tsx";
 import { Tooltip, tooltipHandlers } from "./Tooltip.tsx";
 
 interface Props {
@@ -35,6 +37,23 @@ const CARD_MIN_WIDTH = 210;
 const CARD_GAP = 8;
 const CARD_PADDING = 40;
 const MAX_COLUMNS = 6;
+
+/**
+ * Every aspect figure of a folder, in the active measure.
+ *
+ * The server sends the two sides in that measure, and the two identities give
+ * the rest, so the head states all five sides whichever one the switch selects
+ * and the reader never has to change the switch to see a neighbour.
+ */
+function aspectTotals(detail: DetailView, measure: Measure): Record<Aspect, number> {
+  return {
+    added: detail.added,
+    removed: detail.removed,
+    net: detail.added - detail.removed,
+    churn: detail.added + detail.removed,
+    after: detail[measure],
+  };
+}
 
 /** The selected folder: its weight, how its children divide it, and its own files. */
 export function FolderDetail({ detail, measure, aspect, isDiff, sort, onSortChange, path, onSelectFolder, directFilesOnly, canDrill, onDrill, onOpenSource, onCapacityChange }: Props): React.JSX.Element {
@@ -67,23 +86,10 @@ export function FolderDetail({ detail, measure, aspect, isDiff, sort, onSortChan
   const commentBase = isDiff ? detail.churnLines : detail.lines;
   const commentPart = isDiff ? detail.churnCommentLines : detail.commentLines;
   const commentShare = commentBase > 0 ? commentPart / commentBase : 0;
-  // Tokens are the cross-reference when they are not the headline themselves,
-  // so the line always states the weight in two units.
-  // In net the two sides and the net they come to are the whole subject of the
-  // heading, so they replace the supporting line rather than sit under it.
-  const splitFigures = isDiff && aspect === "net";
-  const stats = isDiff
-    ? [
-      `${weightCount(detail.weight, aspect)} ${weightName(measure, aspect, isDiff)}`,
-      countOf(detail.files, "file"),
-      measure === "tokens" ? `${count(detail.churnLines)} lines churned` : `${count(detail.churnTokens)} tokens churned`,
-    ]
-    : [
-      `${count(detail.weight)} ${measureName(measure)}`,
-      countOf(detail.files, "file"),
-      measure === "tokens" ? `${count(detail.lines)} lines` : `${count(detail.tokens)} tokens`,
-      `${percent(commentShare)} comment`,
-    ];
+  const totals = aspectTotals(detail, measure);
+  // Net is signed, so its shares are drawn against churn. Every readout of one
+  // says so, because a churn figure under a net label is a wrong figure.
+  const shareNote = aspect === "net" ? "of the current scope's churn" : "of current scope";
 
   return (
     <section ref={panelRef} className="panel detail" aria-label="Folder detail">
@@ -127,18 +133,35 @@ export function FolderDetail({ detail, measure, aspect, isDiff, sort, onSortChan
             </h2>
             {path ? <CopyPathButton path={path} /> : null}
           </div>
-          {splitFigures ? null : <p className="detail__stats">{stats.join(" · ")}</p>}
-          {splitFigures ? (
-            <p className="detail__figures">
-              <span className="detail__split">
-                <span data-sign={detail.added === 0 ? "zero" : "positive"}>{sideCount(detail.added, "+")}</span>
-                <span data-sign={detail.removed === 0 ? "zero" : "negative"}>{sideCount(detail.removed, "-")}</span>
-              </span>
-              <span className="detail__net">
-                {weightCount(detail.weight, aspect)} {weightName(measure, aspect, isDiff)}
-              </span>
-            </p>
-          ) : null}
+
+          {/* One strip in both modes and in every aspect: the switch above moves
+              the emphasis along it and never changes its shape, so the panel
+              keeps its height and the reader keeps their place. */}
+          <div className="readouts detail__readouts">
+            {isDiff
+              ? ASPECTS.map((candidate) => {
+                const figure = aspectFigure(candidate, totals[candidate]);
+                return (
+                  <Readout
+                    key={candidate}
+                    label={weightHeading(measure, candidate, true)}
+                    value={figure.text}
+                    sign={figure.sign}
+                    emphasis={candidate === aspect}
+                  />
+                );
+              })
+              : MEASURES.map((candidate) => (
+                <Readout
+                  key={candidate}
+                  label={measureHeading(candidate)}
+                  value={count(detail[candidate])}
+                  emphasis={candidate === measure}
+                />
+              ))}
+            <Readout label={isDiff ? "comment of churn" : "comment share"} value={percent(commentShare)} />
+            <Readout label="files" value={count(detail.files)} />
+          </div>
         </div>
         <div className="detail__actions">
           <p className="detail__share" {...tooltipHandlers}>
@@ -155,25 +178,29 @@ export function FolderDetail({ detail, measure, aspect, isDiff, sort, onSortChan
       {detail.cards.length > 0 ? (
         <div className="cards" style={{ "--card-columns": detail.cardColumns } as React.CSSProperties}>
           {detail.cards.map((card, index) => {
+            const added = aspectFigure("added", card.added);
+            const removed = aspectFigure("removed", card.removed);
             const body = (
               <>
-                <span className="card__name">{card.name}</span>
-                <span className="card__meta">
-                  {splitFigures ? null : `${weightCount(card.weight, aspect)} ${measureAbbreviation(measure)} · `}
-                  {countOf(card.files, "file")} · {percent(card.shareOfScope)} of current scope
+                <span className="card__head">
+                  <span className="card__name">{card.name}</span>
+                  <span className="card__files">{countOf(card.files, "file")}</span>
                 </span>
-                {/* The two sides on the left and the net they come to on the
-                    right, on one line of their own, because in net that line is
-                    the card rather than a footnote to it. */}
-                {splitFigures ? (
-                  <span className="card__figures">
-                    <span className="card__split">
-                      <span data-sign={card.added === 0 ? "zero" : "positive"}>{sideCount(card.added, "+")}</span>
-                      <span data-sign={card.removed === 0 ? "zero" : "negative"}>{sideCount(card.removed, "-")}</span>
-                    </span>
-                    <span className="card__net">
-                      {weightCount(card.weight, aspect)} {measureAbbreviation(measure)}
-                    </span>
+                {/* The figure names its own side: the switch that chose it is
+                    at the top of the page, and a tile is read on its own. */}
+                <span className="card__row">
+                  <span className="card__weight">
+                    {weightCount(card.weight, aspect)}
+                    <span className="card__unit">{weightAbbreviation(measure, aspect, isDiff)}</span>
+                  </span>
+                  <span className="card__share">{percent(card.shareOfScope)}</span>
+                </span>
+                {/* The two sides, whatever the switch selects, because a tile
+                    showing one figure hides a rewrite behind a small number. */}
+                {isDiff ? (
+                  <span className="card__split">
+                    <span data-sign={added.sign}>{added.text}</span>
+                    <span data-sign={removed.sign}>{removed.text}</span>
                   </span>
                 ) : null}
                 <FlavorBar
@@ -189,7 +216,19 @@ export function FolderDetail({ detail, measure, aspect, isDiff, sort, onSortChan
             return card.path === null ? (
               <div key={`aggregate-${index}`} className="card card--aggregate">{body}</div>
             ) : (
-              <button key={card.path} type="button" className="card" onClick={() => onSelectFolder(card.path!)}>
+              <button
+                key={card.path}
+                type="button"
+                className="card"
+                // Spelled out, because the tile states each figure as a column
+                // of its own and a reader who cannot see the layout gets none
+                // of what the columns carry.
+                aria-label={
+                  `${card.name}, ${weightCount(card.weight, aspect)} ${weightName(measure, aspect, isDiff)}, `
+                  + `${countOf(card.files, "file")}, ${percent(card.shareOfScope)} ${shareNote}`
+                }
+                onClick={() => onSelectFolder(card.path!)}
+              >
                 {body}
               </button>
             );

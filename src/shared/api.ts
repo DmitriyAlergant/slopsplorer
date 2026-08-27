@@ -52,8 +52,14 @@ export const MEASURES: readonly Measure[] = ["tokens", "lines", "codeLines"];
  */
 export type Aspect = "added" | "removed" | "churn" | "net" | "after";
 
-/** Ordered as the menu and the diff columns present them: the headline pair first. */
-export const ASPECTS: readonly Aspect[] = ["churn", "net", "added", "removed", "after"];
+/**
+ * Ordered as the change reads: what it put in, what it took out, what that
+ * leaves, what it cost, and what the file is now.
+ *
+ * The switch in the filter bar and the aspect columns of the file tables both
+ * follow this order, so the page presents the five sides in one order only.
+ */
+export const ASPECTS: readonly Aspect[] = ["added", "removed", "net", "churn", "after"];
 
 /**
  * A numeric `FileRow` field a weight can be read from.
@@ -113,14 +119,9 @@ export const SCAN_RANK_METRICS: readonly RankMetric[] = [
   "tokens", "lines", "codeLines", "commentLines", "functions", "branches",
 ];
 
-/**
- * Columns a diff draws. The five aspect columns are all in the active measure.
- *
- * Ordered as the change reads: what it put in, what it took out, what that
- * leaves, what it cost, and what the file is now.
- */
+/** Columns a diff draws. The five aspect columns are `ASPECTS`, in its order. */
 export const DIFF_RANK_METRICS: readonly RankMetric[] = [
-  "added", "removed", "net", "churn", "after", "functions", "branches",
+  ...ASPECTS, "functions", "branches",
 ];
 
 export const RANK_METRICS: readonly RankMetric[] = [...SCAN_RANK_METRICS, ...ASPECTS];
@@ -134,10 +135,12 @@ export function rankMetricsFor(isDiff: boolean): readonly RankMetric[] {
  * What a table sorts by when the request names a column this mode cannot draw.
  *
  * Named rather than taken from the head of the column list, so reordering the
- * columns cannot quietly move the column every fresh page opens on.
+ * columns cannot quietly move the column every fresh page opens on. A diff
+ * opens on net, which is the question a reader brings to a change: what does
+ * this branch leave behind.
  */
 export function defaultRankMetric(isDiff: boolean): RankMetric {
-  return isDiff ? "churn" : "tokens";
+  return isDiff ? "net" : "tokens";
 }
 
 /** The aspect a diff column names, or `null` for a plain field column. */

@@ -40,16 +40,20 @@ The scan root is the top of the worktree, because `git diff` reports paths from 
 
 ## Changing the comparison
 
-The comparison readout in the instrument bar is a control.
-A click opens `ComparisonPicker` in `src/web/components/ComparisonPicker.tsx`: a panel with two lists, "From" and "To", where "To" also offers the working tree and the index.
-Each list filters by name and groups branches, remote branches, and tags.
-One checkbox turns `A..B` into `A...B`.
+The comparison in the instrument bar is two chips with a link between them, drawn by `ComparisonPicker` in `src/web/components/ComparisonPicker.tsx`.
+Each chip opens a panel over its own side: "From" over the revisions, "To" over the same list plus the working tree and the index.
+A panel filters by name and groups branches, remote branches, and tags, and offers what is typed as a revision of its own, because a commit that no ref holds is reachable no other way.
+The arrow between the chips swaps the sides, which two revisions always allow and the working tree and the index never do, because neither can be the side a comparison starts from.
+The merge-base switch sits at the foot of the "From" panel, because `A...B` changes what "from" means, and the chip then carries a `merge base` tag so that the bar never draws one silently.
+Choosing measures at once, so the picker keeps no half-chosen state: the chips read the drawn `DiffMeta.request` on every render.
+The index has one base, so choosing it settles the other chip on HEAD.
+`shortRevision()` in `src/web/format.ts` abbreviates a whole object name and nothing else, because a prefix somebody typed is already as short as it can safely be.
 `GET /api/refs` supplies the lists from `listRefs()` in `src/scanner/gitdiff.ts`, newest first, capped at `MAX_REFS`.
 
 The picker sends a `ComparisonRequest`, defined in `src/shared/api.ts`, so the page writes no argument grammar.
 `parseComparisonSpec()` in `src/scanner/gitdiff.ts` only turns command-line tokens into a `ComparisonRequest` and does not touch the repository.
 `verifyComparisonRequest()` is the single place that decides whether a named revision exists, and both the command line and the route call it.
-`DiffMeta.request` echoes the request, so the picker opens on the comparison being drawn.
+`DiffMeta.request` echoes the request, so the chips read as the comparison being drawn.
 
 `POST /api/compare` takes a `ComparisonRequest` directly, resolves it against the same repository root, and measures it again.
 The repository never moves, so the scan-root control is not offered in a comparison.
@@ -176,13 +180,26 @@ The exact figures sit in the row's tooltip, and the band carries the same pair a
 Position carries the direction, because the two halves sit on opposite sides of the axis, so no reading depends on hue.
 Around one man in twelve cannot separate red from green.
 
-The folder cards in `FolderDetail.tsx` say the same thing: in net a card prints `+added` and `-removed` under its figure.
+The folder tiles in `FolderDetail.tsx` say the same thing, and they say it in every aspect: a tile prints its weight, names the side that weight is, and then puts `+added` and `-removed` beneath it.
+Only one figure of a tile moves when the aspect switch moves, so a reader who is looking at churn still sees what the change traded.
 `FlavorBar` keeps its shape, and in diff mode it draws a better split than file kind: the change status, which is added, modified, deleted, or renamed.
+
+## How a folder is summarised
+
+The head of `FolderDetail` states every aspect at once, as one strip of `Readout` figures: added, removed, net, churn, after, the comment share of the churn, and the file count.
+The switch above moves the emphasis along that strip and never changes its shape, so the panel keeps its height and the reader keeps their place.
+A scan draws the same strip from the three measures instead, which is why the two modes read alike.
+`MassRibbon` builds its scope figures from the same component, so one figure is stated in one shape wherever the page states it.
+
+The aspect totals come from `detail.added` and `detail.removed` in the active measure, and from the two identities.
+The server is not asked for a fifth field it can already imply.
 
 ## Where the aspect is chosen
 
-`MeasureMenu` grows a second group: the unit above, the side of the change below, one panel and one owner.
-A separate aspect switch would give the page two widgets that each claim to decide what it counts.
+`FilterBar` draws it as a switch beside the unit, and only inside a comparison.
+The two read as one phrase, the side and then the unit: "net tokens".
+The switch lists the five sides in the order of `ASPECTS`, which is the order the file tables draw them in, and a page opens on net.
+A second widget that could also set it would give the page two owners of what it counts.
 
 Every numeric column of `FileTable` is a `RankMetric`, and the diff columns are the five aspects plus the two structure counts.
 Sorting one of the aspect columns chooses the aspect, exactly as sorting a measured column chooses the measure.

@@ -1,4 +1,4 @@
-import type { Aspect, ChangeStatus, ComparisonRequest, Measure } from "../shared/api.ts";
+import type { Aspect, ChangeStatus, ComparisonRequest, DiffMeta, Measure } from "../shared/api.ts";
 
 const integer = new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 });
 
@@ -114,6 +114,18 @@ export function weightName(measure: Measure, aspect: Aspect, isDiff: boolean): s
 }
 
 /**
+ * Shortest form that still says which side it is: "net tok", "removed lines".
+ *
+ * A tile states one figure, and the switch that chose it is at the top of the
+ * page, so the figure has to name its own side or it means nothing on its own.
+ */
+export function weightAbbreviation(measure: Measure, aspect: Aspect, isDiff: boolean): string {
+  return isDiff
+    ? `${ASPECT_NAMES[aspect].prose} ${MEASURE_NAMES[measure].abbreviation}`
+    : MEASURE_NAMES[measure].abbreviation;
+}
+
+/**
  * A signed figure, with the sign always drawn.
  *
  * Net weight is the only signed quantity on the page, and a "-" that only
@@ -139,20 +151,64 @@ export function weightCount(value: number, aspect: Aspect): string {
   return aspect === "net" ? signed(value) : count(value);
 }
 
+/** How a figure is coloured. Direction is drawn beside the hue, never by it. */
+export type FigureSign = "positive" | "negative" | "zero" | "none";
+
+/**
+ * One aspect figure, formatted and given its direction.
+ *
+ * Added and removed take the direction of the side they name rather than of
+ * their own value, so a removal reads as a removal wherever it is drawn.
+ */
+export function aspectFigure(aspect: Aspect, value: number): { text: string; sign: FigureSign } {
+  switch (aspect) {
+    case "added": return { text: sideCount(value, "+"), sign: value === 0 ? "zero" : "positive" };
+    case "removed": return { text: sideCount(value, "-"), sign: value === 0 ? "zero" : "negative" };
+    case "net": return { text: signed(value), sign: value === 0 ? "zero" : value < 0 ? "negative" : "positive" };
+    case "churn": case "after": return { text: count(value), sign: "none" };
+  }
+}
+
+/** A whole object name, which is the one revision safe to abbreviate. */
+const WHOLE_OBJECT_NAME = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i;
+
+/**
+ * A revision as the page prints it.
+ *
+ * Forty monospace characters of commit dwarf every other reading in the strip,
+ * and a whole object name is the only revision that can be cut without turning
+ * an unambiguous prefix into an ambiguous one.
+ */
+export function shortRevision(rev: string): string {
+  return WHOLE_OBJECT_NAME.test(rev) ? rev.slice(0, 10) : rev;
+}
+
 /**
  * A comparison in one line, the way the instrument bar names one.
  *
- * One labeller, so the picker's preview and the progress card cannot describe
- * the same comparison in two ways.
+ * One labeller, so the picker and the progress card cannot describe the same
+ * comparison in two ways.
  */
 export function comparisonLabel(request: ComparisonRequest): string {
   switch (request.kind) {
     case "workingTree": return "HEAD -> working tree";
     case "staged": return "HEAD -> index";
-    case "revisionToWorkingTree": return `${request.rev} -> working tree`;
-    case "revisionPair": return `${request.base} -> ${request.target}`;
-    case "mergeBase": return `${request.base} -> ${request.target}, from the merge base`;
+    case "revisionToWorkingTree": return `${shortRevision(request.rev)} -> working tree`;
+    case "revisionPair": return `${shortRevision(request.base)} -> ${shortRevision(request.target)}`;
+    case "mergeBase":
+      return `${shortRevision(request.base)} -> ${shortRevision(request.target)}, from the merge base`;
   }
+}
+
+/** What a comparison found, as the instrument bar summarises it. */
+export function changeSummary(diff: DiffMeta): string {
+  const parts = [
+    { files: diff.filesAdded, word: "added" },
+    { files: diff.filesModified, word: "modified" },
+    { files: diff.filesDeleted, word: "deleted" },
+    { files: diff.filesRenamed, word: "renamed" },
+  ].filter((part) => part.files > 0).map((part) => `${count(part.files)} ${part.word}`);
+  return parts.length === 0 ? "no changed files" : parts.join(", ");
 }
 
 const CHANGE_STATUS_LABELS: Record<ChangeStatus, string> = {

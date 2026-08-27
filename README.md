@@ -31,15 +31,15 @@ slopsplorer origin/main        # everything since origin/main, committed or not
 slopsplorer v1.4 v1.5          # any two revisions
 ```
 
-A positional is a folder when one exists at that path, and a revision otherwise, so a branch named like a directory needs no escape syntax. Use `-C <dir>` to name a repository elsewhere. Once the page is open, a branch picker points it at any other comparison without restarting the tool.
+A positional is a folder when one exists at that path, and a revision otherwise, so a branch named like a directory needs no escape syntax. Use `-C <dir>` to name a repository elsewhere. Once the page is open, a picker on each side of the comparison points it at any other one, by branch, tag, or a commit typed by hand, without restarting the tool.
 
-The numbers heading then picks a side of the change as well as a unit:
+A switch beside the unit then picks which side of the change every figure describes:
 
 | Aspect | Means |
 | --- | --- |
-| **Churn** | added + removed. The volume of the change, never negative. |
-| **Net** | added - removed. What the change leaves behind, signed. |
 | **Added** / **Removed** | one side on its own. |
+| **Net** | added - removed. What the change leaves behind, signed. The default. |
+| **Churn** | added + removed. The volume of the change, never negative. |
 | **After** | the whole file as the change leaves it. |
 
 In net, every row of the source tree draws a band from a centre axis, removed left and added right, because a rewrite at `+500 / -480` and an addition of `+20` have nearly the same net and are not the same change. Renames are followed rather than counted twice, and a file preview shows the unified diff.
@@ -88,7 +88,7 @@ Per file:
 No line measure counts blank lines, and `lines = codeLines + commentLines` always.
 
 Tokens, Lines, or LOC is the unit every total, bar, and ranking is expressed in.
-The unit belongs to the columns that display it, so you choose it there: from the source tree's numbers heading, which is a menu, or by sorting a file table on one of those columns.
+You pick the unit once, from the switch at the top of the page, and sorting a file table on one of those columns picks it too.
 Tokens answer what a review or a context window will cost.
 LOC answers how much logic is actually there, which is the question a comment-padded file distorts.
 

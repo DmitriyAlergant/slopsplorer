@@ -306,9 +306,9 @@ export function App(): React.JSX.Element {
   }, []);
 
   /**
-   * Switch the unit every figure is expressed in, from the tree's numbers heading.
+   * Switch the unit every figure is expressed in.
    *
-   * Choosing a measure there is also how the tree is put on that column, so an
+   * Choosing a measure is also how the tree is put on its numbers column, so an
    * unchanged measure still moves the sort. The file tables follow, because a
    * page counting code lines that ranks its files by tokens reads as a bug. A
    * sort on a metric outside the measures, such as comment lines, is a
@@ -366,10 +366,10 @@ export function App(): React.JSX.Element {
   /**
    * Switch which side of a change every figure describes.
    *
-   * The same widget owns it as owns the measure, and it moves the same three
-   * things: the tree onto its numbers column, the file tables onto the matching
-   * column, and the threshold back to zero, because a floor of 2,000 churn
-   * tokens is not a floor of 2,000 net tokens.
+   * The switch beside the unit owns it, and it moves the same three things the
+   * unit does: the tree onto its numbers column, the file tables onto the
+   * matching column, and the threshold back to zero, because a floor of 2,000
+   * churn tokens is not a floor of 2,000 net tokens.
    */
   const setAspect = useCallback((aspect: Aspect) => {
     setRequest((previous) => {
@@ -435,10 +435,12 @@ export function App(): React.JSX.Element {
 
       <FilterBar
         request={request}
+        isDiff={isDiff}
         onToggleKind={toggleKind}
         onToggleGenerated={() => patch({ showGenerated: !request.showGenerated })}
         onQueryChange={(query) => patch({ query })}
         onMeasureChange={setMeasure}
+        onAspectChange={setAspect}
       />
 
       {/* The trail names the scope the tree beneath it is rooted in, and is the
@@ -468,7 +470,6 @@ export function App(): React.JSX.Element {
           onSelect={select}
           onDrill={drill}
           onSortChange={(treeSort) => patch({ treeSort })}
-          onAspectChange={setAspect}
           onToggleExpanded={toggleExpanded}
           onToggleFolder={toggleFolder}
           onToggleDirectFiles={toggleDirectFiles}

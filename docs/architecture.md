@@ -163,12 +163,10 @@ Selecting it reports the folder's own files: the heading reads `root/folder/.`, 
 
 ## Where the measure is chosen
 
-The measure has no control of its own.
-It is a property of a column, so it is chosen from the columns that show it: the numbers heading of the source tree, which is a menu, and a measured column of either file table.
-A separate switch beside a per-table "rank by" list would let three widgets each claim to decide what the page counts.
-
-The aspect is the same kind of decision, so it takes the same widget.
-`MeasureMenu` grows a second group inside a diff, the unit above and the side of the change below, and the diff columns of the file tables are the aspects.
+The measure and the aspect are properties of every figure on the page, so each is chosen once, in the filter bar.
+`FilterBar` draws two switches side by side, the side of the change and then the unit, which is how the pair is read: "net tokens".
+The aspect switch is only drawn inside a comparison, because a scanned file has one content.
+A control per panel would let several widgets each claim to decide what the page counts.
 
 `ViewRequest.rank.metric` is the sorted column of both file tables, and it is coupled to the measure and the aspect in one direction each way.
 Sorting on `tokens`, `lines`, or `codeLines` makes that column the measure; sorting on `churn`, `net`, `added`, `removed`, or `after` makes that column the aspect.

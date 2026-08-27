@@ -1,14 +1,17 @@
-import { FILE_KINDS, MEASURES, type FileKind, type Measure, type ViewRequest } from "../../shared/api.ts";
+import { ASPECTS, FILE_KINDS, MEASURES, type Aspect, type FileKind, type Measure, type ViewRequest } from "../../shared/api.ts";
 import { FILE_KIND_DETAILS } from "../fileKinds.ts";
-import { measureHeading } from "../format.ts";
+import { aspectDescription, aspectHeading, measureHeading } from "../format.ts";
 import { Tooltip, tooltipHandlers } from "./Tooltip.tsx";
 
 interface Props {
   request: ViewRequest;
+  /** Only a comparison has sides, so only a comparison offers the aspect switch. */
+  isDiff: boolean;
   onToggleKind: (kind: FileKind) => void;
   onToggleGenerated: () => void;
   onQueryChange: (query: string) => void;
   onMeasureChange: (measure: Measure) => void;
+  onAspectChange: (aspect: Aspect) => void;
 }
 
 const GENERATED_DESCRIPTION = "Generated output and lockfiles detected from path and filename conventions.";
@@ -20,13 +23,15 @@ const MEASURE_DESCRIPTIONS: Record<Measure, string> = {
 };
 
 /**
- * What is counted, and the unit it is counted in.
+ * What is counted, and the quantity it is counted in.
  *
- * The unit sits beside the visibility switches and not inside them, because it
- * is orthogonal to every one of them: it changes what a figure says, never
- * which files are behind it.
+ * The two switches read as one phrase, side then unit: "net tokens". They sit
+ * beside the visibility chips and not inside them, because both are orthogonal
+ * to every chip: they change what a figure says, never which files are behind
+ * it. One place owns each, so no two widgets can claim to decide what the page
+ * counts.
  */
-export function FilterBar({ request, onToggleKind, onToggleGenerated, onQueryChange, onMeasureChange }: Props): React.JSX.Element {
+export function FilterBar({ request, isDiff, onToggleKind, onToggleGenerated, onQueryChange, onMeasureChange, onAspectChange }: Props): React.JSX.Element {
   return (
     <section className="filters" aria-label="Scope filters">
       <label className="search">
@@ -39,20 +44,40 @@ export function FilterBar({ request, onToggleKind, onToggleGenerated, onQueryCha
         />
       </label>
 
-      <div className="units" role="group" aria-label="Unit every figure is expressed in">
-        {MEASURES.map((candidate) => (
-          <button
-            key={candidate}
-            type="button"
-            className="unit"
-            aria-pressed={candidate === request.measure}
-            onClick={() => onMeasureChange(candidate)}
-            {...tooltipHandlers}
-          >
-            {measureHeading(candidate)}
-            <Tooltip>{MEASURE_DESCRIPTIONS[candidate]}</Tooltip>
-          </button>
-        ))}
+      <div className="filters__switches">
+        {isDiff ? (
+          <div className="switch" role="group" aria-label="Side of the change every figure describes">
+            {ASPECTS.map((candidate) => (
+              <button
+                key={candidate}
+                type="button"
+                className="switch__option"
+                aria-pressed={candidate === request.aspect}
+                onClick={() => onAspectChange(candidate)}
+                {...tooltipHandlers}
+              >
+                {aspectHeading(candidate)}
+                <Tooltip>{aspectDescription(candidate)}</Tooltip>
+              </button>
+            ))}
+          </div>
+        ) : null}
+
+        <div className="switch" role="group" aria-label="Unit every figure is expressed in">
+          {MEASURES.map((candidate) => (
+            <button
+              key={candidate}
+              type="button"
+              className="switch__option"
+              aria-pressed={candidate === request.measure}
+              onClick={() => onMeasureChange(candidate)}
+              {...tooltipHandlers}
+            >
+              {measureHeading(candidate)}
+              <Tooltip>{MEASURE_DESCRIPTIONS[candidate]}</Tooltip>
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="chips" role="group" aria-label="File kinds counted">

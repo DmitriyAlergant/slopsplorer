@@ -1,5 +1,6 @@
 import type { Aspect, Measure, SummaryView } from "../../shared/api.ts";
-import { compact, count, percent, signed, weightCount, weightName } from "../format.ts";
+import { aspectFigure, compact, count, percent, weightCount, weightName } from "../format.ts";
+import { Readout } from "./Readout.tsx";
 import { Tooltip, tooltipHandlers } from "./Tooltip.tsx";
 
 interface Props {
@@ -45,6 +46,12 @@ export function MassRibbon({ summary, measure, aspect, isDiff, selectedPath, onS
   // Taken from the response, not from the pending request, so the labels and
   // the numbers always describe the same scope.
   const drilled = summary !== null && summary.scopePath !== "";
+  // The denominator is stated in the shape of the thing it divides, so a
+  // baseline and the figure drawn against it are never formatted differently.
+  const baselineFigure = aspectFigure(aspect === "net" ? "churn" : aspect, summary?.scopeWeight ?? 0);
+  const selectedFigure = aspectFigure(aspect, summary?.selectedWeight ?? 0);
+  const addedFigure = aspectFigure("added", summary?.selectedAdded ?? 0);
+  const removedFigure = aspectFigure("removed", summary?.selectedRemoved ?? 0);
   // Tokens are the cross-reference when they are not already the headline, so
   // the strip always carries one figure in a second unit.
   const secondary = isDiff
@@ -60,21 +67,24 @@ export function MassRibbon({ summary, measure, aspect, isDiff, selectedPath, onS
       className="ribbon"
       aria-label={drilled ? `Drill scope ${unit} by folder` : `Whole ${unit} by top-level folder`}
     >
-      <div className="ribbon__readouts">
+      <div className="readouts ribbon__readouts">
         <Readout
           label={drilled ? `scope ${baselineUnit}` : `project ${baselineUnit}`}
-          value={summary ? count(summary.scopeWeight) : "-"}
+          value={summary ? baselineFigure.text : "-"}
         />
         <Readout
           label={`selected ${unit}`}
-          value={summary ? weightCount(summary.selectedWeight, aspect) : "-"}
+          value={summary ? selectedFigure.text : "-"}
+          sign={selectedFigure.sign}
           emphasis
         />
+        {/* The two sides, each in the shape the folder panel gives it, so one
+            figure means the same wherever the page states it. */}
         {isDiff ? (
-          <Readout
-            label="added / removed"
-            value={summary ? `+${compact(summary.selectedAdded)} / -${compact(summary.selectedRemoved)}` : "-"}
-          />
+          <>
+            <Readout label={weightName(measure, "added", isDiff)} value={summary ? addedFigure.text : "-"} sign={addedFigure.sign} />
+            <Readout label={weightName(measure, "removed", isDiff)} value={summary ? removedFigure.text : "-"} sign={removedFigure.sign} />
+          </>
         ) : null}
         <Readout
           label={drilled ? `of scope${baselineSuffix}` : `of project${baselineSuffix}`}
@@ -88,7 +98,7 @@ export function MassRibbon({ summary, measure, aspect, isDiff, selectedPath, onS
         ) : null}
         <Readout label="files selected" value={summary ? count(summary.selectedFiles) : "-"} />
         <Readout label={secondary.label} value={secondary.value} />
-        <Readout label="comment share" value={summary ? percent(commentShare) : "-"} />
+        <Readout label={isDiff ? "comment of churn" : "comment share"} value={summary ? percent(commentShare) : "-"} />
       </div>
 
       <div className="ribbon__track">
@@ -148,14 +158,5 @@ function SegmentLabel(
         {aspect === "net" && weight !== 0 ? `${weight < 0 ? "-" : "+"}${compact(Math.abs(weight))}` : compact(weight)}
       </span>
     </span>
-  );
-}
-
-function Readout({ label, value, emphasis }: { label: string; value: string; emphasis?: boolean }): React.JSX.Element {
-  return (
-    <div className="readout" data-emphasis={emphasis === true}>
-      <span className="readout__value">{value}</span>
-      <span className="readout__label">{label}</span>
-    </div>
   );
 }
