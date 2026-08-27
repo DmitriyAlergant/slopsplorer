@@ -1,11 +1,11 @@
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer as createTcpServer, connect, type Socket } from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { scanSourceTree } from "../src/scanner/scan.ts";
 import { createSlopsplorerServer, isAddressInUse, type SlopsplorerServer } from "../src/server/server.ts";
-import type { SourceResponse, ViewResponse } from "../src/shared/api.ts";
+import type { SkillInstallResponse, SourceResponse, ViewResponse } from "../src/shared/api.ts";
 
 const SCAN_TIMEOUT_MS = 60_000;
 
@@ -127,6 +127,30 @@ describe("opening a scan root", () => {
 
     const refsResponse = await fetch(`${serverUrl}/api/refs`);
     expect(refsResponse.status).toBe(400);
+  });
+});
+
+describe("the bundled agent skill", () => {
+  it("copies itself into every directory it reports, with no symlink", async () => {
+    const response = await fetch(`${serverUrl}/api/skill-install`);
+    expect(response.status).toBe(200);
+    const install = await response.json() as SkillInstallResponse;
+
+    expect(install.targets.map((target) => target.tool)).toEqual(["Claude Code", "Codex and other agents"]);
+    for (const target of install.targets) {
+      expect(target.path.endsWith("slopsplorer")).toBe(true);
+      expect(install.command).toContain(target.path);
+    }
+    expect(install.command).toContain(process.platform === "win32" ? "Copy-Item" : "cp -R");
+    expect(install.command).not.toContain("ln -s");
+  });
+
+  it("serves SKILL.md to the preview dialog", async () => {
+    const response = await fetch(`${serverUrl}/api/skill-source`);
+    expect(response.status).toBe(200);
+    const source = await response.json() as Extract<SourceResponse, { mode: "source" }>;
+    const onDisk = await readFile(new URL("../skill/SKILL.md", import.meta.url), "utf8");
+    expect(source).toMatchObject({ mode: "source", path: "SKILL.md", truncated: false, content: onDisk });
   });
 });
 

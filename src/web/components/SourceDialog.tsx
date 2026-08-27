@@ -1,14 +1,17 @@
 import { useEffect, useRef, useState } from "react";
 import type { SourceResponse } from "../../shared/api.ts";
-import { fetchSource } from "../api.ts";
+import { fetchSkillSource, fetchSource } from "../api.ts";
 import { count } from "../format.ts";
 import { highlightSource } from "../highlight.ts";
 import { readChangedLinesOnly, writeChangedLinesOnly } from "../preferences.ts";
 import { CopyPathButton } from "./CopyPathButton.tsx";
 import { DiffView } from "./DiffView.tsx";
 
+/** What the preview draws: a file of the open index, or the bundled agent skill. */
+export type Preview = { kind: "file"; path: string } | { kind: "skill" };
+
 interface Props {
-  path: string | null;
+  preview: Preview | null;
   onClose: () => void;
 }
 
@@ -27,7 +30,7 @@ function changedLinesOnlyFromStorage(): boolean {
  * drawn by {@link DiffView}. Showing the after-image alone would be a claim the
  * page cannot support.
  */
-export function SourceDialog({ path, onClose }: Props): React.JSX.Element {
+export function SourceDialog({ preview, onClose }: Props): React.JSX.Element {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [source, setSource] = useState<SourceResponse | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
@@ -36,7 +39,7 @@ export function SourceDialog({ path, onClose }: Props): React.JSX.Element {
   useEffect(() => {
     const dialog = dialogRef.current;
     if (!dialog) return;
-    if (path === null) {
+    if (preview === null) {
       if (dialog.open) dialog.close();
       return;
     }
@@ -44,11 +47,12 @@ export function SourceDialog({ path, onClose }: Props): React.JSX.Element {
     setFailure(null);
     if (!dialog.open) dialog.showModal();
     let cancelled = false;
-    fetchSource(path)
+    const loading = preview.kind === "skill" ? fetchSkillSource() : fetchSource(preview.path);
+    loading
       .then((loaded) => { if (!cancelled) setSource(loaded); })
       .catch((cause: unknown) => { if (!cancelled) setFailure(cause instanceof Error ? cause.message : String(cause)); });
     return () => { cancelled = true; };
-  }, [path]);
+  }, [preview]);
 
   const toggleChangedOnly = (): void => {
     const changed = !changedOnly;
@@ -56,14 +60,18 @@ export function SourceDialog({ path, onClose }: Props): React.JSX.Element {
     writeChangedLinesOnly(window.localStorage, changed);
   };
 
+  // A scanned file names itself before it loads; the skill is named by the server.
+  const filePath = preview?.kind === "file" ? preview.path : null;
+  const title = filePath ?? source?.path ?? "";
+
   return (
     <dialog ref={dialogRef} className="viewer" onClose={onClose} onCancel={onClose}>
       <header className="viewer__head">
         <div>
           <p className="eyebrow">{source?.mode === "diff" ? "File comparison" : "Read-only preview"}</p>
           <div className="viewer__title-row">
-            <h2>{path ?? ""}</h2>
-            {path ? <CopyPathButton path={path} /> : null}
+            <h2>{title}</h2>
+            {filePath ? <CopyPathButton path={filePath} /> : null}
           </div>
         </div>
         <div className="viewer__actions">

@@ -1218,7 +1218,11 @@ button { cursor: pointer; }
  * The status is a letter and not a tag. The flavor beside it is a tag, and two
  * pills in two columns read as one system when they answer two questions.
  */
+/* Positioned, because the screen-reader name inside it is absolute: without a
+   containing block here it would resolve against the page and stretch it to
+   the full height of the table it sits in. */
 .status {
+  position: relative;
   display: inline-block;
   font-family: var(--font-mono);
   font-size: 12.5px; font-weight: 700;
