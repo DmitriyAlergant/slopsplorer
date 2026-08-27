@@ -43,27 +43,60 @@ Six flavors, plus a generated flag that is independent of them.
 `generated` is a separate boolean rather than a flavor, so a generated file also keeps its own flavor.
 The client draws it as one more switch beside the flavors.
 
+## What outranks what
+
+One rule orders the whole of `classifyFile()`.
+A filename states the file's role, a format states what the file is, and a directory only states where it sits.
+
+The directory is the weakest signal because a tree is never pure.
+A test tree holds fixtures, corpora, and sample documents beside its test code.
+A translation tree holds the code that reads the catalogues beside the catalogues, and the prose that explains them beside both.
+Measured on ten public repositories, a directory rule that outranked format filed a shell's whole language engine, three separate i18n implementations, and a release script as translation catalogues.
+
+Two exceptions run the other way, and both are folders that state the role of everything under them.
+A language folder inside a translation tree, such as `conf/locale/nl/` or `Translation/lang/en/`, holds one language's copy and nothing else.
+A fixture folder holds a payload, so a `.txt` or a `.md` in it is data rather than prose: two `.txt` fixtures under neovim's `test/functional/fixtures/` are 13% of that repository, and reporting them as documentation says something false about the whole tree.
+
 ## Path rules, in order
 
 `classifyFile()` in `src/scanner/classify.ts` applies these tests in this order and returns the first match.
 
-1. `.po` or `.pot`, or any folder on the path named `i18n`, `intl`, `lang`, `locale`, `locales`, `translation`, or `translations`: `i18n`.
+1. `.po` or `.pot`: `i18n`.
 2. A `.json`, `.yaml`, or `.yml` file whose name is a language code, with an optional region, such as `de-DE.json` or `pt_BR.json`: `i18n`.
    The language codes are an explicit list.
-3. A filename that names itself a test: `test_*`, `spec_*`, `*_test.*`, `*_spec.*`, `*.test.*`, `*.spec.*`: `test`.
-4. `requirements.txt`, and the data extensions `.csv`, `.json`, `.jsonc`, `.toml`, `.tsv`, `.xml`, `.yaml`, `.yml`: `data`.
-5. The prose extensions `.adoc`, `.md`, `.mdx`, `.rst`, `.txt`: `text`.
-6. A code extension: `test` if a folder on the path is `__tests__`, `e2e`, `spec`, `specs`, `test`, or `tests`, and `code` otherwise.
-7. Everything else: `other`.
+3. A filename that names itself a test whatever its format, through `isTestFileName()`: `test_*`, `spec_*`, `*_test.*`, `*_spec.*`, `*.test.*`, `*.spec.*`: `test`.
+4. A file whose own folder is named for a language code and which sits inside a folder named `i18n`, `intl`, `lang`, `locale`, `locales`, `translation`, or `translations`: `i18n`.
+5. `requirements.txt`: `data`.
+6. The data extensions `.csv`, `.json`, `.jsonc`, `.toml`, `.tsv`, `.xml`, `.yaml`, `.yml`: `i18n` inside one of those translation folders, and `data` otherwise.
+7. The prose extensions `.adoc`, `.md`, `.mdx`, `.rst`, `.txt`: `data` inside a folder named `data`, `fixture`, `fixtures`, `testdata`, `sample`, `samples`, `snapshot`, `snapshots`, `__snapshots__`, `golden`, or `goldens`, and `text` otherwise.
+8. A code extension: `test` if the filename follows a test-suffix convention through `isTestSourceName()`, or if a folder on the path is a test directory, and `code` otherwise.
+9. Everything else: `other`.
+
+### The two test-filename rules
+
+Test detection reads a filename twice, and the two halves carry different weight.
+
+`isTestFileName()` holds the markers that can mean nothing else, and it is read before the extension.
+`fixtures/test_payloads.json` and `data/events_test.yaml` are tests wherever they sit.
+
+`isTestSourceName()` holds the broader suffix conventions, and it is read for a code extension only.
+Two shapes cover the ecosystems: a separated suffix, as in `sbom.tests.ps1`, `router-spec.rb`, and vitest's `defineComponent.test-d.tsx`; and a camel-cased one, as in `CallTest.kt` and `HttpUrlTests.cs`, which is how the JVM and .NET write the same thing.
+The separator and the capital letter are what keep the rule safe: without them `latest.ts` and `manifest.py` read as tests.
+
+On any other format the same suffix describes tests rather than being one.
+`.github/workflows/tests.yml` is CI configuration, `docs/unit-tests.txt` and `WritingPesterTests.md` are prose, and `RolloutSpec.json` is a deployment specification.
 
 ### The test folder and the file's own format
 
-A test-shaped filename applies wherever the file sits, and it is read before the extension.
 A test folder applies to code extensions only, so a file of another format keeps the flavor of that format.
 A JSON fixture in `tests/fixtures/` is `data`, a recorded clipboard payload in `tests/paste/msword_clipboard.html` is `other`, and `tests/utils/websocket_client.py` is `test`.
 
 Hiding the tests therefore leaves the weight of the fixtures beside them on the map.
 To remove a whole test folder from the numbers, use the search box or the tree checkboxes.
+
+The directory list is curated, not a suffix pattern.
+It holds `__tests__`, `e2e`, `spec`, `specs`, `test`, and `tests`, plus the Gradle and Kotlin Multiplatform source sets, where a whole test tree hangs off a name that is never the word `test` alone: `jvmTest`, `commonTest`, `androidTest`, `testFixtures`, and their siblings.
+A pattern that accepted any name ending in the word would take `db_engine_specs` and `plugin-chart-paired-t-test`, which are ordinary source.
 
 ## The content rule for literal-heavy source
 
@@ -76,7 +109,8 @@ The rule applies only to a file that the path rules called `code`, and it needs 
 - At least 90 percent of that content is inside string literals.
 - No single literal holds more than 25 percent of the literal content.
 
-A file that passes becomes `i18n` if its name contains `i18n`, `intl`, `translat`, or `locale`, and `data` otherwise.
+A file that passes becomes `i18n` if its path contains `i18n`, `intl`, `translat`, or `locale`, and `data` otherwise.
+The whole path, because a catalogue is as often named by the folder holding it as by its own filename.
 
 `structure.ts` produces the three numbers during the same tree walk that finds the comments, so no file is read or parsed twice.
 A pre-order walk visits nodes in non-decreasing start offset, so one recorded end offset for each kind of span is enough to count a nested node once: an escape sequence inside a literal, an expression inside a template literal, and the string node of a Python docstring are all inside a span that was already counted.
@@ -87,7 +121,10 @@ A file with no grammar has no literal measurement, so this rule never applies to
 ## Generated output
 
 `isGenerated()` decides from the path alone, without reading the file.
-It marks a folder named `__generated__`, `coverage`, `dist`, `generated`, or `gen`; the known lock files; and the suffixes that build tools use, among them `.generated.ts`, `.g.dart`, `.pb.go`, `_pb2.py`, `.min.js`, `.map`, and `.lock`.
+It marks a folder named `__generated__`, `coverage`, `dist`, `generated`, or `gen`; the known lock files; and the suffixes that build tools use, among them `.g.dart`, `.pb.go`, `_pb2.py`, `.min.js`, `.bundle.js`, `.map`, and `.lock`.
+
+It also reads the marker that a build tool writes into the stem, in whatever language it emits: `vimfn.gen.lua`, `CallInstruction.Generated.cs`, `serializer.autogen.cs`, and `zz_generated.deepcopy.go`.
+`gen` needs the dot before it, so that `hugo_gen.md`, which documents the `gen` command, and `codegen.py`, which is the generator, stay unflagged.
 
 ## Grammar selection
 
