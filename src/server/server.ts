@@ -10,11 +10,14 @@ import type { ViteDevServer } from "vite";
 import { diffOneFile, scanDiff } from "../scanner/diffScan.ts";
 import type { DiffScanOptions } from "../scanner/diffScan.ts";
 import { GitError, listRefs, resolveComparison, verifyComparisonRequest } from "../scanner/gitdiff.ts";
+import { buildSpine } from "../scanner/spine.ts";
 import { scanSourceTree } from "../scanner/scan.ts";
 import type { ScanIndex, ScanOptions } from "../scanner/scan.ts";
 import type {
-  CompareRequest, ComparisonRequest, DiffLine, OpenRootRequest, SkillInstallResponse, SourceResponse,
+  CommitSpine, CompareRequest, ComparisonRequest, DiffLine, OpenRootRequest, SkillInstallResponse,
+  SourceResponse,
 } from "../shared/api.ts";
+import { spansRequest } from "../shared/api.ts";
 import { buildView, parseViewRequest } from "./aggregate.ts";
 
 /** Ceiling on `POST` bodies. A view request is a few kilobytes even for a huge tree. */
@@ -387,6 +390,8 @@ export function createSlopsplorerServer(options: SlopsplorerServerOptions): Slop
 
   let scanState = { index: options.index, producer: options.producer };
   let scanInFlight: { label: string; promise: Promise<ScanIndex> } | null = null;
+  let heldSpine: CommitSpine | null = null;
+  let spineInFlight: { spec: string; promise: Promise<CommitSpine | null> } | null = null;
   let vite: ViteDevServer | null = null;
 
   /**
@@ -412,6 +417,7 @@ export function createSlopsplorerServer(options: SlopsplorerServerOptions): Slop
     const measuring = producer.kind === "diff" ? scanDiff(producer.options) : scanSourceTree(producer.options);
     const running = measuring.then((next) => {
       scanState = { index: next, producer };
+      if (producer.kind === "scan") heldSpine = null;
       return next;
     });
     const activeScan = { label, promise: running };
@@ -421,6 +427,41 @@ export function createSlopsplorerServer(options: SlopsplorerServerOptions): Slop
     };
     running.then(release, release);
     return running;
+  }
+
+  /**
+   * The commits of the range being reviewed.
+   *
+   * Anchored to the range and not to the open comparison, because stepping
+   * along the band opens a comparison of one commit, and a spine rebuilt from
+   * that would list only that commit. The held one is kept while the open
+   * comparison is still inside it, so a reload in the middle of a walk answers
+   * with the range rather than with the step.
+   *
+   * Measuring costs one diff for each commit, which is the other reason this is
+   * built once and held.
+   */
+  function spineOf(producer: IndexProducer): Promise<CommitSpine | null> {
+    if (producer.kind !== "diff") {
+      throw new BadRequestError("the open index is a scan, so it spans no commits");
+    }
+    const open = producer.options.comparison.request;
+    if (heldSpine !== null && spansRequest(heldSpine, open)) return Promise.resolve(heldSpine);
+
+    const spec = producer.options.comparison.spec;
+    if (spineInFlight !== null && spineInFlight.spec === spec) return spineInFlight.promise;
+
+    const building = buildSpine(producer.options, open).then((built) => {
+      heldSpine = built;
+      return built;
+    });
+    const entry = { spec, promise: building };
+    spineInFlight = entry;
+    const release = (): void => {
+      if (spineInFlight === entry) spineInFlight = null;
+    };
+    building.then(release, release);
+    return building;
   }
 
   /** Coalesce concurrent rescans of the active root. */
@@ -586,6 +627,14 @@ export function createSlopsplorerServer(options: SlopsplorerServerOptions): Slop
         }
         const compared = await runScan({ kind: "diff", options: { ...previous.options, comparison } });
         sendJson(response, 200, buildView(compared, compareRequest.view));
+        return;
+      }
+      case "/api/spine": {
+        if (request.method !== "GET") {
+          sendJson(response, 405, { error: "use GET" });
+          return;
+        }
+        sendJson(response, 200, await spineOf(scanState.producer));
         return;
       }
       case "/api/refs": {

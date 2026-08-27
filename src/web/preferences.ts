@@ -9,6 +9,8 @@ const STORAGE_KEY = "slopsplorer.view-preferences.v4";
 const TREE_PANEL_STORAGE_KEY = "slopsplorer.tree-panel-ratio.v1";
 const WORKSPACE_HEIGHT_STORAGE_KEY = "slopsplorer.workspace-height.v1";
 const CHANGED_LINES_ONLY_STORAGE_KEY = "slopsplorer.changed-lines-only.v1";
+const SPINE_EXPANDED_STORAGE_KEY = "slopsplorer.spine-expanded.v1";
+const SPINE_HEIGHT_STORAGE_KEY = "slopsplorer.spine-height.v1";
 
 /**
  * Bounds on the two dragged heights.
@@ -16,6 +18,10 @@ const CHANGED_LINES_ONLY_STORAGE_KEY = "slopsplorer.changed-lines-only.v1";
  * Read here and applied by the splitter that drags them, so a stored value and
  * a dragged one are held to one rule.
  */
+export const MIN_SPINE_HEIGHT = 90;
+export const MAX_SPINE_HEIGHT = 900;
+export const DEFAULT_SPINE_HEIGHT = 260;
+
 export const MIN_WORKSPACE_HEIGHT = 260;
 export const MAX_WORKSPACE_HEIGHT = 2000;
 export const DEFAULT_WORKSPACE_HEIGHT = 780;
@@ -68,6 +74,48 @@ export function readChangedLinesOnly(storage: PreferenceStorage): boolean {
 export function writeChangedLinesOnly(storage: PreferenceStorage, changedOnly: boolean): void {
   try {
     storage.setItem(CHANGED_LINES_ONLY_STORAGE_KEY, String(changedOnly));
+  } catch {
+    // Browsers may deny storage in private or locked-down contexts.
+  }
+}
+
+/**
+ * Whether the commit band is open.
+ *
+ * It opens shut, because most of what the band is for reads from its one
+ * collapsed row, and one rule beats two defaults that depend on how the run
+ * was started.
+ */
+export function readSpineExpanded(storage: PreferenceStorage): boolean {
+  try {
+    return storage.getItem(SPINE_EXPANDED_STORAGE_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+/** How tall the open commit band is, in pixels, as it was last dragged. */
+export function readSpineHeight(storage: PreferenceStorage, fallback: number): number {
+  try {
+    const height = Number(storage.getItem(SPINE_HEIGHT_STORAGE_KEY));
+    return Number.isFinite(height) && height >= MIN_SPINE_HEIGHT && height <= MAX_SPINE_HEIGHT ? height : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+export function writeSpineHeight(storage: PreferenceStorage, height: number): void {
+  try {
+    storage.setItem(SPINE_HEIGHT_STORAGE_KEY, String(height));
+  } catch {
+    // Browsers may deny storage in private or locked-down contexts.
+  }
+}
+
+/** Remember that choice, so a reviewer who works in the band keeps it open. */
+export function writeSpineExpanded(storage: PreferenceStorage, expanded: boolean): void {
+  try {
+    storage.setItem(SPINE_EXPANDED_STORAGE_KEY, String(expanded));
   } catch {
     // Browsers may deny storage in private or locked-down contexts.
   }

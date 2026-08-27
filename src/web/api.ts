@@ -1,5 +1,5 @@
 import type {
-  CompareRequest, ComparisonRequest, OpenRootRequest, RepositoryRefs, SkillInstallResponse,
+  CommitSpine, CompareRequest, ComparisonRequest, OpenRootRequest, RepositoryRefs, SkillInstallResponse,
   SourceResponse, ViewRequest, ViewResponse,
 } from "../shared/api.ts";
 
@@ -56,6 +56,11 @@ export function compare(comparison: ComparisonRequest, view: ViewRequest): Promi
 /** Branches, remote branches, and tags the comparison picker offers. */
 export function fetchRefs(): Promise<RepositoryRefs> {
   return request<RepositoryRefs>("/api/refs");
+}
+
+/** The commits the open comparison spans, or null when it spans none. */
+export function fetchSpine(): Promise<CommitSpine | null> {
+  return request<CommitSpine | null>("/api/spine");
 }
 
 export function fetchSource(path: string): Promise<SourceResponse> {

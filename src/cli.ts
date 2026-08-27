@@ -6,8 +6,9 @@ import path from "node:path";
 import { parseArgs, promisify } from "node:util";
 import { scanDiff, type DiffScanOptions } from "./scanner/diffScan.ts";
 import {
-  GitError, parseComparisonSpec, parseRevisionArgument, repositoryRoot, resolveComparison,
-  verifyComparisonRequest, type Comparison,
+  fetchPullRequest, GitError, parseComparisonSpec, parsePullRequestUrl, parseRevisionArgument,
+  repositoryRoot, resolveComparison, verifyComparisonRequest,
+  type Comparison, type PullRequestLocation,
 } from "./scanner/gitdiff.ts";
 import { DEFAULT_MAX_FILE_BYTES, scanSourceTree } from "./scanner/scan.ts";
 import type { ScanIndex, ScanOptions, ScanProgress } from "./scanner/scan.ts";
@@ -52,16 +53,30 @@ USAGE
                                           untracked files included.
   slopsplorer --staged [options]          Compare HEAD against the index.
   slopsplorer <rev> [options]             Compare <rev> against the working tree.
+  slopsplorer <commit> [options]          A pasted object name is that commit alone,
+                                          against its parent.
+  slopsplorer <rev>^! [options]           That commit alone, whatever names it.
   slopsplorer <revA> <revB> [options]     Compare <revA> against <revB>.
   slopsplorer <revA>..<revB> [options]    The same, written as a range.
   slopsplorer <revA>...<revB> [options]   Compare the merge base of A and B against B.
+  slopsplorer --pr <number> [options]     Review a pull request. Fetches it from the
+                                          remote first, so it reaches one whose branch
+                                          was deleted after a squash merge. Needs gh
+                                          or glab signed in.
+  slopsplorer <pull request URL>          The same, named by the page you were reading.
 
   A single positional is read as a directory if a directory exists at that path,
-  otherwise as a revision.
+  otherwise as a revision. A named revision, such as a branch or HEAD~5, is a
+  place to measure from. A raw object name is one commit, because that is what a
+  commit pasted from a log or a review page means.
 
 OPTIONS
   -C <dir>                Run as if started in <dir>. A comparison uses this to
                           locate the repository.
+  --pr <number|URL>       Fetch a pull request and compare it against the commit it
+                          was written against. Needs gh (GitHub) or glab (GitLab)
+                          installed and signed in: only the forge knows which
+                          branch a request is against.
   --host <address>        Interface to bind. Default ${DEFAULT_HOST}.
   --port <number>         Port to bind. Use 0 for any free port. Default ${DEFAULT_PORT},
                           which walks forward to the next free port when it is
@@ -100,7 +115,10 @@ EXAMPLES
   slopsplorer main...HEAD         Compare the merge base of main and HEAD to HEAD.
   slopsplorer HEAD~5              Compare HEAD~5 against the working tree.
   slopsplorer origin/main         All work since origin/main, uncommitted included.
+  slopsplorer f53f4f9eb           Just that commit, against its parent.
+  slopsplorer origin/main^!       Just the commit origin/main points at.
   slopsplorer -C ~/src/app v1 v2  Compare two revisions of a repository elsewhere.
+  slopsplorer --pr 619            Review pull request 619 of the origin remote.
 `;
 
 function fail(message: string): never {
@@ -312,6 +330,37 @@ function isDirectory(candidate: string): boolean {
   return statSync(candidate, { throwIfNoEntry: false })?.isDirectory() === true;
 }
 
+/** A pull request named by number, or by the URL of its page. */
+function pullRequestLocation(argument: string): PullRequestLocation {
+  const fromUrl = parsePullRequestUrl(argument);
+  if (fromUrl !== null) return fromUrl;
+  if (!/^\d+$/.test(argument)) {
+    fail(`--pr expects a pull request number or the URL of its page, got "${argument}"`);
+  }
+  return { number: Number(argument), project: null };
+}
+
+/**
+ * Fetch a pull request and say what was fetched.
+ *
+ * Naming a pull request is the consent to reach the network for it, so this
+ * runs only from `--pr` or a pull request URL, and never from a revision the
+ * repository happens not to hold.
+ */
+async function openPullRequest(directory: string, argument: string): Promise<ComparisonRequest> {
+  const location = pullRequestLocation(argument);
+  try {
+    const fetched = await fetchPullRequest(directory, location);
+    process.stderr.write(
+      `  pull request ${fetched.number}: fetched ${fetched.remoteRef} from ${fetched.remote}, `
+      + `against ${fetched.baseBranch}\n`,
+    );
+    return fetched.request;
+  } catch (cause) {
+    fail(cause instanceof GitError ? cause.message : String(cause));
+  }
+}
+
 /**
  * Decide what the positional arguments asked for.
  *
@@ -319,9 +368,20 @@ function isDirectory(candidate: string): boolean {
  * conditions a second time.
  */
 async function readComparisonRequest(
-  directory: string, positionals: readonly string[], wantsWorkingTree: boolean, wantsStaged: boolean,
+  directory: string,
+  positionals: readonly string[],
+  wantsWorkingTree: boolean,
+  wantsStaged: boolean,
+  pullRequest: string | undefined,
 ): Promise<ComparisonRequest | null> {
   if (wantsWorkingTree && wantsStaged) fail("--diff and --staged name two different comparisons");
+  if (pullRequest !== undefined) {
+    if (wantsWorkingTree || wantsStaged) fail("--pr already names the comparison");
+    if (positionals.length > 0) {
+      fail(`--pr already names the comparison, so "${positionals[0]}" has nowhere to go`);
+    }
+    return openPullRequest(directory, pullRequest);
+  }
   if (wantsWorkingTree || wantsStaged) {
     if (positionals.length > 0) {
       fail(`${wantsStaged ? "--staged" : "--diff"} already names the comparison, so "${positionals[0]}" has nowhere to go`);
@@ -339,6 +399,12 @@ async function readComparisonRequest(
     && only !== undefined
     && isDirectory(path.resolve(directory, only));
   if (namesDirectory) return null;
+
+  // A pull request page is a place a reviewer already has in their hand, and it
+  // names a change no revision in this repository may hold yet.
+  if (positionals.length === 1 && parsePullRequestUrl(only!) !== null) {
+    return openPullRequest(directory, only!);
+  }
 
   try {
     const request = parseComparisonSpec(positionals);
@@ -410,6 +476,7 @@ async function main(): Promise<void> {
         dev: { type: "boolean" },
         diff: { type: "boolean" },
         staged: { type: "boolean" },
+        pr: { type: "string" },
         "all-files": { type: "boolean" },
         exclude: { type: "string", multiple: true },
         tokenizer: { type: "string" },
@@ -449,7 +516,7 @@ async function main(): Promise<void> {
   }
 
   const comparisonRequest = await readComparisonRequest(
-    workingDirectory, positionals, values.diff === true, values.staged === true,
+    workingDirectory, positionals, values.diff === true, values.staged === true, values.pr,
   );
   if (comparisonRequest !== null && values["all-files"] === true) {
     fail("--all-files widens a filesystem walk, and a diff runs none");

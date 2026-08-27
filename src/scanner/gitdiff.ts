@@ -26,10 +26,10 @@ export interface Comparison {
 
 export class GitError extends Error {}
 
-async function git(cwd: string, args: readonly string[]): Promise<string> {
+async function git(cwd: string, args: readonly string[], env?: NodeJS.ProcessEnv): Promise<string> {
   try {
     const { stdout } = await execFileAsync("git", [...args], {
-      cwd, maxBuffer: 256 * 1024 * 1024, encoding: "utf8",
+      cwd, maxBuffer: 256 * 1024 * 1024, encoding: "utf8", ...(env ? { env } : {}),
     });
     return stdout;
   } catch (cause) {
@@ -64,12 +64,28 @@ export async function isRevision(directory: string, candidate: string): Promise<
 }
 
 /**
+ * A raw object name, which is the one way of naming a revision that says
+ * nothing about where it sits.
+ *
+ * Somebody who types `origin/main` names a place to measure from. Somebody who
+ * pastes a commit means that commit, because a bare object name arrives from a
+ * log, a review page, or another tool, and never from a person describing how
+ * far back to look.
+ */
+const OBJECT_NAME = /^[0-9a-f]{7,64}$/i;
+
+/**
  * Split a revision argument on its range operator.
  *
  * `A...B` compares B against the merge base, which is what a pull request
  * shows, and `A..B` compares A to B directly, matching `git diff A B`.
+ * `A^!` is Git's own notation for one commit against its parent.
  */
 export function parseRevisionArgument(argument: string): ComparisonRequest | null {
+  if (argument.length > 2 && argument.endsWith("^!")) {
+    const rev = argument.slice(0, -2);
+    return { kind: "revisionPair", base: `${rev}^`, target: rev };
+  }
   const tripleDot = argument.indexOf("...");
   if (tripleDot > 0 && tripleDot + 3 < argument.length) {
     return { kind: "mergeBase", base: argument.slice(0, tripleDot), target: argument.slice(tripleDot + 3) };
@@ -102,7 +118,11 @@ export function parseComparisonSpec(tokens: readonly string[]): ComparisonReques
   const only = tokens[0]!;
   if (only === "--diff") return { kind: "workingTree" };
   if (only === "--staged") return { kind: "staged" };
-  return parseRevisionArgument(only) ?? { kind: "revisionToWorkingTree", rev: only };
+  const range = parseRevisionArgument(only);
+  if (range !== null) return range;
+  return OBJECT_NAME.test(only)
+    ? { kind: "revisionPair", base: `${only}^`, target: only }
+    : { kind: "revisionToWorkingTree", rev: only };
 }
 
 /** Every revision a request names, in the order a reader would meet them. */
@@ -130,6 +150,11 @@ export async function verifyComparisonRequest(directory: string, request: Compar
 
 async function shortName(directory: string, rev: string): Promise<string> {
   return (await git(directory, ["rev-parse", "--short", rev])).trim();
+}
+
+/** The whole object name of the commit a revision names. */
+async function commitName(directory: string, rev: string): Promise<string> {
+  return (await git(directory, ["rev-parse", `${rev}^{commit}`])).trim();
 }
 
 /** Resolve a requested comparison into concrete sides and `git diff` arguments. */
@@ -165,7 +190,14 @@ export async function resolveComparison(directory: string, request: ComparisonRe
         targetLabel: "working tree",
         diffArguments: [request.rev],
       };
-    case "revisionPair":
+    case "revisionPair": {
+      // Two names for one commit describe an empty change, and an empty change
+      // is refused here rather than measured and served as a blank page.
+      if (await commitName(directory, request.base) === await commitName(directory, request.target)) {
+        throw new GitError(
+          `nothing to compare: ${request.base} and ${request.target} are the same commit`,
+        );
+      }
       return {
         spec: `${request.base}..${request.target}`,
         request,
@@ -175,9 +207,16 @@ export async function resolveComparison(directory: string, request: ComparisonRe
         targetLabel: request.target,
         diffArguments: [request.base, request.target],
       };
+    }
     case "mergeBase": {
       const mergeBase = (await git(directory, ["merge-base", request.base, request.target])).trim();
       if (!mergeBase) throw new GitError(`no merge base between ${request.base} and ${request.target}`);
+      if (mergeBase === await commitName(directory, request.target)) {
+        throw new GitError(
+          `nothing to compare: ${request.target} is an ancestor of ${request.base}, `
+          + `so ${request.base}...${request.target} is empty`,
+        );
+      }
       return {
         spec: `${request.base}...${request.target}`,
         request,
@@ -189,6 +228,108 @@ export async function resolveComparison(directory: string, request: ComparisonRe
       };
     }
   }
+}
+
+/**
+ * Git's empty tree.
+ *
+ * A commit with no parent still has a change, and this is the side it is
+ * measured against.
+ */
+const EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
+
+/** One commit against its own first parent, which is how the spine measures one. */
+export function commitComparison(sha: string, parent: string | null): Comparison {
+  const base = parent ?? EMPTY_TREE;
+  return {
+    spec: `${base}..${sha}`,
+    request: { kind: "revisionPair", base, target: sha },
+    base: { kind: "revision", rev: base },
+    target: { kind: "revision", rev: sha },
+    baseLabel: base,
+    targetLabel: sha,
+    diffArguments: [base, sha],
+  };
+}
+
+/** How many commits a spine holds. Past this it lists the newest and says how many it left. */
+export const MAX_SPINE_COMMITS = 200;
+
+/** One commit as the spine lists it, before it is measured. */
+export interface SpineCommit {
+  sha: string;
+  shortSha: string;
+  subject: string;
+  /** The message under the subject, trimmed. Empty when there is none. */
+  body: string;
+  author: string;
+  date: string;
+  /** First parent, or null for a commit that has none. */
+  parent: string | null;
+}
+
+/** Git writes `%x1f` as this byte, which no commit message can hold. */
+const SPINE_SEPARATOR = "\u001F";
+
+/** The message runs to the end of a record, so records end with a byte of their own. */
+const SPINE_TERMINATOR = "\u0000";
+
+const SPINE_FORMAT = "%H%x1f%h%x1f%an%x1f%aI%x1f%P%x1f%B%x00";
+
+/**
+ * How much of a commit message the band carries.
+ *
+ * Enough for the paragraph that explains a commit, and not so much that a
+ * generated body of a hundred lines travels to the browser for every commit in
+ * a range.
+ */
+const MAX_COMMIT_BODY = 400;
+
+/** The message under the subject line, trimmed to what a tooltip can hold. */
+function commitBody(message: string): string {
+  const body = message.split("\n").slice(1).join("\n").trim();
+  return body.length > MAX_COMMIT_BODY ? `${body.slice(0, MAX_COMMIT_BODY).trimEnd()}...` : body;
+}
+
+/**
+ * The commits between the two sides of a comparison, oldest first.
+ *
+ * `null` when either side is the working tree or the index, because neither is
+ * a commit and a range needs two. Merges are left out: a merge holds no change
+ * of its own, and a span whose end was one would compare against a commit the
+ * list does not draw.
+ */
+export async function listSpineCommits(
+  directory: string, comparison: Comparison,
+): Promise<{ commits: SpineCommit[]; omitted: number } | null> {
+  if (comparison.base.kind !== "revision" || comparison.target.kind !== "revision") return null;
+
+  const range = `${comparison.base.rev}..${comparison.target.rev}`;
+  const total = Number((await git(directory, ["rev-list", "--no-merges", "--count", range])).trim());
+  const stdout = await git(directory, [
+    "log", "--no-merges", "--reverse", `--max-count=${MAX_SPINE_COMMITS}`, `--format=${SPINE_FORMAT}`, range,
+  ]);
+
+  const commits: SpineCommit[] = [];
+  for (const record of stdout.split(SPINE_TERMINATOR)) {
+    // Git writes a newline between records, after the terminator.
+    const trimmed = record.replace(/^\n/, "");
+    if (trimmed === "") continue;
+    const [sha, shortSha, author, date, parents, message] = trimmed.split(SPINE_SEPARATOR);
+    if (sha === undefined || shortSha === undefined || author === undefined
+      || date === undefined || parents === undefined || message === undefined) continue;
+    const firstParent = parents.split(" ").filter(Boolean)[0];
+    commits.push({
+      sha,
+      shortSha,
+      author,
+      date,
+      subject: message.split("\n")[0]?.trim() ?? "",
+      body: commitBody(message),
+      parent: firstParent ?? null,
+    });
+  }
+  return { commits, omitted: Math.max(0, total - commits.length) };
 }
 
 /** Newest first, and enough for any picker. A ref beyond this is reachable by typing. */
@@ -233,6 +374,330 @@ export async function listRefs(directory: string): Promise<RepositoryRefs> {
     headBranch: headBranch === "HEAD" ? null : headBranch,
     headSha: await shortName(directory, "HEAD"),
     refs,
+  };
+}
+
+/**
+ * Talking to a remote never waits on a terminal.
+ *
+ * `execFile` gives Git no console, so a credential prompt would hang with
+ * nothing on screen to explain it. Refusing to prompt makes that an error the
+ * caller can print instead.
+ */
+const NO_TERMINAL_PROMPT: NodeJS.ProcessEnv = { ...process.env, GIT_TERMINAL_PROMPT: "0" };
+
+/** A project, as either a remote URL or a web URL names it. */
+interface Project {
+  host: string;
+  /** Folded, because two spellings of one project must match. */
+  path: string;
+  /** As written, because a link is followed rather than compared. */
+  webPath: string;
+}
+
+/** Where a pull request lives. `project` is null when only a number was named. */
+export interface PullRequestLocation {
+  number: number;
+  project: Project | null;
+}
+
+const PULL_REQUEST_URL = /^https?:\/\/([^/]+)\/(.+?)\/(?:-\/)?(?:pull|merge_requests)\/(\d+)(?:[/?#].*)?$/;
+
+function trimProjectPath(rawPath: string): string {
+  return rawPath.replace(/\.git$/, "").replace(/^\/+|\/+$/g, "");
+}
+
+function projectAt(host: string, rawPath: string): Project {
+  const webPath = trimProjectPath(rawPath);
+  return { host: host.toLowerCase(), path: webPath.toLowerCase(), webPath };
+}
+
+/**
+ * Read a pull request out of a web URL.
+ *
+ * GitHub writes `.../pull/12` and GitLab writes `.../-/merge_requests/12`. The
+ * number and the project are everything either of them has to say.
+ */
+export function parsePullRequestUrl(argument: string): PullRequestLocation | null {
+  const match = PULL_REQUEST_URL.exec(argument);
+  if (match === null) return null;
+  return { number: Number(match[3]), project: projectAt(match[1]!, match[2]!) };
+}
+
+/** Host and project of a remote URL, in either shape Git accepts. */
+function projectOf(remoteUrl: string): Project | null {
+  const scp = /^[^/]+@([^:]+):(.+)$/.exec(remoteUrl);
+  if (scp !== null) return projectAt(scp[1]!, scp[2]!);
+  const url = /^[a-z][a-z0-9+.-]*:\/\/(?:[^@/]+@)?([^/:]+)(?::\d+)?\/(.+)$/i.exec(remoteUrl);
+  if (url !== null) return projectAt(url[1]!, url[2]!);
+  return null;
+}
+
+/**
+ * The URL a remote is configured with.
+ *
+ * Read from the config rather than through `git remote get-url`, which applies
+ * `insteadOf` and would answer with the mirror a fetch is rewritten to. What
+ * names the project is what the person wrote.
+ */
+async function remoteUrl(directory: string, remote: string): Promise<string> {
+  return (await git(directory, ["config", "--get", `remote.${remote}.url`])).trim();
+}
+
+/** The remote a repository is read from: `origin`, or its only one. */
+async function defaultRemote(directory: string): Promise<string | null> {
+  const names = (await git(directory, ["remote"])).split("\n").map((line) => line.trim()).filter(Boolean);
+  if (names.includes("origin")) return "origin";
+  return names[0] ?? null;
+}
+
+/**
+ * Where a commit of this repository can be read on the web, with the object
+ * name to append, or `null` when the remote is not a web forge.
+ *
+ * GitLab writes `/-/commit/<sha>` and every other forge writes `/commit/<sha>`,
+ * and the host name decides which, because a remote publishes no way to ask.
+ * Guessing is safe here in a way it is not for a fetch: the worst a wrong guess
+ * does is offer a link that does not open, and nothing measured depends on it.
+ */
+export async function commitUrlBase(directory: string): Promise<string | null> {
+  const remote = await defaultRemote(directory);
+  if (remote === null) return null;
+  const project = projectOf(await remoteUrl(directory, remote));
+  if (project === null) return null;
+  const commitPath = project.host.includes("gitlab") ? "-/commit" : "commit";
+  return `https://${project.host}/${project.webPath}/${commitPath}/`;
+}
+
+/**
+ * Which remote publishes the pull request.
+ *
+ * A URL names its project, so the remote serving that project is the only one
+ * that can hold it. A bare number names no project, so `origin` is taken, or
+ * the only remote when the repository has exactly one.
+ */
+async function chooseRemote(directory: string, location: PullRequestLocation): Promise<string> {
+  const names = (await git(directory, ["remote"])).split("\n").map((line) => line.trim()).filter(Boolean);
+  if (names.length === 0) throw new GitError("this repository has no remote to fetch a pull request from");
+
+  const wanted = location.project;
+  if (wanted === null) {
+    if (names.includes("origin")) return "origin";
+    if (names.length === 1) return names[0]!;
+    throw new GitError('this repository has no "origin", so name the pull request by its URL instead');
+  }
+  for (const name of names) {
+    const project = projectOf(await remoteUrl(directory, name));
+    if (project !== null && project.host === wanted.host && project.path === wanted.path) return name;
+  }
+  throw new GitError(`no remote of this repository points at ${wanted.host}/${wanted.path}`);
+}
+
+/**
+ * What the forge knows about a pull request, which Git cannot be asked.
+ *
+ * The branch a request targets is the thing Git has no record of. A repository
+ * holds the head and the base branch as commits, and nothing in it anywhere
+ * says the two were ever proposed against each other.
+ */
+export interface PullRequestMetadata {
+  number: number;
+  /** Branch the request is against. Frequently not the repository default. */
+  baseBranch: string;
+  /** Head commit, as the forge has it. */
+  headSha: string;
+  /**
+   * Commit that took the request into the base branch, or `null` while it is
+   * open. A squash, a rebase, and a merge commit all land here.
+   */
+  mergeSha: string | null;
+}
+
+/** Which forge a host is. */
+type Forge = "github" | "gitlab";
+
+function forgeOf(host: string): Forge | null {
+  if (host.includes("github")) return "github";
+  if (host.includes("gitlab")) return "gitlab";
+  return null;
+}
+
+/** The ref a forge publishes a pull request head under. */
+function headRefOf(forge: Forge, number: number): string {
+  return forge === "github" ? `refs/pull/${number}/head` : `refs/merge-requests/${number}/head`;
+}
+
+async function runForgeCommand(directory: string, command: string, args: readonly string[]): Promise<string> {
+  try {
+    const { stdout } = await execFileAsync(command, [...args], {
+      cwd: directory, maxBuffer: 32 * 1024 * 1024, encoding: "utf8",
+    });
+    return stdout;
+  } catch (cause) {
+    if (cause instanceof Error && "code" in cause && cause.code === "ENOENT") {
+      throw new GitError(
+        `--pr needs the ${command} command, which is not on this PATH. Install it and sign in, `
+        + "because only the forge knows which branch a pull request is against",
+      );
+    }
+    const detail = cause instanceof Error && "stderr" in cause ? String(cause.stderr).trim() : String(cause);
+    throw new GitError(`${command} ${args.join(" ")} failed: ${detail || "unknown error"}`);
+  }
+}
+
+/**
+ * Ask the forge about a pull request.
+ *
+ * This is the one thing `--pr` cannot do with Git, and it is why `--pr` wants
+ * `gh` or `glab` signed in. Without it the base branch has to be guessed as the
+ * repository default, which is wrong for every request raised against anything
+ * else, and wrong quietly: the page would draw a comparison and never say it
+ * had measured a different one.
+ */
+export async function readPullRequestMetadata(
+  directory: string, project: Project, number: number,
+): Promise<PullRequestMetadata> {
+  const forge = forgeOf(project.host);
+  if (forge === null) {
+    throw new GitError(`--pr does not know the forge at ${project.host}. It knows GitHub and GitLab`);
+  }
+  if (forge === "github") {
+    const stdout = await runForgeCommand(directory, "gh", [
+      "pr", "view", String(number),
+      "--repo", `${project.host}/${project.webPath}`,
+      "--json", "baseRefName,headRefOid,mergeCommit",
+    ]);
+    const view = JSON.parse(stdout) as {
+      baseRefName?: string; headRefOid?: string; mergeCommit?: { oid?: string } | null;
+    };
+    if (!view.baseRefName || !view.headRefOid) {
+      throw new GitError(`gh did not say what pull request ${number} is against`);
+    }
+    return {
+      number,
+      baseBranch: view.baseRefName,
+      headSha: view.headRefOid,
+      mergeSha: view.mergeCommit?.oid ?? null,
+    };
+  }
+  const stdout = await runForgeCommand(directory, "glab", [
+    "mr", "view", String(number), "--repo", `${project.host}/${project.webPath}`, "--output", "json",
+  ]);
+  const view = JSON.parse(stdout) as {
+    target_branch?: string; sha?: string; merge_commit_sha?: string | null; squash_commit_sha?: string | null;
+  };
+  if (!view.target_branch || !view.sha) {
+    throw new GitError(`glab did not say what merge request ${number} is against`);
+  }
+  return {
+    number,
+    baseBranch: view.target_branch,
+    headSha: view.sha,
+    mergeSha: view.merge_commit_sha || view.squash_commit_sha || null,
+  };
+}
+
+/**
+ * The commit a pull request was written against.
+ *
+ * One rule for every state a request can be in: the merge base of the head and
+ * the base branch as it stood the last time the request was measured against
+ * it. While the request is open that is the branch tip. Once it has landed the
+ * branch has moved past it, and where the merge sat is where it stood, whether
+ * the forge squashed, rebased, or merged.
+ *
+ * Taking the branch tip after a merge would be wrong twice over: for a squash
+ * or a rebase it is too far ahead, and for a merge commit the head is inside
+ * the branch, so the merge base would be the head and the change would read as
+ * empty.
+ */
+async function pullRequestBase(
+  directory: string, metadata: PullRequestMetadata, baseBranch: string, head: string,
+): Promise<string> {
+  const stood = metadata.mergeSha === null ? baseBranch : `${metadata.mergeSha}^1`;
+  const mergeBase = (await git(directory, ["merge-base", stood, head])).trim();
+  if (!mergeBase) throw new GitError(`no merge base between ${stood} and ${head}`);
+  return mergeBase;
+}
+
+/**
+ * What to call the commit a pull request was written against.
+ *
+ * A ref that points exactly at it says what an object name cannot, and the base
+ * branch is the one worth naming. Failing that `git describe` still places the
+ * commit, as `v2.0.0-23-g6bf16a921`: the last release, how far past it the
+ * branch forked, and the commit. That is a landmark and a revision at once,
+ * because the trailing object name pins it, so a name on the chip can never
+ * drift away from the commit it was measured at.
+ */
+async function nameForBase(directory: string, baseBranch: string, sha: string): Promise<string> {
+  if (await isRevision(directory, baseBranch) && await commitName(directory, baseBranch) === sha) return baseBranch;
+  // `--always` answers with the abbreviated commit when the repository has no
+  // tag to measure from, which is the same answer as before this named anything.
+  return (await git(directory, ["describe", "--tags", "--always", sha])).trim();
+}
+
+/** A fetched pull request, and the comparison that reviews it. */
+export interface FetchedPullRequest {
+  request: ComparisonRequest;
+  remote: string;
+  number: number;
+  /** Ref on the remote the head came from. */
+  remoteRef: string;
+  /** Ref this repository now holds the head under. */
+  localRef: string;
+  /** Branch the pull request is against, as the forge names it. */
+  baseBranch: string;
+}
+
+/**
+ * Fetch a pull request and build the comparison that reviews it.
+ *
+ * The forge says which branch the request is against and whether it has landed.
+ * Git supplies the commits: the head lands in a namespace of ours, so no branch
+ * a person named is touched, and it reaches a request whose own branch the
+ * forge has since deleted, which is most of what reviewing a merged change
+ * means.
+ *
+ * `metadata` is passed in by the tests, which have a repository to measure and
+ * no forge to ask.
+ */
+export async function fetchPullRequest(
+  directory: string, location: PullRequestLocation, metadata?: PullRequestMetadata,
+): Promise<FetchedPullRequest> {
+  const remote = await chooseRemote(directory, location);
+  const project = projectOf(await remoteUrl(directory, remote));
+  if (project === null) throw new GitError(`the ${remote} remote names no project to ask about`);
+
+  const known = metadata ?? await readPullRequestMetadata(directory, project, location.number);
+  const forge = forgeOf(project.host) ?? "github";
+
+  const remoteRef = headRefOf(forge, location.number);
+  const localRef = `refs/slopsplorer/pull/${location.number}`;
+  await git(directory, ["fetch", "--no-tags", remote, `+${remoteRef}:${localRef}`], NO_TERMINAL_PROMPT);
+
+  // The base branch, and the commit a landed request sat on, are both on the
+  // remote and neither is necessarily in this repository yet.
+  const baseBranch = `${remote}/${known.baseBranch}`;
+  if (known.mergeSha === null && !(await isRevision(directory, baseBranch))) {
+    await git(
+      directory,
+      ["fetch", "--no-tags", remote, `+refs/heads/${known.baseBranch}:refs/remotes/${baseBranch}`],
+      NO_TERMINAL_PROMPT,
+    );
+  }
+  if (known.mergeSha !== null && !(await isRevision(directory, known.mergeSha))) {
+    await git(directory, ["fetch", "--no-tags", remote, known.mergeSha], NO_TERMINAL_PROMPT);
+  }
+
+  const base = await pullRequestBase(directory, known, baseBranch, localRef);
+  return {
+    request: { kind: "revisionPair", base: await nameForBase(directory, baseBranch, base), target: localRef },
+    remote,
+    number: location.number,
+    remoteRef,
+    localRef,
+    baseBranch: known.baseBranch,
   };
 }
 

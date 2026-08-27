@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
-  Aspect, ComparisonRequest, FileKind, Measure, RankMetric, RowKind, TreeRow, ViewRequest, ViewResponse,
+  Aspect, CommitSpine, ComparisonRequest, FileKind, Measure, RankMetric, RowKind, TreeRow, ViewRequest,
+  ViewResponse,
 } from "../shared/api.ts";
-import { ASPECTS, MEASURES } from "../shared/api.ts";
-import { compare, fetchView, openRoot, rescan } from "./api.ts";
+import { ASPECTS, MEASURES, spansRequest } from "../shared/api.ts";
+import { compare, fetchSpine, fetchView, openRoot, rescan } from "./api.ts";
 import {
   DEFAULT_WORKSPACE_HEIGHT, MAX_WORKSPACE_HEIGHT, MIN_WORKSPACE_HEIGHT,
-  readPreferences, readTreePanelRatio, readWorkspaceHeight,
-  writePreferences, writeTreePanelRatio, writeWorkspaceHeight,
+  DEFAULT_SPINE_HEIGHT,
+  readPreferences, readSpineExpanded, readSpineHeight, readTreePanelRatio, readWorkspaceHeight,
+  writePreferences, writeSpineExpanded, writeSpineHeight, writeTreePanelRatio, writeWorkspaceHeight,
 } from "./preferences.ts";
 import { isInsideFolder } from "./displayPath.ts";
 import { comparisonLabel } from "./format.ts";
@@ -20,6 +22,7 @@ import { MassRibbon } from "./components/MassRibbon.tsx";
 import { SkillInstallDialog } from "./components/SkillInstallDialog.tsx";
 import { SourceDialog, type Preview } from "./components/SourceDialog.tsx";
 import { SourceTree } from "./components/SourceTree.tsx";
+import { PendingSpineBand, SpineBand } from "./components/SpineBand.tsx";
 import { DEFAULT_TREE_PANEL_RATIO, HeightSplitter, WorkspaceSplitter } from "./components/Splitter.tsx";
 
 /** Long enough to coalesce a burst of typing, short enough to feel immediate. */
@@ -30,6 +33,22 @@ function requestFromLocation(): ViewRequest {
     return readRequest(window.location.search, readPreferences(window.localStorage));
   } catch {
     return readRequest(window.location.search);
+  }
+}
+
+function spineHeightFromStorage(): number {
+  try {
+    return readSpineHeight(window.localStorage, DEFAULT_SPINE_HEIGHT);
+  } catch {
+    return DEFAULT_SPINE_HEIGHT;
+  }
+}
+
+function spineExpandedFromStorage(): boolean {
+  try {
+    return readSpineExpanded(window.localStorage);
+  } catch {
+    return false;
   }
 }
 
@@ -79,10 +98,16 @@ export function App(): React.JSX.Element {
   const [comparingLabel, setComparingLabel] = useState<string | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [skillOpen, setSkillOpen] = useState(false);
+  const [spine, setSpine] = useState<CommitSpine | null>(null);
+  const [spineLoading, setSpineLoading] = useState(false);
+  const [spineExpanded, setSpineExpanded] = useState(spineExpandedFromStorage);
+  const [spineHeight, setSpineHeight] = useState(spineHeightFromStorage);
   const [treePanelRatio, setTreePanelRatio] = useState(treePanelRatioFromStorage);
   const [workspaceHeight, setWorkspaceHeight] = useState(workspaceHeightFromStorage);
   const requestRef = useRef(request);
   requestRef.current = request;
+  const spineRef = useRef(spine);
+  spineRef.current = spine;
   const lastSelectionRef = useRef(selectionKey(request));
 
   /**
@@ -170,6 +195,45 @@ export function App(): React.JSX.Element {
     setRequest((previous) => ({ ...previous, rank: { ...previous.rank, metric: view.rankMetric } }));
   }, [view]);
 
+  /**
+   * Hold the spine of the range being reviewed.
+   *
+   * A step opens a comparison inside the same range, so the band must not be
+   * rebuilt as the reader walks it. It is asked for again only when a
+   * comparison arrives that the held spine does not span, which is what makes
+   * measuring a commit at a time affordable.
+   */
+  const diffSpec = view?.meta.diff?.spec ?? null;
+  useEffect(() => {
+    let cancelled = false;
+    const diff = view?.meta.diff ?? null;
+    if (diff === null) {
+      setSpine(null);
+    } else if (spineRef.current === null || !spansRequest(spineRef.current, diff.request)) {
+      // Dropped before the ask, so the band never draws a selection read from a
+      // range the page has already left.
+      setSpine(null);
+      setSpineLoading(true);
+      fetchSpine()
+        .then((next) => {
+          if (!cancelled) setSpine(next);
+        })
+        .catch((cause: unknown) => {
+          if (cancelled) return;
+          setSpine(null);
+          setError(cause instanceof Error ? cause.message : String(cause));
+        })
+        .finally(() => {
+          if (!cancelled) setSpineLoading(false);
+        });
+    }
+    return () => {
+      cancelled = true;
+    };
+    // The spec names the open comparison, which is the only thing that can
+    // move the page out of the range the held spine covers.
+  }, [diffSpec]);
+
   const handleRescan = useCallback(() => {
     setRescanning(true);
     rescan(requestRef.current)
@@ -186,11 +250,15 @@ export function App(): React.JSX.Element {
    *
    * Another folder and another comparison both replace the file list, so an
    * exclusion or a drill carried across would name a path that may not exist.
+   *
+   * A step along the commit band is the exception: it opens a comparison inside
+   * the range already being reviewed, and throwing the reader back to the
+   * project root on every step would make walking commits unusable.
    */
   const reaim = useCallback((
-    start: (view: ViewRequest) => Promise<ViewResponse>, finish: () => void,
+    start: (view: ViewRequest) => Promise<ViewResponse>, finish: () => void, keepPlace = false,
   ) => {
-    const nextRequest: ViewRequest = {
+    const nextRequest: ViewRequest = keepPlace ? { ...requestRef.current } : {
       ...requestRef.current,
       excludedFolders: [],
       excludedDirectFiles: [],
@@ -214,10 +282,33 @@ export function App(): React.JSX.Element {
     reaim((view) => openRoot(root, view), () => setOpeningRoot(null));
   }, [reaim]);
 
-  const handleCompare = useCallback((comparison: ComparisonRequest) => {
+  const handleCompare = useCallback((comparison: ComparisonRequest, keepPlace = false) => {
     setComparingLabel(comparisonLabel(comparison));
-    reaim((view) => compare(comparison, view), () => setComparingLabel(null));
+    reaim((view) => compare(comparison, view), () => setComparingLabel(null), keepPlace);
   }, [reaim]);
+
+  /** Walking the band never leaves the range, so it never loses the reader's place. */
+  const handleSpan = useCallback((comparison: ComparisonRequest) => {
+    handleCompare(comparison, true);
+  }, [handleCompare]);
+
+  const resizeSpine = useCallback((height: number) => {
+    setSpineHeight(height);
+    try {
+      writeSpineHeight(window.localStorage, height);
+    } catch {
+      // Storage may be denied; the band still keeps the height for this visit.
+    }
+  }, []);
+
+  const toggleSpineExpanded = useCallback((expanded: boolean) => {
+    setSpineExpanded(expanded);
+    try {
+      writeSpineExpanded(window.localStorage, expanded);
+    } catch {
+      // Storage may be denied; the band still opens for this visit.
+    }
+  }, []);
 
   const toggleKind = useCallback((kind: FileKind) => {
     setRequest((previous) => ({
@@ -437,6 +528,22 @@ export function App(): React.JSX.Element {
         onOpen={handleOpen}
         onCompare={handleCompare}
       />
+
+      {view && view.meta.diff && spine === null && spineLoading ? <PendingSpineBand /> : null}
+
+      {view && view.meta.diff && spine && spine.commits.length > 0 ? (
+        <SpineBand
+          spine={spine}
+          measure={view.measure}
+          request={view.meta.diff.request}
+          disabled={busy || scanning}
+          expanded={spineExpanded}
+          onExpandedChange={toggleSpineExpanded}
+          onSelect={handleSpan}
+          height={spineHeight}
+          onHeightChange={resizeSpine}
+        />
+      ) : null}
 
       <FilterBar
         request={request}

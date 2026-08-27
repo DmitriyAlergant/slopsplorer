@@ -1,0 +1,1 @@
+A comparison of two commits now draws a band of the commits it spans, above the filters. Click one to read that commit alone, shift-click for a run of them, or step with `[` and `]`. The band states each commit's added, removed, and net weight, leaves generated files out, and links each commit to the forge.

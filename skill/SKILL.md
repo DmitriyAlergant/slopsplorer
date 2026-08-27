@@ -39,7 +39,12 @@ slopsplorer --report /path/to/repo        # a folder elsewhere
 slopsplorer --report --diff               # HEAD against the working tree, untracked included
 slopsplorer --report main...HEAD          # what a pull request would show
 slopsplorer --report -C ~/src/app v1 v2   # two revisions of a repository elsewhere
+slopsplorer --report --pr 619             # a pull request, fetched from the remote first
 ```
+
+`--pr <number>` takes a pull request number or the URL of its page, on GitHub or GitLab.
+Use it when the change is not in a local branch, which is what a squash merge leaves behind.
+It needs `gh` or `glab` signed in, because only the forge knows which branch a request is against, and it is the one command here that uses the network.
 
 The report has one section per flavor.
 `CODE` and `TESTS` are trees.
@@ -60,7 +65,10 @@ In a comparison, `--aspect net` (or `added`, `removed`, `after`) changes which s
 ```bash
 slopsplorer /path/to/repo      # a tree
 slopsplorer main...HEAD        # a change
+slopsplorer --pr 619           # a pull request
 ```
+
+A comparison of two commits also draws a band of the commits it spans, so the user can read one commit at a time.
 
 It serves on <http://127.0.0.1:8765> and runs until stopped, so start it in the background and give the user the URL.
 Outside a terminal the user is watching, pass `--no-open` so it does not try to launch a browser.

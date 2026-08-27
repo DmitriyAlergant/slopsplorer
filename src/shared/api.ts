@@ -512,6 +512,131 @@ export type ComparisonRequest =
   | { kind: "revisionToWorkingTree"; rev: string }
   | RevisionRange;
 
+/**
+ * One commit of a comparison's spine, and what it changed.
+ *
+ * The figures are the commit against its own first parent, with generated
+ * files left out and no filter applied, because the spine is the frame a
+ * review happens inside and has to state the same thing however the page
+ * below it is narrowed. Every field is named as `FileRow` names it, so one
+ * search finds both.
+ */
+export interface SpineEntry {
+  sha: string;
+  shortSha: string;
+  subject: string;
+  /** The message under the subject, trimmed. Empty when the commit has none. */
+  body: string;
+  /** Where the commit can be read on the forge, or `null` when there is none. */
+  url: string | null;
+  author: string;
+  /** ISO-8601 author date. */
+  date: string;
+  /** Files the commit changed, generated ones left out. */
+  files: number;
+  addedTokens: number;
+  removedTokens: number;
+  addedLines: number;
+  removedLines: number;
+  addedCodeLines: number;
+  removedCodeLines: number;
+}
+
+/**
+ * The commits a comparison spans, oldest first.
+ *
+ * A span over this list is a comparison of its own, which is how one control
+ * covers the whole change, one commit, and any run of commits between them.
+ */
+export interface CommitSpine {
+  /** The comparison this spine was built for, so the page can return to it whole. */
+  range: ComparisonRequest;
+  /** Commit the range starts from: the parent of the first listed commit. */
+  base: string;
+  commits: SpineEntry[];
+  /** Commits the range holds beyond the ones listed. */
+  omitted: number;
+}
+
+/** A run of commits inside a spine, by index, both ends included. */
+export interface Span {
+  start: number;
+  end: number;
+}
+
+/** Whether two requests name the same comparison. */
+export function sameComparisonRequest(one: ComparisonRequest, other: ComparisonRequest): boolean {
+  if (one.kind !== other.kind) return false;
+  switch (one.kind) {
+    case "workingTree": case "staged": return true;
+    case "revisionToWorkingTree": return one.rev === (other as { rev: string }).rev;
+    default: {
+      const pair = other as { base: string; target: string };
+      return one.base === pair.base && one.target === pair.target;
+    }
+  }
+}
+
+/**
+ * The comparison a span asks for.
+ *
+ * A span that starts at the first commit starts from the range's own base, so
+ * one control expresses a single commit, a run of them, and everything from the
+ * start of the range, without a mode to switch between them.
+ */
+export function requestForSpan(spine: CommitSpine, span: Span): ComparisonRequest {
+  const base = span.start === 0 ? spine.base : spine.commits[span.start - 1]!.sha;
+  return { kind: "revisionPair", base, target: spine.commits[span.end]!.sha };
+}
+
+/**
+ * The span a comparison is, or `null` when it is not one of this spine's.
+ *
+ * The whole range is not a span: it is the range itself, so a spine whose list
+ * was capped, or whose target is a merge, never claims to cover more than it
+ * lists.
+ */
+export function spanOf(spine: CommitSpine, request: ComparisonRequest): Span | null {
+  if (request.kind !== "revisionPair") return null;
+  const end = spine.commits.findIndex((commit) => commit.sha === request.target);
+  if (end < 0) return null;
+  const start = request.base === spine.base
+    ? 0
+    : spine.commits.findIndex((commit) => commit.sha === request.base) + 1;
+  if (start === 0 && request.base !== spine.base) return null;
+  return start > end ? null : { start, end };
+}
+
+/**
+ * Whether a comparison is still inside the range this spine was built for.
+ *
+ * Both sides ask this. The page asks it to keep the band it is drawing, and the
+ * server asks it so that a reload in the middle of a walk still answers with
+ * the range being reviewed rather than with the one commit that is open.
+ */
+export function spansRequest(spine: CommitSpine, request: ComparisonRequest): boolean {
+  return sameComparisonRequest(request, spine.range) || spanOf(spine, request) !== null;
+}
+
+/**
+ * Slide a span by whole commits, keeping its width.
+ *
+ * `null` when it cannot move that far, which is also what disables the step
+ * that would do it. One control steps a single commit and slides a window,
+ * because a window of one is a single commit.
+ */
+export function slideSpan(spine: CommitSpine, span: Span, delta: number): Span | null {
+  const width = span.end - span.start;
+  const start = span.start + delta;
+  if (start < 0 || start + width > spine.commits.length - 1) return null;
+  return { start, end: start + width };
+}
+
+/** Extend a span from its anchor to a commit, which is what a shift-click asks for. */
+export function spanBetween(anchor: number, reached: number): Span {
+  return anchor <= reached ? { start: anchor, end: reached } : { start: reached, end: anchor };
+}
+
 /** A ref the page can offer as a side of a comparison. */
 export interface GitRef {
   /** Name as Git resolves it: `main`, `origin/main`, `v1.2.0`. */

@@ -180,6 +180,8 @@ const WHOLE_OBJECT_NAME = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i;
  * an unambiguous prefix into an ambiguous one.
  */
 export function shortRevision(rev: string): string {
+  const pullRequest = /^refs\/slopsplorer\/pull\/(\d+)$/.exec(rev);
+  if (pullRequest !== null) return `PR ${pullRequest[1]}`;
   return WHOLE_OBJECT_NAME.test(rev) ? rev.slice(0, 10) : rev;
 }
 

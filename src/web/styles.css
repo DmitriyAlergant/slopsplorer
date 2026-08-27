@@ -546,6 +546,263 @@ button { cursor: pointer; }
 .ribbon__segment[data-selected="true"] { box-shadow: inset 0 -4px 0 var(--signal); }
 .ribbon__segment[data-selected="true"] .ribbon__name { color: var(--signal); }
 
+/* ---- Commit band ------------------------------------------------------- */
+
+/*
+ * The commits a comparison spans, above the filter bar because its figures
+ * answer to no filter. It is the frame a review happens inside, so which
+ * commit is the heavy one has to stay one answer while the page below is
+ * narrowed.
+ */
+.spine {
+  margin-top: 14px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+/* Present and plainly working, rather than absent and then suddenly there. */
+.spine--pending .spine__where { animation: spine-pending 1.4s ease-in-out infinite; }
+.spine--pending .spine__disclose { color: var(--ink-faint); }
+@keyframes spine-pending {
+  0%, 100% { opacity: 0.45; }
+  50% { opacity: 1; }
+}
+.spine__head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 7px 10px 7px 8px;
+}
+.spine__disclose {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 2px 4px;
+  border: 0;
+  background: none;
+  color: var(--ink-soft);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.spine__disclose:hover { color: var(--signal); }
+.spine__caret {
+  width: 0;
+  height: 0;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  border-left: 6px solid currentColor;
+  transition: transform 120ms ease;
+}
+.spine__caret[data-open="true"] { transform: rotate(90deg); }
+
+/*
+ * The band shut is still the band: it says where the reader is and it still
+ * steps, so a page drawing one commit of fifty never looks like it is drawing
+ * the change.
+ */
+/*
+ * Every commit gets a tick. They shrink to fit rather than overflow, because a
+ * strip that quietly stopped at the fifty-seventh commit would put the reader
+ * in the wrong place on it.
+ */
+.spine__mini {
+  display: flex;
+  flex: 0 1 auto;
+  align-items: flex-end;
+  gap: 1px;
+  /* Sized by its ticks, so a short spine is short rather than a wide empty box. */
+  width: max-content;
+  max-width: 360px;
+  height: 18px;
+}
+.spine__tick {
+  flex: 0 1 auto;
+  width: 4px;
+  min-width: 1px;
+  height: calc(var(--mass) * 100%);
+  border-radius: 1px;
+  background: var(--rule-firm);
+}
+.spine__tick[data-in-span="true"] { background: var(--signal); }
+
+.spine__where {
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+.spine__step { display: flex; margin-left: auto; }
+.spine__step button {
+  position: relative;
+  width: 24px;
+  padding: 3px 0;
+  border: 1px solid var(--rule-firm);
+  background: var(--surface);
+  color: var(--ink-soft);
+  font-size: 14px;
+  line-height: 1;
+}
+.spine__step button:first-child { border-radius: var(--radius-sm) 0 0 var(--radius-sm); }
+.spine__step button:last-child { border-left: 0; border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
+.spine__step button:hover:not(:disabled) { color: var(--signal); }
+.spine__step button:disabled { color: var(--ink-faint); opacity: 0.5; }
+.spine__all {
+  padding: 4px 10px;
+  border: 1px solid var(--rule-firm);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink-soft);
+  font-size: 12px;
+  font-weight: 600;
+}
+.spine__all:hover:not(:disabled) { color: var(--signal); border-color: var(--signal); }
+.spine__all:disabled { color: var(--ink-faint); border-color: var(--rule); }
+
+.spine__list {
+  height: var(--spine-height);
+  overflow-y: auto;
+  border-top: 1px solid var(--rule);
+}
+/* One template for the heading and every row, so the columns cannot drift. */
+.spine__columns, .spine-row {
+  display: grid;
+  grid-template-columns:
+    72px minmax(0, 1fr) 100px minmax(96px, 190px) 74px 74px 74px;
+  align-items: center;
+  gap: 10px;
+  padding: 0 10px;
+  text-align: left;
+}
+.spine__columns {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding-top: 6px;
+  padding-bottom: 6px;
+  background: var(--sunk);
+  border-bottom: 1px solid var(--rule);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+.spine__columns span:nth-child(n + 5) { text-align: right; }
+
+.spine-row {
+  position: relative;
+  padding-top: 5px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid var(--rule);
+  color: var(--ink);
+  font-size: 12.5px;
+}
+.spine-row:last-of-type { border-bottom: 0; }
+.spine-row:hover { background: var(--sunk); }
+.spine-row[data-in-span="true"] { background: var(--signal-wash); }
+.spine-row[data-in-span="true"] .spine-row__subject { color: var(--ink); font-weight: 600; }
+/*
+ * The selector covers the row and sits under its cells, so a click anywhere
+ * chooses the commit while the object name above it stays a link.
+ */
+.spine-row__pick {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  border: 0;
+  background: none;
+}
+/* Positioned, so they paint over the selector that precedes them. */
+.spine-row > :not(.spine-row__pick) { position: relative; pointer-events: none; }
+.spine-row__sha { font-family: var(--font-mono); font-size: 11.5px; color: var(--ink-faint); }
+.spine-row__sha--link { pointer-events: auto; text-decoration: none; width: max-content; }
+.spine-row__sha--link:hover { color: var(--signal); text-decoration: underline; }
+/*
+ * The subject is the heading of the message, and the body follows it.
+ *
+ * A commit body is hard-wrapped by whoever wrote it, so the panel is wide
+ * enough to hold those lines whole and prints them as they were written. A
+ * narrow panel would wrap each of them a second time and turn a paragraph into
+ * a ragged column, and reflowing them instead would run a bullet list into one
+ * line.
+ */
+.spine-row__pick .tooltip {
+  width: min(540px, calc(100vw - 24px));
+  align-items: flex-start;
+}
+.spine-row__message { display: flex; flex-direction: column; gap: 6px; }
+.spine-row__body { white-space: pre-wrap; opacity: 0.82; }
+.spine-row__subject {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--ink-soft);
+}
+.spine-row__author {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 11.5px;
+  color: var(--ink-faint);
+}
+/*
+ * The same centre axis the source tree draws a net row with: removed to the
+ * left, added to the right, both against the heaviest churn in the band. One
+ * commit that traded 4,000 for 3,900 and one that added 100 read alike as a
+ * single number, and the two halves tell them apart.
+ *
+ * The columns beside it stay in the order of `ASPECTS`, as everywhere else on
+ * the page. The band is a number line and the figures are a list, which is the
+ * arrangement the tree and the folder head already use together.
+ */
+.spine-row__axis {
+  position: relative;
+  display: flex;
+  height: 9px;
+}
+.spine-row__axis::before {
+  content: "";
+  position: absolute;
+  inset-block: -1px;
+  left: 50%;
+  width: 1px;
+  background: var(--rule-firm);
+}
+.spine-row__half { display: flex; width: 50%; }
+/*
+ * Square ends, and a 2px floor so the quietest side still differs from a side
+ * that did nothing. A side that is nothing draws nothing.
+ */
+.spine-row__half::after { content: ""; display: block; height: 100%; min-width: 2px; }
+.spine-row__half[data-empty="true"]::after { min-width: 0; }
+.spine-row__half--removed { justify-content: flex-end; }
+.spine-row__half--removed::after {
+  width: calc(var(--share-removed) * 100%);
+  margin-right: 1px;
+  background: var(--status-deleted);
+}
+.spine-row__half--added::after {
+  width: calc(var(--share-added) * 100%);
+  margin-left: 1px;
+  background: var(--status-added);
+}
+.spine-row__figure {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  text-align: right;
+}
+.spine-row__figure[data-sign="positive"] { color: var(--status-added); }
+.spine-row__figure[data-sign="negative"] { color: var(--status-deleted); }
+.spine-row__net { font-weight: 600; color: var(--ink); }
+.spine__omitted {
+  margin: 0;
+  padding: 8px 10px;
+  font-size: 11.5px;
+  color: var(--ink-faint);
+}
+
 /* ---- Filters ----------------------------------------------------------- */
 
 /*
