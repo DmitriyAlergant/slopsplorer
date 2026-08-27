@@ -4,6 +4,28 @@ All notable user-facing changes to Slopsplorer are recorded here.
 
 <!-- towncrier release notes start -->
 
+## [0.4.1](https://github.com/DmitriyAlergant/slopsplorer/releases/tag/v0.4.1) - 2026-08-27
+
+### Features
+
+- The folder head states one figure at full strength and mutes the rest, holds every number in a fixed place as you move between folders, and colours a tile's headline by the side it names. ([9f0d89c](https://github.com/DmitriyAlergant/slopsplorer/commit/9f0d89c))
+
+### Bug Fixes
+
+- The file comparison dialog no longer slices its last visible row, and a fold at the top or bottom of a file sits flush against the edge. ([30ae917](https://github.com/DmitriyAlergant/slopsplorer/commit/30ae917))
+- Every percentage now divides by the scope the filters leave, so a share names the tree on screen, and the net aspect states no percentage at all because a signed quantity has no honest whole. ([9f0d89c](https://github.com/DmitriyAlergant/slopsplorer/commit/9f0d89c))
+- Scrolling the folder tree or a metrics table no longer traps the wheel: once a grid reaches its own end, or has nothing to scroll, the page scrolls instead. ([fa88116](https://github.com/DmitriyAlergant/slopsplorer/commit/fa88116))
+
+### Documentation
+
+- The README opens with a hero illustration and now shows diff mode as well as a scan. ([96a9e76](https://github.com/DmitriyAlergant/slopsplorer/commit/96a9e76))
+- The README now shows a single file inside a comparison, and states more plainly what each mode is for. ([b0ec673](https://github.com/DmitriyAlergant/slopsplorer/commit/b0ec673))
+
+### Other Changes
+
+- The favicon and the app icons now draw the snout nostrils as a bar chart, on a larger snout. ([5b8a6e4](https://github.com/DmitriyAlergant/slopsplorer/commit/5b8a6e4))
+
+
 ## [0.4.0](https://github.com/DmitriyAlergant/slopsplorer/releases/tag/v0.4.0) - 2026-08-26
 
 ### Features
