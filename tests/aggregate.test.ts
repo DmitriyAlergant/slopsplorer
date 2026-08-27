@@ -468,7 +468,7 @@ describe("primary measure", () => {
   });
 
   it("keeps generated output out of the bars, even when the page counts it", () => {
-    const view = buildView(index, request({ showGenerated: true }));
+    const view = buildView(index, request({ cardColumns: 6, showGenerated: true }));
     const generated = view.detail.cards.find((card) => card.name === "dist")!;
     expect(generated.weight).toBe(tokensOf("dist/bundle.js"));
     expect(generated.flavors).toEqual([]);
@@ -693,24 +693,39 @@ describe("folder tile grid", () => {
   });
 
   it("does not stretch a few cards to fill the panel", () => {
-    // The root has three child folders once generated output is shown.
+    // Three child folders once generated output is shown, and the root's own
+    // files, which are a tile like any other.
     const view = buildView(index, request({ cardColumns: 6, showGenerated: true }));
     expect(view.detail.cardColumns).toBe(6);
-    expect(view.detail.cards.length).toBe(3);
+    expect(view.detail.cards.length).toBe(4);
     expect(view.detail.cards.some((card) => card.path === null)).toBe(false);
   });
 
-  it("collapses the folders past the first row into one tile", () => {
-    // The root holds src, tests, and dist once generated output is shown.
+  it("ranks a folder's own files among the tiles rather than pinning them", () => {
+    const view = buildView(index, request({ cardColumns: 6 }));
+    const ownFiles = view.detail.cards.find((card) => card.rowKind === "files")!;
+    expect(ownFiles.name).toBe(".");
+    expect(ownFiles.path).toBe("");
+    expect(ownFiles.weight).toBe(tokensOf("README.md"));
+    // Lightest of the three, and last, because nothing pins it to the front.
+    expect(view.detail.cards.at(-1)).toBe(ownFiles);
+    const weights = view.detail.cards.map((card) => Math.abs(card.weight));
+    expect([...weights].sort((left, right) => right - left)).toEqual(weights);
+  });
+
+  it("collapses the entries past the first row into one tile", () => {
+    // src, tests, dist, and the root's own files, in four tiles worth of order.
     const view = buildView(index, request({ cardColumns: 2, showGenerated: true }));
     expect(view.detail.cards).toHaveLength(2);
     expect(view.detail.cards[1]!.path).toBeNull();
-    expect(view.detail.cards[1]!.name).toBe("2 more folders");
+    // Not "3 more folders": the pile holds the own-files tile as well.
+    expect(view.detail.cards[1]!.name).toBe("3 more");
   });
 
-  it("draws no tiles for a folder with no subfolders, so the page can hold the row", () => {
+  it("draws a folder's own files as a tile, so a folder with no subfolders still has a row", () => {
     const view = buildView(index, request({ selected: { rowKind: "folder", path: "src/deep" } }));
-    expect(view.detail.cards).toEqual([]);
+    expect(view.detail.cards.map((card) => [card.rowKind, card.path])).toEqual([["files", "src/deep"]]);
+    expect(view.detail.cards[0]!.weight).toBe(tokensOf("src/deep/helper.ts"));
   });
 
   it("keeps every folder's weight in the totals even when tiles are collapsed", () => {
@@ -744,14 +759,17 @@ describe("folder heading", () => {
     const direct = buildView(index, request({ selected: { rowKind: "files", path: "src" } }));
 
     expect(folder.detail.title).toBe("src");
-    expect(folder.detail.cards.map((card) => card.path)).toEqual(["src/deep"]);
+    expect(folder.detail.cards.map((card) => `${card.rowKind}:${card.path}`))
+      .toEqual(["files:src", "folder:src/deep"]);
     expect(folder.detail.weight).toBe(tokensOf("src/main.ts", "src/util.ts", "src/deep/helper.ts"));
 
     // The heading becomes slopsplorer/src/., the tiles belong to the subtree
     // rather than to the loose files, and every figure is the loose files'.
     expect(direct.detail.title).toBe(".");
     expect(direct.detail.trail.map((crumb) => crumb.path)).toEqual(["", "src"]);
-    expect(direct.detail.cards).toEqual([]);
+    // One tile, which is the subject itself: the subtree's folders belong to
+    // the folder row, not to this one.
+    expect(direct.detail.cards.map((card) => `${card.rowKind}:${card.path}`)).toEqual(["files:src"]);
     expect(direct.detail.weight).toBe(tokensOf("src/main.ts", "src/util.ts"));
     expect(direct.detail.files).toBe(2);
     expect(direct.detail.shareOfScope)

@@ -231,14 +231,21 @@ export interface FileRow {
   language: string | null;
 }
 
+/**
+ * What a row, a tile, or a selection names.
+ *
+ * `files` is the pseudo-row grouping the files that sit directly in a folder,
+ * which the tree, the tiles, and the ribbon all draw as `.`.
+ */
+export type RowKind = "folder" | "files";
+
 /** One rendered row of the source tree, already filtered and aggregated. */
 export interface TreeRow {
   /** Folder path. `""` is the scan root. */
   path: string;
   name: string;
   depth: number;
-  /** `files` is the pseudo-row grouping files sitting directly in a folder. */
-  rowKind: "folder" | "files";
+  rowKind: RowKind;
   /** Subtree total in the active measure and aspect. Signed when the aspect is `net`. */
   weight: number;
   /** Subtree total of what the change added, in the active measure. */
@@ -265,11 +272,16 @@ export interface TreeRow {
   selected: boolean;
 }
 
-/** A child folder summarised as a card, or the aggregate "other folders" tile. */
+/**
+ * One part of a folder as a card: a child folder, its own files, or the
+ * aggregate tile that holds whatever did not fit the row.
+ */
 export interface FolderCard {
   /** null marks the aggregate tile, which is not navigable. */
   path: string | null;
   name: string;
+  /** What the card names, and what selecting it selects. */
+  rowKind: RowKind;
   /** Folder total in the active measure and aspect. */
   weight: number;
   added: number;
@@ -423,7 +435,7 @@ export interface ViewRequest {
   treeSort: TreeSort;
   /** Folder that replaces the project root in the main workspace widgets. */
   drillPath: string;
-  selected: { rowKind: "folder" | "files"; path: string };
+  selected: { rowKind: RowKind; path: string };
   /**
    * The sorted column of both file tables, and the ranking's order.
    *

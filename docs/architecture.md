@@ -160,12 +160,14 @@ The one deliberate exception is the proportion bar, whose segments select a fold
 The bar is a view of the scope, so selecting from it is the same act as clicking the tree.
 
 There is one file table, and it is inside the folder panel.
-The panel divides its subject twice: the tiles divide it by child folder, and the table lists every file under it, heaviest first.
+The panel divides its subject twice: the tiles divide it by part, and the table lists every file under it, heaviest first.
+A part is a child folder or the folder's own files, which take a tile named `.` ranked among the others by weight, so the tiles account for the whole folder and a folder with no subfolders still fills the row.
+The last tile absorbs whatever does not fit one row, and it is named for what it holds.
 
 Each tile carries a bar, and every bar in the panel divides one whole: `DetailView.flavorBaseline`, the drill scope as the tree's checkboxes and the path filter leave it.
 The flavor chips are not applied to that whole, and generated files are never in it.
 So the bar's length is what the folder holds of the scope, its divisions are the flavors it is made of, and turning a flavor off takes a slice out of every bar instead of stretching the rest to fill the width.
-The bars of one scope add up to the scope minus its own direct files, which have no tile.
+The tiles account for the whole of their folder, so at the top of a scope the bars add up to the scope.
 A separate ranking panel used to repeat the tiles as rows, which put the same subtree on the page twice.
 The strip above the ranked table holds the threshold that thins it, because that control belongs to the rows it removes.
 
@@ -185,8 +187,10 @@ Selection is clamped to the drill scope on both sides.
 `buildView()` puts the scope root in place of a selection that falls outside it, and `readRequest()` does the same to a link, so a panel can never name a folder that its contents do not cover.
 
 A `.` row is its own subject and not a second way to name its folder.
-Selecting it reports the folder's own files: the heading reads `root/folder/.`, the child-folder cards disappear because they belong to the subtree and not to the loose files, and every figure in the panel is the loose files' own.
-It is the first row of every level it appears in, above the subfolders and whichever order the level is sorted by, because it is the one row that holds files rather than more folders.
+Selecting it reports the folder's own files: the heading reads `root/folder/.`, the child-folder tiles disappear because they belong to the subtree and not to the loose files, and every figure in the panel is the loose files' own.
+The panel keeps one tile there, the subject itself, so the row still stands and the file table under it does not move.
+In the tree it is the first row of every level it appears in, above the subfolders and whichever order the level is sorted by, because it is the one row that holds files rather than more folders.
+In the tiles and in the ribbon it is ranked by weight like every other part of the folder.
 
 ## Where the measure is chosen
 

@@ -1,4 +1,4 @@
-import type { Aspect, Measure, SummaryView } from "../../shared/api.ts";
+import type { Aspect, Measure, RowKind, SummaryView, ViewRequest } from "../../shared/api.ts";
 import { ASPECTS, MEASURES, aspectTotals } from "../../shared/api.ts";
 import {
   aspectFigure, compact, count, measureHeading, percent, weightCount, weightHeading, weightName,
@@ -13,8 +13,9 @@ interface Props {
   /** The side of the change the figures describe. */
   aspect: Aspect;
   isDiff: boolean;
-  selectedPath: string | null;
-  onSelect: (path: string) => void;
+  /** What the tree has selected, so the segment that names it can say so. */
+  selected: ViewRequest["selected"];
+  onSelect: (rowKind: RowKind, path: string) => void;
 }
 
 /** Segments below this share cannot fit a readable label. */
@@ -34,7 +35,7 @@ const LABEL_THRESHOLD = 0.06;
  * the scope and the filters keep, and how much of that is comment - stands to
  * the right of the columns rather than among them.
  */
-export function MassRibbon({ summary, measure, aspect, isDiff, selectedPath, onSelect }: Props): React.JSX.Element {
+export function MassRibbon({ summary, measure, aspect, isDiff, selected, onSelect }: Props): React.JSX.Element {
   const segments = summary?.ribbon ?? [];
   // Magnitude, because in net a folder that removed 400 lines is 400 of the
   // scope's ink even though its weight is negative.
@@ -113,36 +114,27 @@ export function MassRibbon({ summary, measure, aspect, isDiff, selectedPath, onS
       <div className="ribbon__track">
         {segments.map((segment, rank) => {
           const share = total > 0 ? Math.abs(segment.weight) / total : 0;
-          const selected =
-            segment.path !== null &&
-            selectedPath !== null &&
-            (segment.path === selectedPath || selectedPath.startsWith(`${segment.path}/`));
+          // A folder segment also marks a selection below it, because drilling
+          // into a child is still reading that part of the scope. The `.`
+          // segment holds files and nothing sits below it.
+          const marked = segment.rowKind === "files"
+            ? selected.rowKind === "files" && selected.path === segment.path
+            : selected.rowKind === "folder"
+              && (selected.path === segment.path || selected.path.startsWith(`${segment.path}/`));
           const label = `${segment.name} - ${weightCount(segment.weight, aspect)} ${unit}, ${percent(share)} of scope`;
           const shade = Math.min(rank, 7);
-          if (segment.path === null) {
-            return (
-              <div
-                key={`root-files-${rank}`}
-                className="ribbon__segment ribbon__segment--static"
-                style={{ width: `${share * 100}%` }}
-                data-shade={shade}
-                {...tooltipHandlers}
-              >
-                <SegmentLabel share={share} name={segment.name} weight={segment.weight} aspect={aspect} />
-                <Tooltip compact>{label}</Tooltip>
-              </div>
-            );
-          }
           return (
             <button
-              key={segment.path}
+              // Every segment names a row of the tree. Only the folder panel
+              // has a tile with no path, and that is its aggregate.
+              key={`${segment.rowKind}:${segment.path}`}
               type="button"
               className="ribbon__segment"
               style={{ width: `${share * 100}%` }}
               data-shade={shade}
-              data-selected={selected}
+              data-selected={marked}
               aria-label={label}
-              onClick={() => onSelect(segment.path!)}
+              onClick={() => onSelect(segment.rowKind, segment.path!)}
               {...tooltipHandlers}
             >
               <SegmentLabel share={share} name={segment.name} weight={segment.weight} aspect={aspect} />

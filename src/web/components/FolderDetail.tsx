@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { Aspect, DetailView, FileRow, Measure, RankMetric, ViewRequest } from "../../shared/api.ts";
+import type { Aspect, DetailView, FileRow, Measure, RankMetric, RowKind, ViewRequest } from "../../shared/api.ts";
 import { ASPECTS, MEASURES, aspectTotals } from "../../shared/api.ts";
 import {
   aspectFigure, count, countOf, measureHeading, percent, weightAbbreviation, weightCount, weightHeading, weightName,
@@ -26,7 +26,8 @@ interface Props {
   onSortChange: (metric: RankMetric) => void;
   /** The selected folder: the path the copy control hands over, and the root that file names shorten against. */
   path: string;
-  onSelectFolder: (path: string) => void;
+  /** Selects what a tile or an ancestor step names, which is a folder or a folder's own files. */
+  onSelect: (rowKind: RowKind, path: string) => void;
   /** Whether the panel describes a folder's own files rather than its subtree. */
   directFilesOnly: boolean;
   canDrill: boolean;
@@ -49,7 +50,7 @@ const MAX_COLUMNS = 6;
 const THRESHOLD_STEPS: Record<Measure, number> = { tokens: 500, lines: 50, codeLines: 50 };
 
 /** The selected folder: its weight, how its children divide it, and its own files. */
-export function FolderDetail({ detail, files, filesTotal, measure, aspect, isDiff, sort, onSortChange, path, onSelectFolder, directFilesOnly, canDrill, onDrill, rank, onRankChange, onOpenSource, onCapacityChange }: Props): React.JSX.Element {
+export function FolderDetail({ detail, files, filesTotal, measure, aspect, isDiff, sort, onSortChange, path, onSelect, directFilesOnly, canDrill, onDrill, rank, onRankChange, onOpenSource, onCapacityChange }: Props): React.JSX.Element {
   const panelRef = useRef<HTMLElement>(null);
   const [columns, setColumns] = useState(3);
   // What the reader has typed, which is not the threshold: an empty box is a
@@ -119,7 +120,7 @@ export function FolderDetail({ detail, files, filesTotal, measure, aspect, isDif
             <h2>
               {detail.trail.map((crumb) => (
                 <span key={crumb.path} className="detail__step">
-                  <button type="button" className="detail__ancestor" onClick={() => onSelectFolder(crumb.path)}>
+                  <button type="button" className="detail__ancestor" onClick={() => onSelect("folder", crumb.path)}>
                     {crumb.name}
                   </button>
                   <span className="detail__separator" aria-hidden="true">/</span>
@@ -169,82 +170,71 @@ export function FolderDetail({ detail, files, filesTotal, measure, aspect, isDif
       </header>
 
       {/* Always drawn, one row high, so the table below starts in the same place
-          whether the folder has children or not. */}
+          whether the folder has children or not. A folder's own files are one of
+          the tiles, so a folder without subfolders still has a row to draw. */}
       <div className="cards" style={{ "--card-columns": detail.cardColumns } as React.CSSProperties}>
-        {detail.cards.length === 0 ? (
-          // Built from a tile's own rows, left blank, so it stands exactly as
-          // tall as the tiles it replaces without a height written down twice.
-          <div className="card card--placeholder">
-            <span className="card__head">
-              <span className="card__name">No subfolders</span>
-            </span>
-            <span className="card__row" aria-hidden="true">
-              <span className="card__weight">&nbsp;</span>
-            </span>
-            {isDiff ? <span className="card__split" aria-hidden="true">&nbsp;</span> : null}
-            <span className="flavor-bar" aria-hidden="true" />
-          </div>
-        ) : (
-          detail.cards.map((card, index) => {
-            const added = aspectFigure("added", card.added);
-            const removed = aspectFigure("removed", card.removed);
-            // Only the hue: the unit beside the headline already names the side,
-            // so the figure reads as a count and still matches the strip above.
-            const headline = aspectFigure(aspect, card.weight);
-            const body = (
-              <>
-                <span className="card__head">
-                  <span className="card__name">{card.name}</span>
-                  <span className="card__files">{countOf(card.files, "file")}</span>
+        {detail.cards.map((card, index) => {
+          const added = aspectFigure("added", card.added);
+          const removed = aspectFigure("removed", card.removed);
+          // Only the hue: the unit beside the headline already names the side,
+          // so the figure reads as a count and still matches the strip above.
+          const headline = aspectFigure(aspect, card.weight);
+          const body = (
+            <>
+              <span className="card__head">
+                <span className="card__name">{card.name}</span>
+                <span className="card__files">{countOf(card.files, "file")}</span>
+              </span>
+              {/* The figure names its own side: the switch that chose it is
+                  at the top of the page, and a tile is read on its own. */}
+              <span className="card__row">
+                <span className="card__weight" data-sign={headline.sign}>
+                  {weightCount(card.weight, aspect)}
+                  <span className="card__unit">{weightAbbreviation(measure, aspect, isDiff)}</span>
                 </span>
-                {/* The figure names its own side: the switch that chose it is
-                    at the top of the page, and a tile is read on its own. */}
-                <span className="card__row">
-                  <span className="card__weight" data-sign={headline.sign}>
-                    {weightCount(card.weight, aspect)}
-                    <span className="card__unit">{weightAbbreviation(measure, aspect, isDiff)}</span>
-                  </span>
-                  {showsShare ? <span className="card__share">{percent(card.shareOfScope)}</span> : null}
+                {showsShare ? <span className="card__share">{percent(card.shareOfScope)}</span> : null}
+              </span>
+              {/* The two sides, whatever the switch selects, because a tile
+                  showing one figure hides a rewrite behind a small number. */}
+              {isDiff ? (
+                <span className="card__split">
+                  <span>{added.text}</span>
+                  <span>{removed.text}</span>
                 </span>
-                {/* The two sides, whatever the switch selects, because a tile
-                    showing one figure hides a rewrite behind a small number. */}
-                {isDiff ? (
-                  <span className="card__split">
-                    <span>{added.text}</span>
-                    <span>{removed.text}</span>
-                  </span>
-                ) : null}
-                <FlavorBar
-                  slices={card.flavors}
-                  measure={measure}
-                  aspect={aspect}
-                  isDiff={isDiff}
-                  baseline={detail.flavorBaseline}
-                />
-              </>
-            );
-            return card.path === null ? (
-              <div key={`aggregate-${index}`} className="card card--aggregate">{body}</div>
-            ) : (
-              <button
-                key={card.path}
-                type="button"
-                className="card"
-                // Spelled out, because the tile states each figure as a column
-                // of its own and a reader who cannot see the layout gets none
-                // of what the columns carry.
-                aria-label={
-                  `${card.name}, ${weightCount(card.weight, aspect)} ${weightName(measure, aspect, isDiff)}, `
-                  + `${countOf(card.files, "file")}`
-                  + (showsShare ? `, ${percent(card.shareOfScope)} of current scope` : "")
-                }
-                onClick={() => onSelectFolder(card.path!)}
-              >
-                {body}
-              </button>
-            );
-          })
-        )}
+              ) : null}
+              <FlavorBar
+                slices={card.flavors}
+                measure={measure}
+                aspect={aspect}
+                isDiff={isDiff}
+                baseline={detail.flavorBaseline}
+              />
+            </>
+          );
+          const cardPath = card.path;
+          return cardPath === null ? (
+            <div key={`aggregate-${index}`} className="card card--aggregate">{body}</div>
+          ) : (
+            <button
+              key={`${card.rowKind}:${cardPath}`}
+              type="button"
+              className="card"
+              data-kind={card.rowKind}
+              // Spelled out, because the tile states each figure as a column
+              // of its own and a reader who cannot see the layout gets none
+              // of what the columns carry.
+              aria-label={
+                `${card.rowKind === "files" ? "Files directly in this folder" : card.name}, `
+                + `${weightCount(card.weight, aspect)} ${weightName(measure, aspect, isDiff)}, `
+                + `${countOf(card.files, "file")}`
+                + (showsShare ? `, ${percent(card.shareOfScope)} of current scope` : "")
+              }
+              onClick={() => onSelect(card.rowKind, cardPath)}
+            >
+              {body}
+            </button>
+          );
+        })}
       </div>
 
       {/* The tiles divide the subject by folder and the rows divide it by file,

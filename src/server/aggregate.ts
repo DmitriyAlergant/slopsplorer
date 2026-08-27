@@ -1,7 +1,7 @@
 import path from "node:path";
 import type {
   Aspect, DetailView, FileKind, FileRow, Flavor, FlavorSlice, FolderCard, Measure, PathCrumb,
-  RankMetric, SummaryView, TreeRow, ViewRequest, ViewResponse, WeightField,
+  RankMetric, RowKind, SummaryView, TreeRow, ViewRequest, ViewResponse, WeightField,
 } from "../shared/api.ts";
 import {
   ASPECTS, FILE_KINDS, MEASURES, RANK_METRICS, TREE_SORTS,
@@ -455,12 +455,14 @@ function buildTree(
 function buildFolderCard(
   name: string,
   folderPath: string | null,
+  rowKind: RowKind,
   totals: Totals,
   visibleScopeWeight: number,
 ): FolderCard {
   return {
     path: folderPath,
     name,
+    rowKind,
     weight: totals.weight,
     added: totals.added,
     removed: totals.removed,
@@ -491,30 +493,41 @@ function buildDetail(
 
   const cards: FolderCard[] = [];
   const cardColumns = request.cardColumns;
-  const children = directFilesOnly ? [] : folder.childPaths
+  // The folder's own files are a tile like any other, ranked among the child
+  // folders rather than pinned, because the row divides the folder completely
+  // and every part of it is read the same way. A `.` selection is already only
+  // those files, so it draws that one tile and no subtree beside it.
+  const directTotals = aggregation.direct.get(folder.path) ?? emptyTotals();
+  const subfolders = directFilesOnly ? [] : folder.childPaths
     .map((childPath) => ({ node: index.folderByPath.get(childPath), totals: aggregation.subtree.get(childPath) }))
     .filter((entry): entry is { node: FolderNode; totals: Totals } => entry.node !== undefined && entry.totals !== undefined)
     .filter((entry) => entry.totals.files > 0)
-    .sort((left, right) => byMagnitude(left.totals.weight, right.totals.weight));
+    .map((entry) => ({ name: entry.node.name, path: entry.node.path, rowKind: "folder" as const, totals: entry.totals }));
+  const entries = directTotals.files > 0
+    ? [...subfolders, { name: DIRECT_FILES_LABEL, path: folder.path, rowKind: "files" as const, totals: directTotals }]
+    : subfolders;
+  entries.sort((left, right) => byMagnitude(left.totals.weight, right.totals.weight));
 
   // One row, so the tiles take a fixed height whatever the folder holds and the
   // table below them starts in the same place. The measured capacity stays fixed
-  // even when one child exists, so a lone card keeps the width of a full row's
+  // even when one entry exists, so a lone card keeps the width of a full row's
   // tile instead of stretching across the panel. The last tile absorbs whatever
   // does not fit.
-  const tiles = Math.min(children.length, cardColumns);
-  if (tiles < children.length) {
-    const shown = tiles - 1;
-    for (const entry of children.slice(0, shown)) {
-      cards.push(buildFolderCard(entry.node.name, entry.node.path, entry.totals, visibleScopeWeight));
-    }
+  const tiles = Math.min(entries.length, cardColumns);
+  const shown = tiles < entries.length ? tiles - 1 : entries.length;
+  for (const entry of entries.slice(0, shown)) {
+    cards.push(buildFolderCard(entry.name, entry.path, entry.rowKind, entry.totals, visibleScopeWeight));
+  }
+  const collapsed = entries.slice(shown);
+  if (collapsed.length > 0) {
     const rest = emptyTotals();
-    for (const entry of children.slice(shown)) mergeTotals(rest, entry.totals);
-    cards.push(buildFolderCard(`${children.length - shown} more folders`, null, rest, visibleScopeWeight));
-  } else {
-    for (const entry of children) {
-      cards.push(buildFolderCard(entry.node.name, entry.node.path, entry.totals, visibleScopeWeight));
-    }
+    for (const entry of collapsed) mergeTotals(rest, entry.totals);
+    // Named for what it holds: the own-files tile can fall into it like any
+    // other entry, and then "folders" would not describe the pile.
+    const name = collapsed.every((entry) => entry.rowKind === "folder")
+      ? `${collapsed.length} more folders`
+      : `${collapsed.length} more`;
+    cards.push(buildFolderCard(name, null, "folder", rest, visibleScopeWeight));
   }
 
   // The heading already names its own subject, so the trail stops one step
@@ -626,11 +639,11 @@ function buildSummary(
     .filter((entry) => entry.totals.weight !== 0)
     .sort((left, right) => byMagnitude(left.totals.weight, right.totals.weight));
   for (const entry of children) {
-    ribbon.push(buildFolderCard(entry.node.name, entry.node.path, entry.totals, visibleScopeWeight));
+    ribbon.push(buildFolderCard(entry.node.name, entry.node.path, "folder", entry.totals, visibleScopeWeight));
   }
   const scopeDirect = aggregation.direct.get(scopeRoot.path) ?? emptyTotals();
   if (scopeDirect.weight !== 0) {
-    ribbon.push(buildFolderCard(DIRECT_FILES_LABEL, null, scopeDirect, visibleScopeWeight));
+    ribbon.push(buildFolderCard(DIRECT_FILES_LABEL, scopeRoot.path, "files", scopeDirect, visibleScopeWeight));
   }
   return {
     projectWeight: baseline,

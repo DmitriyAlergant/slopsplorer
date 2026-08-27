@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
-  Aspect, ComparisonRequest, FileKind, Measure, RankMetric, TreeRow, ViewRequest, ViewResponse,
+  Aspect, ComparisonRequest, FileKind, Measure, RankMetric, RowKind, TreeRow, ViewRequest, ViewResponse,
 } from "../shared/api.ts";
 import { ASPECTS, MEASURES } from "../shared/api.ts";
 import { compare, fetchView, openRoot, rescan } from "./api.ts";
@@ -217,7 +217,7 @@ export function App(): React.JSX.Element {
     }));
   }, []);
 
-  const select = useCallback((rowKind: "folder" | "files", path: string) => {
+  const select = useCallback((rowKind: RowKind, path: string) => {
     setRequest((previous) => {
       // Selecting a nested folder should reveal it, so open every ancestor.
       const ancestors = new Set(previous.expanded);
@@ -473,7 +473,7 @@ export function App(): React.JSX.Element {
           sort={request.rank.metric}
           onSortChange={setRankMetric}
           path={request.selected.path}
-          onSelectFolder={(path) => select("folder", path)}
+          onSelect={select}
           directFilesOnly={request.selected.rowKind === "files"}
           canDrill={request.selected.rowKind === "folder" && request.selected.path !== request.drillPath}
           onDrill={() => drill(request.selected.path)}
@@ -501,8 +501,8 @@ export function App(): React.JSX.Element {
         measure={view?.measure ?? request.measure}
         aspect={aspect}
         isDiff={isDiff}
-        selectedPath={request.selected.rowKind === "folder" ? request.selected.path : null}
-        onSelect={(path) => select("folder", path)}
+        selected={request.selected}
+        onSelect={select}
       />
 
       <SourceDialog preview={preview} onClose={() => setPreview(null)} />

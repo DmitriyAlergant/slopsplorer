@@ -155,6 +155,13 @@ describe("aggregating a diff", () => {
     expect({ added: card.added, removed: card.removed }).toEqual({ added: 30, removed: 0 });
   });
 
+  it("names a collapsed tile for folders when only folders are in it", () => {
+    // The comparison root holds two folders and no files of its own.
+    const view = buildView(diffIndex, request({ cardColumns: 1, selected: { rowKind: "folder", path: "" } }));
+    expect(view.detail.cards).toHaveLength(1);
+    expect(view.detail.cards[0]!.name).toBe("2 more folders");
+  });
+
   it("splits a folder tile by flavor inside a comparison too", () => {
     const view = buildView(diffIndex, request({ selected: { rowKind: "folder", path: "" } }));
     const card = view.detail.cards.find((entry) => entry.name === "grown")!;

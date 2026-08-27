@@ -1085,9 +1085,8 @@ button { cursor: pointer; }
 }
 .card:hover { border-color: var(--signal); }
 .card--aggregate { background: var(--sunk); border-style: dashed; }
-/* Holds the row rather than states a figure, so it takes a tile's box and none
-   of a tile's ink. */
-.card--placeholder { border-style: dashed; color: var(--ink-faint); }
+/* The folder's own files, marked the way the tree marks the same row. */
+.card[data-kind="files"] .card__name { font-style: italic; color: var(--ink-soft); }
 .card__name {
   min-width: 0;
   font-family: var(--font-mono); font-size: 12.5px; font-weight: 600;

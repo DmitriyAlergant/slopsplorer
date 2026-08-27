@@ -1,0 +1,1 @@
+A folder's own files now take a tile of their own in the folder panel, ranked among the subfolder tiles by weight and selectable like them, so the tiles divide the whole folder and a folder with no subfolders no longer draws an empty placeholder.
