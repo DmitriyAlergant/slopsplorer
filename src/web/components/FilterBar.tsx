@@ -1,5 +1,6 @@
-import { FILE_KINDS, type FileKind, type ViewRequest } from "../../shared/api.ts";
+import { FILE_KINDS, MEASURES, type FileKind, type Measure, type ViewRequest } from "../../shared/api.ts";
 import { FILE_KIND_DETAILS } from "../fileKinds.ts";
+import { measureHeading } from "../format.ts";
 import { Tooltip, tooltipHandlers } from "./Tooltip.tsx";
 
 interface Props {
@@ -7,18 +8,25 @@ interface Props {
   onToggleKind: (kind: FileKind) => void;
   onToggleGenerated: () => void;
   onQueryChange: (query: string) => void;
+  onMeasureChange: (measure: Measure) => void;
 }
 
 const GENERATED_DESCRIPTION = "Generated output and lockfiles detected from path and filename conventions.";
 
+const MEASURE_DESCRIPTIONS: Record<Measure, string> = {
+  tokens: "Tokenizer count for the whole file, comments and whitespace included.",
+  lines: "Every line with content, comment lines included. Blank lines are excluded.",
+  codeLines: "Content lines that are not entirely comment. A line of code with a trailing comment still counts.",
+};
+
 /**
- * Search and the visibility switches: what is counted at all.
+ * What is counted, and the unit it is counted in.
  *
- * The unit those counts are expressed in is not here. It belongs to the columns
- * that show it, so it is chosen from the source tree's numbers heading or by
- * sorting a file table on a measured column.
+ * The unit sits beside the visibility switches and not inside them, because it
+ * is orthogonal to every one of them: it changes what a figure says, never
+ * which files are behind it.
  */
-export function FilterBar({ request, onToggleKind, onToggleGenerated, onQueryChange }: Props): React.JSX.Element {
+export function FilterBar({ request, onToggleKind, onToggleGenerated, onQueryChange, onMeasureChange }: Props): React.JSX.Element {
   return (
     <section className="filters" aria-label="Scope filters">
       <label className="search">
@@ -30,6 +38,22 @@ export function FilterBar({ request, onToggleKind, onToggleGenerated, onQueryCha
           onChange={(event) => onQueryChange(event.target.value)}
         />
       </label>
+
+      <div className="units" role="group" aria-label="Unit every figure is expressed in">
+        {MEASURES.map((candidate) => (
+          <button
+            key={candidate}
+            type="button"
+            className="unit"
+            aria-pressed={candidate === request.measure}
+            onClick={() => onMeasureChange(candidate)}
+            {...tooltipHandlers}
+          >
+            {measureHeading(candidate)}
+            <Tooltip>{MEASURE_DESCRIPTIONS[candidate]}</Tooltip>
+          </button>
+        ))}
+      </div>
 
       <div className="chips" role="group" aria-label="File kinds counted">
         {FILE_KINDS.map((kind) => {

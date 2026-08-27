@@ -1,5 +1,6 @@
 import type {
-  OpenRootRequest, SkillInstallResponse, SourceResponse, ViewRequest, ViewResponse,
+  CompareRequest, ComparisonRequest, OpenRootRequest, RepositoryRefs, SkillInstallResponse,
+  SourceResponse, ViewRequest, ViewResponse,
 } from "../shared/api.ts";
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
@@ -44,6 +45,17 @@ export function rescan(view: ViewRequest): Promise<ViewResponse> {
 export function openRoot(root: string, view: ViewRequest): Promise<ViewResponse> {
   const body: OpenRootRequest = { root, view };
   return postJson<ViewResponse>("/api/open", body);
+}
+
+/** Compare something else in the same repository, then aggregate the current scope. */
+export function compare(comparison: ComparisonRequest, view: ViewRequest): Promise<ViewResponse> {
+  const body: CompareRequest = { comparison, view };
+  return postJson<ViewResponse>("/api/compare", body);
+}
+
+/** Branches, remote branches, and tags the comparison picker offers. */
+export function fetchRefs(): Promise<RepositoryRefs> {
+  return request<RepositoryRefs>("/api/refs");
 }
 
 export function fetchSource(path: string): Promise<SourceResponse> {

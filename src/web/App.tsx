@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Aspect, FileKind, Measure, RankMetric, TreeRow, ViewRequest, ViewResponse } from "../shared/api.ts";
+import type {
+  Aspect, ComparisonRequest, FileKind, Measure, RankMetric, TreeRow, ViewRequest, ViewResponse,
+} from "../shared/api.ts";
 import { ASPECTS, MEASURES } from "../shared/api.ts";
-import { fetchView, openRoot, rescan } from "./api.ts";
+import { compare, fetchView, openRoot, rescan } from "./api.ts";
 import {
   DEFAULT_RANKING_HEIGHT, DEFAULT_WORKSPACE_HEIGHT, MAX_WORKSPACE_HEIGHT, MIN_WORKSPACE_HEIGHT,
   readPreferences, readRankingHeight, readTreePanelRatio, readWorkspaceHeight,
   writePreferences, writeRankingHeight, writeTreePanelRatio, writeWorkspaceHeight,
 } from "./preferences.ts";
+import { comparisonLabel } from "./format.ts";
 import { closeTooltip } from "./tooltip.ts";
 import { readRequest, selectionKey, writeRequest } from "./urlState.ts";
 import { FilterBar } from "./components/FilterBar.tsx";
@@ -62,6 +65,7 @@ export function App(): React.JSX.Element {
   const [busy, setBusy] = useState(false);
   const [rescanning, setRescanning] = useState(false);
   const [openingRoot, setOpeningRoot] = useState<string | null>(null);
+  const [comparingLabel, setComparingLabel] = useState<string | null>(null);
   const [sourcePath, setSourcePath] = useState<string | null>(null);
   const [skillOpen, setSkillOpen] = useState(false);
   const [treePanelRatio, setTreePanelRatio] = useState(treePanelRatioFromStorage);
@@ -171,7 +175,15 @@ export function App(): React.JSX.Element {
       .finally(() => setRescanning(false));
   }, []);
 
-  const handleOpen = useCallback((root: string) => {
+  /**
+   * Aim the page at a new index, and reset what only the old one could mean.
+   *
+   * Another folder and another comparison both replace the file list, so an
+   * exclusion or a drill carried across would name a path that may not exist.
+   */
+  const reaim = useCallback((
+    start: (view: ViewRequest) => Promise<ViewResponse>, finish: () => void,
+  ) => {
     const nextRequest: ViewRequest = {
       ...requestRef.current,
       excludedFolders: [],
@@ -180,8 +192,7 @@ export function App(): React.JSX.Element {
       drillPath: "",
       selected: { rowKind: "folder", path: "" },
     };
-    setOpeningRoot(root);
-    openRoot(root, nextRequest)
+    start(nextRequest)
       .then((next) => {
         setRequest(nextRequest);
         setView(next);
@@ -189,8 +200,18 @@ export function App(): React.JSX.Element {
         setError(null);
       })
       .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause)))
-      .finally(() => setOpeningRoot(null));
+      .finally(finish);
   }, []);
+
+  const handleOpen = useCallback((root: string) => {
+    setOpeningRoot(root);
+    reaim((view) => openRoot(root, view), () => setOpeningRoot(null));
+  }, [reaim]);
+
+  const handleCompare = useCallback((comparison: ComparisonRequest) => {
+    setComparingLabel(comparisonLabel(comparison));
+    reaim((view) => compare(comparison, view), () => setComparingLabel(null));
+  }, [reaim]);
 
   const toggleKind = useCallback((kind: FileKind) => {
     setRequest((previous) => ({
@@ -382,16 +403,33 @@ export function App(): React.JSX.Element {
   // Taken from the response rather than the pending request, so a heading
   // never claims a mode the numbers beside it are not in.
   const isDiff = view?.meta.diff != null;
+  const scanning = rescanning || openingRoot !== null || comparingLabel !== null;
+  // Re-aiming replaces the whole data model, so the stale page stays covered
+  // until the new figures arrive.
+  const reaiming = openingRoot !== null
+    ? {
+      title: "Opening folder",
+      subject: openingRoot,
+      hint: "Scanning and measuring the source tree. Large folders can take a moment.",
+    }
+    : comparingLabel !== null
+      ? {
+        title: "Comparing",
+        subject: comparingLabel,
+        hint: "Reading both sides and measuring the change. A wide comparison can take a moment.",
+      }
+      : null;
   const aspect = view?.aspect ?? request.aspect;
 
   return (
-    <main className="app" data-busy={busy || rescanning || openingRoot !== null}>
+    <main className="app" data-busy={busy || scanning}>
       <InstrumentBar
         meta={view?.meta ?? null}
         rescanning={rescanning}
-        opening={openingRoot !== null}
+        scanning={scanning}
         onRescan={handleRescan}
         onOpen={handleOpen}
+        onCompare={handleCompare}
         onInstallSkill={() => setSkillOpen(true)}
       />
 
@@ -400,6 +438,7 @@ export function App(): React.JSX.Element {
         onToggleKind={toggleKind}
         onToggleGenerated={() => patch({ showGenerated: !request.showGenerated })}
         onQueryChange={(query) => patch({ query })}
+        onMeasureChange={setMeasure}
       />
 
       {/* The trail names the scope the tree beneath it is rooted in, and is the
@@ -429,7 +468,6 @@ export function App(): React.JSX.Element {
           onSelect={select}
           onDrill={drill}
           onSortChange={(treeSort) => patch({ treeSort })}
-          onMeasureChange={setMeasure}
           onAspectChange={setAspect}
           onToggleExpanded={toggleExpanded}
           onToggleFolder={toggleFolder}
@@ -496,14 +534,14 @@ export function App(): React.JSX.Element {
 
       <SourceDialog path={sourcePath} onClose={() => setSourcePath(null)} />
       <SkillInstallDialog open={skillOpen} onClose={() => setSkillOpen(false)} />
-      {openingRoot ? (
-        <div className="progress-modal" role="dialog" aria-modal="true" aria-labelledby="opening-folder-title">
+      {reaiming ? (
+        <div className="progress-modal" role="dialog" aria-modal="true" aria-labelledby="reaim-title">
           <div className="progress-modal__card">
             <span className="progress-modal__spinner" aria-hidden="true" />
             <div className="progress-modal__copy">
-              <h2 id="opening-folder-title">Opening folder</h2>
-              <p className="progress-modal__path">{openingRoot}</p>
-              <p className="progress-modal__hint">Scanning and measuring the source tree. Large folders can take a moment.</p>
+              <h2 id="reaim-title">{reaiming.title}</h2>
+              <p className="progress-modal__path">{reaiming.subject}</p>
+              <p className="progress-modal__hint">{reaiming.hint}</p>
             </div>
           </div>
         </div>

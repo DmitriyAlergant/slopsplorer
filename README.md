@@ -27,10 +27,11 @@ slopsplorer --diff             # HEAD against the working tree, untracked files 
 slopsplorer --staged           # HEAD against the index
 slopsplorer main...HEAD        # what a pull request would show
 slopsplorer HEAD~5             # what the last five commits touched
+slopsplorer origin/main        # everything since origin/main, committed or not
 slopsplorer v1.4 v1.5          # any two revisions
 ```
 
-A positional is a folder when one exists at that path, and a revision otherwise, so a branch named like a directory needs no escape syntax. Use `-C <dir>` to name a repository elsewhere.
+A positional is a folder when one exists at that path, and a revision otherwise, so a branch named like a directory needs no escape syntax. Use `-C <dir>` to name a repository elsewhere. Once the page is open, a branch picker points it at any other comparison without restarting the tool.
 
 The numbers heading then picks a side of the change as well as a unit:
 
@@ -41,7 +42,7 @@ The numbers heading then picks a side of the change as well as a unit:
 | **Added** / **Removed** | one side on its own. |
 | **After** | the whole file as the change leaves it. |
 
-In net, every row draws from a centre axis, removed to the left and added to the right, because a rewrite at `+500 / -480` and an addition of `+20` have nearly the same net and are not the same change. Renames are followed rather than counted twice, and a file preview shows the unified diff.
+In net, every row of the source tree draws a band from a centre axis, removed left and added right, because a rewrite at `+500 / -480` and an addition of `+20` have nearly the same net and are not the same change. Renames are followed rather than counted twice, and a file preview shows the unified diff.
 
 ![Slopsplorer reading its own repository: flavor filters above a source tree and a folder panel, then the headline readouts, the mass ribbon, and the heaviest-files table.](https://raw.githubusercontent.com/DmitriyAlergant/slopsplorer/main/docs/screenshot.png)
 

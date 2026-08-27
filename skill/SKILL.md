@@ -1,6 +1,6 @@
 ---
 name: slopsplorer
-description: Open a browser UI where the user explores where a repository's token weight sits - what fills a context budget, and where bloated, comment-padded, or generated bulk is concentrated. Slopsplorer serves a page for a person to read. It returns no analysis to you. Use it to start that UI for the user, not to obtain measurements yourself.
+description: Open a browser UI where the user explores where a repository's token weight sits - what fills a context budget, and where bloated, comment-padded, or generated bulk is concentrated. Slopsplorer serves a page for a person to read and returns no analysis to you. Use it to start that UI for the user, not to obtain measurements yourself.
 ---
 
 # Slopsplorer
@@ -9,26 +9,20 @@ Slopsplorer measures a source tree by tokenizer weight and serves the result as 
 
 ## What this skill does, and does not do
 
-The command starts a web server and keeps running.
-It prints a URL. It prints no measurements.
-
+The command starts a web server, prints a URL, and prints no measurements.
 You cannot see the page.
 Start the tool for the user, give them the URL, and let them explore it themselves.
 Do not run it to collect numbers for your own analysis, and do not report figures you have not been given.
-
-The rest of this page is reference material for two jobs:
-explain what a number in the UI means when the user asks, and tell the user where to look next.
+The rest of this page exists so you can explain what a number in the UI means and tell the user where to look next.
 
 Suggest the tool when the user asks where the weight of a repository sits, rather than whether the code is any good.
 
-It has a second mode for the neighbouring question: where the weight of a *change* sits.
-`slopsplorer --diff` maps HEAD against the working tree, untracked files included, `slopsplorer --staged` maps the index, and `slopsplorer main...HEAD` maps a branch the way a pull request shows it.
-A lone positional is a folder when one exists at that path and a revision otherwise, and `-C <dir>` names a repository elsewhere.
+## Diff mode
 
-In that mode every metric below splits into what the change added and what it removed.
-Churn is their sum and is never negative; net is their difference and is signed.
-The user picks between them in the same menu that picks the unit.
-Because net is signed, the page draws its shares against churn and orders by magnitude, so a large deletion ranks as a large change.
+The tool can map a change instead of a tree.
+`--diff` compares HEAD against the working tree, untracked files included, `--staged` compares the index, `main...HEAD` maps a branch the way a pull request shows it, and a bare revision compares that revision against the working tree.
+In this mode every metric below splits into what the change added and what it removed: churn is their sum and is never negative, net is their signed difference.
+The user picks a side in the same menu that picks the unit, and because net is signed the page draws shares against churn and orders by magnitude, so a large deletion ranks as a large change.
 
 ## What it measures
 
@@ -47,15 +41,9 @@ For every file that enters the scan it reports:
 | `language` | The tree-sitter grammar that produced the structure counts, or `null`. |
 
 Structure counts come from 13 tree-sitter grammars: `python`, `typescript`, `tsx`, `javascript`, `go`, `rust`, `java`, `ruby`, `cpp`, `c-sharp`, `php`, `bash`, `powershell`.
-Shell scripts reach `bash` by extension (`.sh`, `.bash`, `.ksh`, `.bats`, `.zsh`) or by a `#!` line naming a Bourne shell.
-A file outside those grammars still gets accurate `tokens`, `lines`, and `blankLines`.
-For such a file, `functions`, `classes`, and `branches` are all `0`, and `language` is `null`.
-
-The comment split for those files comes from a comment-marker table rather than a grammar.
-It covers YAML, TOML, SQL, Prisma, JSONC, CSS, SCSS, LESS, HTML, XML, SVG, Vue, Svelte, Lua, Kotlin, Swift, Scala, Dart, Terraform, INI, Java properties, R, Perl, fish, `.env`, `Dockerfile`, and `Makefile`.
-Block comments are read across lines, and a marker inside a string literal is ignored.
-For Markdown and JSON it reports zero comment lines, because a Markdown paragraph is content rather than commentary and JSON has no comment syntax.
-A format with no rule at all reports its content as `codeLines`, so a file with content is never reported as empty.
+A file outside those grammars still gets accurate `tokens`, `lines`, and `blankLines`; its `functions`, `classes`, and `branches` are `0`, and `language` is `null`.
+Its comment split comes from a comment-marker table that covers some fifty other formats.
+Markdown and JSON report zero comment lines, and a format with no rule at all reports its content as `codeLines`, so a file with content is never reported as empty.
 
 ## What it does not measure
 
@@ -63,9 +51,7 @@ Token weight is a proxy for review surface and agent context cost.
 It is not a measure of cyclomatic complexity, coupling, correctness, or code quality.
 A 30,000-token vendored dataset and a 30,000-token core module weigh the same here, and they are not the same problem.
 
-`branches` is a raw count of decision nodes per file.
-It is not a per-function cyclomatic complexity score.
-It is not comparable across languages, because each grammar names its constructs differently.
+`branches` is a raw count of decision nodes per file, not a per-function cyclomatic complexity score, and it is not comparable across languages.
 
 A high `commentLines:codeLines` ratio is a signal worth a look, not a verdict.
 A well-documented public API and a model-generated file that narrates every line both score high.
@@ -79,70 +65,32 @@ They are not a quality judgement, and neither you nor the user should quote them
 ## Running it
 
 ```bash
-npx slopsplorer /path/to/repo
+npx slopsplorer /path/to/repo                    # map a tree
+npx slopsplorer -C /path/to/repo main...HEAD     # map a change
 ```
 
 It prints a loopback URL and serves the UI there.
 It runs until it is stopped, so start it in the background and hand the URL to the user.
+`npx slopsplorer --help` lists every flag.
 
-| Flag | Effect |
-| --- | --- |
-| `--port <n>` | Bind a specific port instead of the default 8765. |
-| `--all-files` | Walk the filesystem and ignore `.gitignore` completely. Use it to see what the default view hides. |
-| `--exclude <dir>` | Skip a directory by name, anywhere in the tree. Repeatable. |
-| `--tokenizer o200k_base\|cl100k_base` | `o200k_base` is the default and is a reasonable proxy for Claude's context cost. `cl100k_base` matches GPT-4 and GPT-3.5. |
-| `--dev` | Development mode, for work on Slopsplorer itself. It does not help when you analyse another repository. |
-
-Inside a Git worktree, the default file list is the Git index plus untracked files that no ignore rule covers.
-Outside a Git worktree, the walker applies `.gitignore` itself.
-Either way, ignored build output, dependencies, and caches stay out of the map, so the picture shows the project rather than its `node_modules`.
+Inside a Git worktree the file list is the Git index plus untracked files that no ignore rule covers; outside one the walker applies `.gitignore` itself, and `--all-files` disables both.
 `node_modules`, `.venv`, `dist`, `target`, `vendor`, `__pycache__`, and similar directories are excluded structurally as well.
 
 ## Reading the UI
 
-- The **Measure** switch chooses the unit every total, bar, and ranking is expressed in: `Tokens` (the default), `Lines`, or `LOC`, which are the `tokens`, `lines`, and `codeLines` metrics above. Neither line measure counts blank lines. It is orthogonal to the filters: it changes the unit, never which files are counted. Tokens answer what a review or a context window costs. LOC answers how much logic is present, which is the question a comment-padded file distorts.
+- The **Measure** switch picks the unit for every total, bar, and ranking: `Tokens` (the default), `Lines`, or `LOC`, none of which counts blank lines. It changes the unit, never which files are counted. Tokens answer what a review or a context window costs; LOC answers how much logic is present.
 - The visibility switches separate `code`, `test`, `text`, `i18n`, `data`, `other`, and `generated`. Clear one switch and that weight leaves every total.
-- The folder and `.` checkboxes narrow the analytical scope, where `.` is the row holding the files that sit directly in a folder. They work independently of tree expansion, so you can drop a folder from the totals and still see it in the tree.
-- The percentage baseline is the whole scanned tree, measured before any filter. It does not move while you filter, so shares stay comparable between two views.
-- The ranked file list sorts by one metric, and its minimum-size floor is expressed in the active measure. It reports the total number of matches before the display limit, so a truncated list still tells you how many files qualified.
+- The folder and `.` checkboxes narrow the scope, where `.` is the row holding the files that sit directly in a folder.
+- The percentage baseline is the whole scanned tree before any filter, so shares stay comparable between two views.
+- The ranked file list sorts by one metric, floors at a minimum size in the active measure, and reports the match count before its display limit.
 
 ## Recipes to give the user
 
-Each recipe is a sequence for the person at the screen. Read it out, or summarise the step that fits their question.
-
-**Find what will use the context budget, before a refactor.**
-Scan the repository, leave every switch on, and read the top-level ribbon.
-Note the two or three folders that hold most of the weight.
-Open each one and check whether the weight is a few large files or a long tail.
-A few large files means the refactor is tractable in one pass.
-A long tail means you must work folder by folder.
-
-**Find comment-padded or model-generated bulk.**
-Clear the `test`, `data`, `i18n`, and `generated` switches, so only hand-written code and prose remain.
-Set the measure to `Lines`, note where the weight sits, then set it to `LOC` and look at what shrank: those folders are mostly commentary.
-Rank the files by `commentLines`.
-Compare each result's `commentLines` against its `codeLines`.
-Open the files where commentary approaches or exceeds code, especially those with a low `functions` count.
-Genuine API documentation clusters in a few public modules.
-Narrated bulk is spread evenly across a whole directory.
-
-**Check whether tests or a translation catalogue inflate the apparent size.**
-Read the selected token total with every switch on.
-Clear the `test` switch alone and read the total again.
-Repeat for `i18n`, `data`, and `generated`.
-The differences tell you how much of the "size of this project" is suite, catalogue, fixture, or machine output.
-A project that looks unreviewable at 900k tokens is often 300k of code once you set the catalogue and the lockfiles aside.
-
-**Decide what to keep out of an agent's context.**
-Start from the code-only view.
-Exclude the folders that are large and irrelevant to the task, then read the remaining total.
-If it fits the window, the excluded folder names are your ignore list.
-If it does not fit, rank the survivors by `tokens` and decide which files to summarise rather than include.
-
-**Check an unfamiliar repository before you touch it.**
-Compare the default view against `--all-files`.
-A large gap means that significant material is gitignored.
-That is normal for build output, and suspicious for anything else.
+- Context budget before a refactor: leave every switch on, read the top-level ribbon, and check whether each heavy folder is a few large files or a long tail.
+- Comment-padded bulk: clear `test`, `data`, `i18n`, and `generated`, compare `Lines` against `LOC`, then rank by `commentLines` and open the files where commentary approaches code.
+- Apparent-size inflation: clear `test`, `i18n`, `data`, and `generated` one at a time and read how much the total drops.
+- An agent's ignore list: start from the code-only view, exclude the folders irrelevant to the task, and read the remaining total.
+- An unfamiliar repository: compare the default view against `--all-files`; a large gitignored gap is normal for build output and suspicious for anything else.
 
 ## Safety
 

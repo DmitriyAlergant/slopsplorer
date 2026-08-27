@@ -106,11 +106,32 @@ describe("aggregating a diff", () => {
     for (const row of view.tree) {
       expect(row.shareOfScope).toBeGreaterThanOrEqual(0);
       expect(row.shareOfScope).toBeLessThanOrEqual(1);
-      expect(row.shareAdded + row.shareRemoved).toBeLessThanOrEqual(1.000001);
     }
     expect(rowFor(view.tree, "shrunk").shareOfScope).toBeCloseTo(35 / 65, 6);
-    expect(rowFor(view.tree, "shrunk").shareRemoved).toBeCloseTo(35 / 65, 6);
+    expect(rowFor(view.tree, "grown").shareOfScope).toBeCloseTo(30 / 65, 6);
+  });
+
+  /**
+   * The band is the only place a net row states what it cost, so it has to be
+   * drawn at a readable length in every view, not only in an unfiltered one.
+   */
+  it("divides every band by the churn the filters leave, so one length means one quantity", () => {
+    const view = buildView(diffIndex, request({ aspect: "net" }));
+
+    // The scope's own row is the whole of it, so its band fills both halves.
+    const scope = rowFor(view.tree, "");
+    expect(scope.shareAdded + scope.shareRemoved).toBeCloseTo(1, 6);
     expect(rowFor(view.tree, "grown").shareAdded).toBeCloseTo(30 / 65, 6);
+    expect(rowFor(view.tree, "shrunk").shareRemoved).toBeCloseTo(35 / 65, 6);
+
+    // Narrowed to one folder, the bands divide what is left rather than what
+    // the scan found, or a filtered view would draw every band at nothing.
+    const narrowed = buildView(diffIndex, request({ aspect: "net", query: "grown" }));
+    const grown = rowFor(narrowed.tree, "grown");
+    expect(grown.shareAdded).toBe(1);
+    expect(grown.shareRemoved).toBe(0);
+    // The percentage baseline is unfiltered, so the share readout does not move.
+    expect(grown.shareOfScope).toBeCloseTo(30 / 65, 6);
   });
 
   it("orders by magnitude in net, so the largest deletion is not sorted last", () => {

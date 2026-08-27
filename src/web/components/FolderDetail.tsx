@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import type { Aspect, DetailView, Measure, RankMetric } from "../../shared/api.ts";
-import { count, measureAbbreviation, measureName, percent, signed, weightCount, weightName } from "../format.ts";
+import {
+  count, countOf, measureAbbreviation, measureName, percent, sideCount, signed, weightCount, weightName,
+} from "../format.ts";
 import { CopyPathButton } from "./CopyPathButton.tsx";
 import { FileTable } from "./FileTable.tsx";
 import { FlavorBar } from "./FlavorBar.tsx";
@@ -67,17 +69,18 @@ export function FolderDetail({ detail, measure, aspect, isDiff, sort, onSortChan
   const commentShare = commentBase > 0 ? commentPart / commentBase : 0;
   // Tokens are the cross-reference when they are not the headline themselves,
   // so the line always states the weight in two units.
+  // In net the two sides and the net they come to are the whole subject of the
+  // heading, so they replace the supporting line rather than sit under it.
+  const splitFigures = isDiff && aspect === "net";
   const stats = isDiff
     ? [
       `${weightCount(detail.weight, aspect)} ${weightName(measure, aspect, isDiff)}`,
-      `+${count(detail.added)} / -${count(detail.removed)}`,
-      `${count(detail.files)} files`,
+      countOf(detail.files, "file"),
       measure === "tokens" ? `${count(detail.churnLines)} lines churned` : `${count(detail.churnTokens)} tokens churned`,
-      `${percent(commentShare)} comment`,
     ]
     : [
       `${count(detail.weight)} ${measureName(measure)}`,
-      `${count(detail.files)} files`,
+      countOf(detail.files, "file"),
       measure === "tokens" ? `${count(detail.lines)} lines` : `${count(detail.tokens)} tokens`,
       `${percent(commentShare)} comment`,
     ];
@@ -124,7 +127,18 @@ export function FolderDetail({ detail, measure, aspect, isDiff, sort, onSortChan
             </h2>
             {path ? <CopyPathButton path={path} /> : null}
           </div>
-          <p className="detail__stats">{stats.join(" · ")}</p>
+          {splitFigures ? null : <p className="detail__stats">{stats.join(" · ")}</p>}
+          {splitFigures ? (
+            <p className="detail__figures">
+              <span className="detail__split">
+                <span data-sign={detail.added === 0 ? "zero" : "positive"}>{sideCount(detail.added, "+")}</span>
+                <span data-sign={detail.removed === 0 ? "zero" : "negative"}>{sideCount(detail.removed, "-")}</span>
+              </span>
+              <span className="detail__net">
+                {weightCount(detail.weight, aspect)} {weightName(measure, aspect, isDiff)}
+              </span>
+            </p>
+          ) : null}
         </div>
         <div className="detail__actions">
           <p className="detail__share" {...tooltipHandlers}>
@@ -145,13 +159,21 @@ export function FolderDetail({ detail, measure, aspect, isDiff, sort, onSortChan
               <>
                 <span className="card__name">{card.name}</span>
                 <span className="card__meta">
-                  {weightCount(card.weight, aspect)} {measureAbbreviation(measure)} · {count(card.files)} files ·{" "}
-                  {percent(card.shareOfScope)} of current scope
+                  {splitFigures ? null : `${weightCount(card.weight, aspect)} ${measureAbbreviation(measure)} · `}
+                  {countOf(card.files, "file")} · {percent(card.shareOfScope)} of current scope
                 </span>
-                {isDiff && aspect === "net" ? (
-                  <span className="card__split">
-                    <span data-sign="positive">+{count(card.added)}</span>
-                    <span data-sign="negative">-{count(card.removed)}</span>
+                {/* The two sides on the left and the net they come to on the
+                    right, on one line of their own, because in net that line is
+                    the card rather than a footnote to it. */}
+                {splitFigures ? (
+                  <span className="card__figures">
+                    <span className="card__split">
+                      <span data-sign={card.added === 0 ? "zero" : "positive"}>{sideCount(card.added, "+")}</span>
+                      <span data-sign={card.removed === 0 ? "zero" : "negative"}>{sideCount(card.removed, "-")}</span>
+                    </span>
+                    <span className="card__net">
+                      {weightCount(card.weight, aspect)} {measureAbbreviation(measure)}
+                    </span>
                   </span>
                 ) : null}
                 <FlavorBar

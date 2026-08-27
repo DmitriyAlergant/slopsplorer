@@ -6,11 +6,12 @@ import path from "node:path";
 import { parseArgs } from "node:util";
 import { scanDiff, type DiffScanOptions } from "./scanner/diffScan.ts";
 import {
-  GitError, isRevision, parseRevisionArgument, repositoryRoot, resolveComparison,
-  type Comparison, type ComparisonRequest,
+  GitError, parseComparisonSpec, parseRevisionArgument, repositoryRoot, resolveComparison,
+  verifyComparisonRequest, type Comparison,
 } from "./scanner/gitdiff.ts";
 import { DEFAULT_MAX_FILE_BYTES, scanSourceTree } from "./scanner/scan.ts";
 import type { ScanIndex, ScanOptions, ScanProgress } from "./scanner/scan.ts";
+import type { ComparisonRequest } from "./shared/api.ts";
 import { DEFAULT_TOKENIZER, isTokenizerName, TOKENIZERS } from "./scanner/tokenize.ts";
 import { createSlopsplorerServer, resolvePackageRoot, type IndexProducer } from "./server/server.ts";
 
@@ -25,38 +26,33 @@ const CLEAR_LINE = "\u001B[2K";
 
 const USAGE = `slopsplorer - local, token-weighted source tree explorer.
 
-Scan mode answers how much of a repository an agent must read. Diff mode answers
-the neighbouring question: how much of a change a reviewer must read, and where
-it sits. Both draw the same map.
-
 USAGE
-  slopsplorer [<dir>] [options]           Map a source tree. Default: this folder.
-  slopsplorer --diff [options]            Map HEAD against the working tree,
+  slopsplorer [<dir>] [options]           Scan a source tree. Default: current folder.
+  slopsplorer --diff [options]            Compare HEAD against the working tree,
                                           untracked files included.
-  slopsplorer --staged [options]          Map HEAD against the index.
-  slopsplorer <rev> [options]             Map <rev> against the working tree.
-  slopsplorer <revA> <revB> [options]     Map <revA> against <revB>.
+  slopsplorer --staged [options]          Compare HEAD against the index.
+  slopsplorer <rev> [options]             Compare <rev> against the working tree.
+  slopsplorer <revA> <revB> [options]     Compare <revA> against <revB>.
   slopsplorer <revA>..<revB> [options]    The same, written as a range.
-  slopsplorer <revA>...<revB> [options]   Map the merge base of A and B against B.
+  slopsplorer <revA>...<revB> [options]   Compare the merge base of A and B against B.
 
-  A lone positional is a directory when the filesystem holds one at that path,
-  and a revision otherwise. A branch named like a folder therefore needs no
-  escape syntax.
+  A single positional is read as a directory if a directory exists at that path,
+  otherwise as a revision.
 
 OPTIONS
-  -C <dir>                Run as if started in <dir>. This is how diff mode names
-                          its repository, because the positional slot holds the
-                          revisions.
+  -C <dir>                Run as if started in <dir>. A comparison uses this to
+                          locate the repository.
   --host <address>        Interface to bind. Default ${DEFAULT_HOST}.
   --port <number>         Port to bind. Use 0 for any free port. Default ${DEFAULT_PORT}.
-  --dev                   Serve the client through Vite with hot reload on the same port.
+  --dev                   Serve the client through Vite with hot reload on the
+                          same port.
   --all-files             Ignore Git and .gitignore. Built-in directory exclusions
-                          still apply. Scan mode only: a diff runs no walk to widen.
+                          still apply. Scan mode only; rejected with a comparison.
   --exclude <dir>         Skip a directory name anywhere in the tree. Repeatable.
                           Applies to both modes.
   --tokenizer <name>      One of ${TOKENIZERS.join(", ")}. Default ${DEFAULT_TOKENIZER}.
   --max-file-bytes <n>    Skip files larger than this. Default ${DEFAULT_MAX_FILE_BYTES} bytes.
-                          In diff mode either side over the ceiling skips the file.
+                          In a comparison, either side over the limit skips the file.
   --concurrency <n>       Files measured in parallel. Default ${DEFAULT_CONCURRENCY} on this machine.
   --open                  Open the URL in the default browser when the scan finishes.
                           This is the default outside --dev.
@@ -64,20 +60,15 @@ OPTIONS
   -h, --help              Show this help.
   --version               Show the version.
 
-IN THE PAGE
-  The numbers heading of the source tree picks the unit: tokens, lines, or LOC.
-  In diff mode it also picks the side - what the change added, what it removed,
-  their sum (churn), their difference (net, signed), or the whole after-image.
-
 EXAMPLES
-  slopsplorer                       Map the current folder.
-  slopsplorer ../other-project      Map a folder elsewhere.
-  slopsplorer --diff                Where does my uncommitted work sit?
-  slopsplorer --staged              The same for what is staged.
-  slopsplorer main...HEAD           Where this branch sits, as a pull request shows it.
-  slopsplorer HEAD~5                What the last five commits touched.
-  slopsplorer -C ~/src/app v1.4 v1.5
-                                    Compare two tags of a repository elsewhere.
+  slopsplorer                     Scan the current folder.
+  slopsplorer ../other-project    Scan a folder elsewhere.
+  slopsplorer --diff              Compare HEAD against the working tree.
+  slopsplorer --staged            Compare HEAD against the index.
+  slopsplorer main...HEAD         Compare the merge base of main and HEAD to HEAD.
+  slopsplorer HEAD~5              Compare HEAD~5 against the working tree.
+  slopsplorer origin/main         All work since origin/main, uncommitted included.
+  slopsplorer -C ~/src/app v1 v2  Compare two revisions of a repository elsewhere.
 `;
 
 function fail(message: string): never {
@@ -236,33 +227,30 @@ async function readComparisonRequest(
     if (positionals.length > 0) {
       fail(`${wantsStaged ? "--staged" : "--diff"} already names the comparison, so "${positionals[0]}" has nowhere to go`);
     }
-    return wantsStaged ? { kind: "staged" } : { kind: "workingTree" };
+    return parseComparisonSpec([wantsStaged ? "--staged" : "--diff"]);
   }
 
   if (positionals.length === 0) return null;
-  if (positionals.length > 2) fail(`expected at most two revisions, got ${positionals.length}`);
 
-  const verify = async (candidate: string): Promise<void> => {
-    if (!(await isRevision(directory, candidate))) fail(`not a revision in this repository: ${candidate}`);
-  };
+  // The directory rule belongs to the command line, which is the only place a
+  // folder can occupy the positional slot. Everything after it is the shared
+  // spec grammar the page takes as well.
+  const only = positionals[0];
+  const namesDirectory = positionals.length === 1
+    && only !== undefined
+    && isDirectory(path.resolve(directory, only));
+  if (namesDirectory) return null;
 
-  if (positionals.length === 2) {
-    const [base, target] = positionals as [string, string];
-    await verify(base);
-    await verify(target);
-    return { kind: "revisionPair", base, target };
+  try {
+    const request = parseComparisonSpec(positionals);
+    await verifyComparisonRequest(directory, request);
+    return request;
+  } catch (cause) {
+    if (!(cause instanceof GitError)) throw cause;
+    fail(positionals.length === 1 && parseRevisionArgument(only!) === null
+      ? `no such directory, and not a revision in this repository: ${only}`
+      : cause.message);
   }
-
-  const only = positionals[0]!;
-  if (isDirectory(path.resolve(directory, only))) return null;
-  const range = parseRevisionArgument(only);
-  if (range !== null) {
-    await verify(range.base);
-    await verify(range.target);
-    return range;
-  }
-  if (await isRevision(directory, only)) return { kind: "revisionToWorkingTree", rev: only };
-  fail(`no such directory, and not a revision in this repository: ${only}`);
 }
 
 async function main(): Promise<void> {

@@ -5,7 +5,7 @@ import type {
 } from "../shared/api.ts";
 import {
   ASPECTS, CHANGE_STATUSES, FILE_KINDS, FLAVORS, MEASURES, RANK_METRICS, TREE_SORTS,
-  rankMetricsFor, weightField,
+  defaultRankMetric, rankMetricsFor, weightField,
 } from "../shared/api.ts";
 import type { FolderNode, ScanIndex } from "../scanner/scan.ts";
 
@@ -373,6 +373,8 @@ function buildTree(
   exclusions: ExclusionState,
   scopeRoot: FolderNode,
   scopeBaseline: number,
+  /** Churn the filters leave in the scope: the whole the two halves divide. */
+  visibleChurn: number,
 ): TreeRow[] {
   const expanded = new Set(request.expanded);
   const queryActive = request.query.trim().length > 0;
@@ -418,8 +420,8 @@ function buildTree(
       added: totals.added,
       removed: totals.removed,
       shareOfScope: share(totals.weight, scopeBaseline),
-      shareAdded: share(totals.added, scopeBaseline),
-      shareRemoved: share(totals.removed, scopeBaseline),
+      shareAdded: share(totals.added, visibleChurn),
+      shareRemoved: share(totals.removed, visibleChurn),
       hasChildren: children.length > 0,
       expanded: isExpanded,
       included: !exclusions.excluded.has(folder.path),
@@ -445,8 +447,8 @@ function buildTree(
         added: directTotals.added,
         removed: directTotals.removed,
         shareOfScope: share(child.weight, scopeBaseline),
-        shareAdded: share(directTotals.added, scopeBaseline),
-        shareRemoved: share(directTotals.removed, scopeBaseline),
+        shareAdded: share(directTotals.added, visibleChurn),
+        shareRemoved: share(directTotals.removed, visibleChurn),
         hasChildren: false,
         expanded: false,
         included: !folderExcluded && !excludedDirectFiles.has(folder.path),
@@ -478,8 +480,6 @@ function buildFolderCard(
     files: totals.files,
     shareOfProject: share(totals.weight, baseline),
     shareOfScope: share(totals.weight, scopeBaseline),
-    shareAdded: share(totals.added, scopeBaseline),
-    shareRemoved: share(totals.removed, scopeBaseline),
     flavors: flavorSlices(totals),
     statuses: statusSlices(totals, isDiff),
   };
@@ -695,13 +695,19 @@ export function buildView(index: ScanIndex, request: ViewRequest): ViewResponse 
   const aspect: Aspect = isDiff ? request.aspect : "after";
   const rankMetric = rankMetricsFor(isDiff).includes(request.rank.metric)
     ? request.rank.metric
-    : rankMetricsFor(isDiff)[0]!;
+    : defaultRankMetric(isDiff);
   const fields = resolveFields(request.measure, aspect);
   const modeRequest: ViewRequest = { ...effectiveRequest, aspect, rank: { ...effectiveRequest.rank, metric: rankMetric } };
   const exclusions = computeExclusions(index, request);
   const aggregation = aggregate(index, request, exclusions, fields);
   const baseline = projectBaseline(index, fields.baseline);
   const scopeBaseline = unfilteredWeight(index, scopeRoot.path, fields.baseline);
+  // One scale for every band, so a row's length means the same wherever it sits
+  // in the tree. It is the churn the filters leave rather than the unfiltered
+  // whole, because a code-only view of a large repository holds a small part of
+  // the project's churn and would draw every band at under a pixel.
+  const scopeTotals = aggregation.subtree.get(scopeRoot.path) ?? emptyTotals();
+  const visibleChurn = scopeTotals.added + scopeTotals.removed;
   const ranked = rankFiles(index, modeRequest, aggregation, fields);
   return {
     meta: index.meta,
@@ -709,7 +715,7 @@ export function buildView(index: ScanIndex, request: ViewRequest): ViewResponse 
     aspect,
     rankMetric,
     summary: buildSummary(index, aggregation, baseline, scopeRoot, scopeBaseline),
-    tree: buildTree(index, modeRequest, aggregation, exclusions, scopeRoot, scopeBaseline),
+    tree: buildTree(index, modeRequest, aggregation, exclusions, scopeRoot, scopeBaseline, visibleChurn),
     detail: buildDetail(index, modeRequest, aggregation, fields, baseline, scopeBaseline),
     ranked: ranked.rows,
     rankedTotal: ranked.total,

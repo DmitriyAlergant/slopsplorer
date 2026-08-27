@@ -284,17 +284,20 @@ button { cursor: pointer; }
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .picker__option-note {
-  flex: none;
+  flex: 0 1 auto;
+  min-width: 0;
   color: var(--ink-faint);
   font-family: var(--font-mono); font-size: 10.5px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .picker__empty, .picker__note { margin: 8px 7px; color: var(--ink-faint); font-size: 11.5px; }
 .picker__merge {
   display: flex; align-items: center; gap: 8px;
+  cursor: pointer;
   margin-top: 10px;
   font-size: 12px;
 }
-.picker__merge[aria-disabled="true"] { color: var(--ink-faint); }
+.picker__merge[aria-disabled="true"] { color: var(--ink-faint); cursor: default; }
 .picker__error { margin: 8px 0 0; color: var(--signal); font-size: 11.5px; }
 .picker__foot {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
@@ -303,12 +306,6 @@ button { cursor: pointer; }
   border-top: 1px solid var(--rule);
 }
 .picker__preview { display: flex; align-items: center; gap: 7px; margin: 0; min-width: 0; font-size: 12.5px; }
-.button--primary {
-  border-color: var(--signal);
-  background: var(--signal);
-  color: var(--signal-ink);
-}
-.button--primary:hover:not(:disabled) { color: var(--signal-ink); filter: brightness(1.06); }
 .instrument__note {
   grid-column: 1 / -1;
   margin: 0;
@@ -327,6 +324,17 @@ button { cursor: pointer; }
 .button:hover:not(:disabled) { border-color: var(--signal); color: var(--signal); }
 .button:disabled { opacity: 0.5; cursor: progress; }
 .button--tiny { padding: 3px 8px; font-size: 11px; }
+/* Declared after `.button`, which it shares specificity with and must outrank. */
+.button--primary {
+  border-color: var(--signal);
+  background: var(--signal);
+  color: var(--signal-ink);
+}
+.button--primary:hover:not(:disabled) {
+  border-color: var(--signal);
+  color: var(--signal-ink);
+  filter: brightness(1.08);
+}
 
 /* Opening a different root replaces the entire data model, so stale results stay covered until the scan completes. */
 .progress-modal {
@@ -436,10 +444,33 @@ button { cursor: pointer; }
   top: 0;
   z-index: 5;
   display: grid;
-  grid-template-columns: minmax(200px, 320px) minmax(0, 1fr);
+  grid-template-columns: minmax(200px, 320px) auto minmax(0, 1fr);
   align-items: center;
   gap: 18px;
   padding: 12px 0;
+}
+/* The unit is a property of every figure, so it is stated once, in one place. */
+.units {
+  display: flex;
+  border: 1px solid var(--rule-firm);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.unit {
+  position: relative;
+  padding: 6px 13px;
+  border: 0;
+  border-left: 1px solid var(--rule-firm);
+  background: var(--surface);
+  color: var(--ink-soft);
+  font-size: 12.5px;
+}
+.unit:first-child { border-left: 0; }
+.unit:hover { color: var(--signal); }
+.unit[aria-pressed="true"] {
+  background: var(--signal);
+  color: var(--signal-ink);
+  font-weight: 600;
 }
 /*
  * The blur lives on a pseudo-element because `backdrop-filter` on the bar itself
@@ -803,17 +834,24 @@ button { cursor: pointer; }
   background: var(--rule-firm);
 }
 .tree__axis-half { display: flex; width: 50%; }
-.tree__axis-half::after { content: ""; display: block; height: 100%; }
+/*
+ * Square ends, because a rounded one crossing a digit reads as a clipped glyph
+ * rather than as the end of a bar. A change that exists keeps a 2px floor, so
+ * the quietest row still differs from a row that changed nothing, and a side
+ * that is nothing draws nothing.
+ */
+.tree__axis-half::after { content: ""; display: block; height: 100%; min-width: 2px; }
+.tree__axis-half[data-empty="true"]::after { min-width: 0; }
 .tree__axis-half--removed { justify-content: flex-end; }
 .tree__axis-half--removed::after {
   width: calc(var(--share-removed) * 100%);
-  border-radius: 3px 0 0 3px;
-  background: color-mix(in oklab, var(--status-deleted) 24%, transparent);
+  margin-right: 1px;
+  background: color-mix(in oklab, var(--status-deleted) 26%, transparent);
 }
 .tree__axis-half--added::after {
   width: calc(var(--share-added) * 100%);
-  border-radius: 0 3px 3px 0;
-  background: color-mix(in oklab, var(--status-added) 24%, transparent);
+  margin-left: 1px;
+  background: color-mix(in oklab, var(--status-added) 26%, transparent);
 }
 /* The row's own content sits over the band rather than under it. */
 .tree__scroll[data-axis="true"] .tree__disclose,
@@ -954,14 +992,22 @@ button { cursor: pointer; }
 }
 .card__meta { color: var(--ink-faint); font-size: 11px; font-variant-numeric: tabular-nums; }
 /* The two halves of a net figure, so a tile never hides a rewrite behind a small number. */
-.card__figures { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
-.card__figures .card__meta { min-width: 0; }
-.card__split {
-  display: flex; flex: none; gap: 8px;
-  font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap;
+.card__figures, .detail__figures {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+  margin: 0;
+  font-family: var(--font-mono); font-variant-numeric: tabular-nums;
 }
-.card__split [data-sign="positive"] { color: var(--status-added); }
-.card__split [data-sign="negative"] { color: var(--status-deleted); }
+.card__figures { margin-top: 3px; }
+.detail__figures { margin-top: 7px; }
+.card__split, .detail__split { display: flex; gap: 9px; white-space: nowrap; }
+.card__split { font-size: 12px; }
+.detail__split { font-size: 14px; }
+.card__net, .detail__net { flex: none; color: var(--ink); font-weight: 600; white-space: nowrap; }
+.card__net { font-size: 12px; }
+.detail__net { font-size: 14px; }
+.card__split [data-sign="positive"], .detail__split [data-sign="positive"] { color: var(--status-added); }
+.card__split [data-sign="negative"], .detail__split [data-sign="negative"] { color: var(--status-deleted); }
+.card__split [data-sign="zero"], .detail__split [data-sign="zero"] { color: var(--ink-faint); }
 
 .flavor-bar {
   height: 5px; margin-top: 6px;
@@ -1266,7 +1312,7 @@ button { cursor: pointer; }
 
 @media (max-width: 680px) {
   .app { width: calc(100% - 24px); padding-top: 18px; }
-  .filters { position: static; gap: 10px; }
+  .filters { position: static; grid-template-columns: 1fr; gap: 10px; }
   .ribbon__readouts { gap: 20px; }
   .readout[data-emphasis="true"] .readout__value { font-size: 24px; }
   .detail__head { flex-direction: column; gap: 10px; }

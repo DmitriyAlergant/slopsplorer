@@ -113,14 +113,31 @@ export const SCAN_RANK_METRICS: readonly RankMetric[] = [
   "tokens", "lines", "codeLines", "commentLines", "functions", "branches",
 ];
 
-/** Columns a diff draws. The five aspect columns are all in the active measure. */
-export const DIFF_RANK_METRICS: readonly RankMetric[] = [...ASPECTS, "functions", "branches"];
+/**
+ * Columns a diff draws. The five aspect columns are all in the active measure.
+ *
+ * Ordered as the change reads: what it put in, what it took out, what that
+ * leaves, what it cost, and what the file is now.
+ */
+export const DIFF_RANK_METRICS: readonly RankMetric[] = [
+  "added", "removed", "net", "churn", "after", "functions", "branches",
+];
 
 export const RANK_METRICS: readonly RankMetric[] = [...SCAN_RANK_METRICS, ...ASPECTS];
 
 /** Which columns a table draws, decided by the producer of the index. */
 export function rankMetricsFor(isDiff: boolean): readonly RankMetric[] {
   return isDiff ? DIFF_RANK_METRICS : SCAN_RANK_METRICS;
+}
+
+/**
+ * What a table sorts by when the request names a column this mode cannot draw.
+ *
+ * Named rather than taken from the head of the column list, so reordering the
+ * columns cannot quietly move the column every fresh page opens on.
+ */
+export function defaultRankMetric(isDiff: boolean): RankMetric {
+  return isDiff ? "churn" : "tokens";
 }
 
 /** The aspect a diff column names, or `null` for a plain field column. */

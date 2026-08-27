@@ -1,6 +1,6 @@
 import type { Aspect, FileRow, Measure, RankMetric, ViewRequest } from "../../shared/api.ts";
 import { DEFAULT_RANKING_HEIGHT, MAX_RANKING_HEIGHT, MIN_RANKING_HEIGHT } from "../preferences.ts";
-import { count, weightName } from "../format.ts";
+import { count, countOf, weightName } from "../format.ts";
 import { FileTable } from "./FileTable.tsx";
 import { HeightSplitter } from "./Splitter.tsx";
 
@@ -70,7 +70,7 @@ export function LargestFiles({ files, measure, aspect, isDiff, total, scopePath,
 
       {truncated ? (
         <p className="detail__caption">
-          Showing the heaviest {count(files.length)} of {count(total)} matching files
+          Showing the heaviest {count(files.length)} of {countOf(total, "matching file")}
         </p>
       ) : null}
       <FileTable

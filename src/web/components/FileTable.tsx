@@ -2,7 +2,7 @@ import type { Aspect, FileRow, Measure, RankMetric } from "../../shared/api.ts";
 import { rankMetricsFor, weightField } from "../../shared/api.ts";
 import { displayFilePath } from "../displayPath.ts";
 import { FILE_KIND_DETAILS } from "../fileKinds.ts";
-import { aspectHeading, count, percent, signed, statusLabel } from "../format.ts";
+import { aspectHeading, count, measureAbbreviation, percent, signed, statusLabel } from "../format.ts";
 import { CopyPathButton } from "./CopyPathButton.tsx";
 import { SortCaret } from "./SortCaret.tsx";
 import { Tooltip, tooltipHandlers } from "./Tooltip.tsx";
@@ -57,8 +57,13 @@ function describeColumn(metric: RankMetric, measure: Measure): Column {
   switch (metric) {
     case "churn": case "net": case "added": case "removed": case "after": {
       const field = weightField(measure, metric);
+      // The unit is in the heading because these five columns are the only ones
+      // whose unit moves, and a figure whose unit is stated elsewhere is a guess.
       return {
-        metric, label: aspectHeading(metric), value: (file: FileRow) => file[field], isSigned: metric === "net",
+        metric,
+        label: `${aspectHeading(metric)} ${measureAbbreviation(measure)}`,
+        value: (file: FileRow) => file[field],
+        isSigned: metric === "net",
       };
     }
     default: {

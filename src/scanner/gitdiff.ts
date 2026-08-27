@@ -1,5 +1,6 @@
 import { execFile, spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { promisify } from "node:util";
+import type { ComparisonRequest, GitRef, RepositoryRefs } from "../shared/api.ts";
 
 const execFileAsync = promisify(execFile);
 
@@ -11,8 +12,10 @@ export type DiffSide =
 
 /** What the command line asked to compare, resolved against a repository. */
 export interface Comparison {
-  /** The comparison as it was named on the command line. */
+  /** The comparison as it would be named on the command line. */
   spec: string;
+  /** What was asked for, echoed so the page can open its picker on it. */
+  request: ComparisonRequest;
   base: DiffSide;
   target: DiffSide;
   baseLabel: string;
@@ -20,17 +23,6 @@ export interface Comparison {
   /** Arguments that select this comparison for `git diff`. */
   diffArguments: string[];
 }
-
-/** How a comparison was requested, before it is resolved against a repository. */
-export type RevisionRange =
-  | { kind: "revisionPair"; base: string; target: string }
-  | { kind: "mergeBase"; base: string; target: string };
-
-export type ComparisonRequest =
-  | { kind: "workingTree" }
-  | { kind: "staged" }
-  | { kind: "revisionToWorkingTree"; rev: string }
-  | RevisionRange;
 
 export class GitError extends Error {}
 
@@ -77,7 +69,7 @@ export async function isRevision(directory: string, candidate: string): Promise<
  * `A...B` compares B against the merge base, which is what a pull request
  * shows, and `A..B` compares A to B directly, matching `git diff A B`.
  */
-export function parseRevisionArgument(argument: string): RevisionRange | null {
+export function parseRevisionArgument(argument: string): ComparisonRequest | null {
   const tripleDot = argument.indexOf("...");
   if (tripleDot > 0 && tripleDot + 3 < argument.length) {
     return { kind: "mergeBase", base: argument.slice(0, tripleDot), target: argument.slice(tripleDot + 3) };
@@ -87,6 +79,53 @@ export function parseRevisionArgument(argument: string): RevisionRange | null {
     return { kind: "revisionPair", base: argument.slice(0, doubleDot), target: argument.slice(doubleDot + 2) };
   }
   return null;
+}
+
+/**
+ * Read a comparison out of command-line tokens.
+ *
+ * Text is the command line's own problem: the page builds a
+ * `ComparisonRequest` from its picker instead. What both share is
+ * {@link verifyComparisonRequest}, so one place decides whether a revision
+ * exists. The directory rule stays with the caller, because only a positional
+ * slot can hold a folder.
+ */
+export function parseComparisonSpec(tokens: readonly string[]): ComparisonRequest {
+  if (tokens.length === 0) throw new GitError("name what to compare");
+  if (tokens.length > 2) throw new GitError(`expected at most two revisions, got ${tokens.length}`);
+
+  if (tokens.length === 2) {
+    const [base, target] = tokens as [string, string];
+    return { kind: "revisionPair", base, target };
+  }
+
+  const only = tokens[0]!;
+  if (only === "--diff") return { kind: "workingTree" };
+  if (only === "--staged") return { kind: "staged" };
+  return parseRevisionArgument(only) ?? { kind: "revisionToWorkingTree", rev: only };
+}
+
+/** Every revision a request names, in the order a reader would meet them. */
+function revisionsOf(request: ComparisonRequest): string[] {
+  switch (request.kind) {
+    case "workingTree": case "staged": return [];
+    case "revisionToWorkingTree": return [request.rev];
+    case "revisionPair": case "mergeBase": return [request.base, request.target];
+  }
+}
+
+/**
+ * Reject a request naming something this repository does not hold.
+ *
+ * Both producers of a request run this, so the command line and the page
+ * refuse the same names and say the same thing about them.
+ */
+export async function verifyComparisonRequest(directory: string, request: ComparisonRequest): Promise<void> {
+  for (const candidate of revisionsOf(request)) {
+    if (!(await isRevision(directory, candidate))) {
+      throw new GitError(`not a revision in this repository: ${candidate}`);
+    }
+  }
 }
 
 async function shortName(directory: string, rev: string): Promise<string> {
@@ -99,6 +138,7 @@ export async function resolveComparison(directory: string, request: ComparisonRe
     case "workingTree":
       return {
         spec: "--diff",
+        request,
         base: { kind: "revision", rev: "HEAD" },
         target: { kind: "worktree" },
         baseLabel: "HEAD",
@@ -108,6 +148,7 @@ export async function resolveComparison(directory: string, request: ComparisonRe
     case "staged":
       return {
         spec: "--staged",
+        request,
         base: { kind: "revision", rev: "HEAD" },
         target: { kind: "index" },
         baseLabel: "HEAD",
@@ -117,6 +158,7 @@ export async function resolveComparison(directory: string, request: ComparisonRe
     case "revisionToWorkingTree":
       return {
         spec: request.rev,
+        request,
         base: { kind: "revision", rev: request.rev },
         target: { kind: "worktree" },
         baseLabel: request.rev,
@@ -126,6 +168,7 @@ export async function resolveComparison(directory: string, request: ComparisonRe
     case "revisionPair":
       return {
         spec: `${request.base}..${request.target}`,
+        request,
         base: { kind: "revision", rev: request.base },
         target: { kind: "revision", rev: request.target },
         baseLabel: request.base,
@@ -137,6 +180,7 @@ export async function resolveComparison(directory: string, request: ComparisonRe
       if (!mergeBase) throw new GitError(`no merge base between ${request.base} and ${request.target}`);
       return {
         spec: `${request.base}...${request.target}`,
+        request,
         base: { kind: "revision", rev: mergeBase },
         target: { kind: "revision", rev: request.target },
         baseLabel: `${await shortName(directory, mergeBase)} (merge base with ${request.base})`,
@@ -145,6 +189,51 @@ export async function resolveComparison(directory: string, request: ComparisonRe
       };
     }
   }
+}
+
+/** Newest first, and enough for any picker. A ref beyond this is reachable by typing. */
+const MAX_REFS = 1000;
+
+const REF_KINDS: readonly { prefix: string; kind: GitRef["kind"] }[] = [
+  { prefix: "refs/heads/", kind: "branch" },
+  { prefix: "refs/remotes/", kind: "remote" },
+  { prefix: "refs/tags/", kind: "tag" },
+];
+
+/**
+ * Branches, remote branches, and tags, newest first.
+ *
+ * Ordered by commit date rather than by name, because the branch somebody
+ * wants to compare is nearly always one they touched recently.
+ */
+export async function listRefs(directory: string): Promise<RepositoryRefs> {
+  const stdout = await git(directory, [
+    "for-each-ref",
+    `--count=${MAX_REFS}`,
+    "--sort=-creatordate",
+    "--format=%(refname)\t%(objectname:short)",
+    "refs/heads", "refs/remotes", "refs/tags",
+  ]);
+  const refs: GitRef[] = [];
+  for (const line of stdout.split("\n")) {
+    const tab = line.indexOf("\t");
+    if (tab < 0) continue;
+    const refName = line.slice(0, tab);
+    const shortSha = line.slice(tab + 1);
+    const match = REF_KINDS.find((candidate) => refName.startsWith(candidate.prefix));
+    if (match === undefined) continue;
+    const name = refName.slice(match.prefix.length);
+    // `origin/HEAD` is a symbolic ref onto a branch already in this list.
+    if (match.kind === "remote" && name.endsWith("/HEAD")) continue;
+    refs.push({ name, kind: match.kind, shortSha });
+  }
+
+  const headBranch = (await git(directory, ["rev-parse", "--abbrev-ref", "HEAD"])).trim();
+  return {
+    headBranch: headBranch === "HEAD" ? null : headBranch,
+    headSha: await shortName(directory, "HEAD"),
+    refs,
+  };
 }
 
 /** One entry of the changed-file list, before either side is measured. */
