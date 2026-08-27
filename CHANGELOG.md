@@ -8,6 +8,7 @@ All notable user-facing changes to Slopsplorer are recorded here.
 
 ### Features
 
+- A busy default port no longer stops a run: Slopsplorer takes the next free port, and names the processes holding the ones it skipped with a `kill` command to reclaim them. A port you name with `--port` is still used or the run fails, with the same hint. ([c8d94c1](https://github.com/DmitriyAlergant/slopsplorer/commit/c8d94c1))
 - The folder head states one figure at full strength and mutes the rest, holds every number in a fixed place as you move between folders, and colours a tile's headline by the side it names. ([9f0d89c](https://github.com/DmitriyAlergant/slopsplorer/commit/9f0d89c))
 
 ### Bug Fixes
