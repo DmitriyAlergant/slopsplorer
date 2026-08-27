@@ -13,6 +13,27 @@ export type Flavor = FileKind | "generated";
 
 export const FILE_KINDS: readonly FileKind[] = ["code", "test", "text", "i18n", "data", "other"];
 
+interface FileKindDetails {
+  label: string;
+  description: string;
+}
+
+/**
+ * The words every surface uses for a flavor, and what each one holds.
+ *
+ * Beside the wire values they name, and shared for the same reason the unit
+ * names are: the brief an ask sends has to call a flavor what the switch the
+ * reader clicked calls it.
+ */
+export const FILE_KIND_DETAILS: Readonly<Record<FileKind, FileKindDetails>> = {
+  code: { label: "Code", description: "Source and application code." },
+  test: { label: "Tests", description: "Test code: source files in a test folder, plus anything named by a test convention. Fixtures keep the flavor of their own format." },
+  text: { label: "Docs", description: "Markdown and other prose documentation." },
+  i18n: { label: "i18n", description: "Translation catalogues and locale files, including source files that are almost entirely translated strings." },
+  data: { label: "Data & Config", description: "Structured data and configuration formats such as JSON, YAML, TOML, XML, CSV, and dependency manifests, plus source files that are almost entirely string literals." },
+  other: { label: "Other", description: "Scannable text files that do not fit another flavor, such as HTML." },
+};
+
 export type TreeSort = "name" | "weight";
 
 export const TREE_SORTS: readonly TreeSort[] = ["name", "weight"];
@@ -120,6 +141,104 @@ export function aspectTotals(sides: MeasuredSides, measure: Measure): Record<Asp
   };
 }
 
+/**
+ * The words every surface uses for a unit.
+ *
+ * Here rather than in the client, because the page is not the only reader of
+ * them: the brief an ask hands to a local agent has to name the unit exactly
+ * as the panel the reader is looking at does.
+ */
+
+/**
+ * How each measure is named in prose, in a heading, and in a tight cell.
+ *
+ * One table rather than three, so a new measure cannot arrive with a label
+ * missing from one surface and present in another.
+ */
+const MEASURE_NAMES: Record<Measure, { prose: string; heading: string; abbreviation: string }> = {
+  tokens: { prose: "tokens", heading: "Tokens", abbreviation: "tok" },
+  lines: { prose: "lines", heading: "Lines", abbreviation: "lines" },
+  codeLines: { prose: "LOC", heading: "LOC", abbreviation: "LOC" },
+};
+
+/** Name for running text: "42,000 tokens", "1,200 LOC". */
+export function measureName(measure: Measure): string {
+  return MEASURE_NAMES[measure].prose;
+}
+
+/** Title-case name for a control, a button, or a column heading. */
+export function measureHeading(measure: Measure): string {
+  return MEASURE_NAMES[measure].heading;
+}
+
+/** Shortest form, for a tile caption where the number matters more than the unit. */
+export function measureAbbreviation(measure: Measure): string {
+  return MEASURE_NAMES[measure].abbreviation;
+}
+
+/**
+ * How each aspect is named beside a unit and explained in the menu.
+ *
+ * One table for all three surfaces, so a new aspect cannot arrive with a label
+ * on one of them and nothing on the others.
+ */
+const ASPECT_NAMES: Record<Aspect, { heading: string; prose: string; description: string }> = {
+  churn: {
+    heading: "Churn",
+    prose: "churn",
+    description: "Added plus removed. The volume of the change, and never negative.",
+  },
+  net: {
+    heading: "Net",
+    prose: "net",
+    description: "Added minus removed. What the change leaves behind, and signed.",
+  },
+  added: { heading: "Added", prose: "added", description: "Only the lines the change introduced." },
+  removed: { heading: "Removed", prose: "removed", description: "Only the lines the change took away." },
+  after: {
+    heading: "After",
+    prose: "after",
+    description: "The whole file as the change leaves it, the same figure a scan reports.",
+  },
+};
+
+export function aspectHeading(aspect: Aspect): string {
+  return ASPECT_NAMES[aspect].heading;
+}
+
+export function aspectDescription(aspect: Aspect): string {
+  return ASPECT_NAMES[aspect].description;
+}
+
+/**
+ * Name the numbers column, which is one unit in a scan and a unit and a side
+ * in a diff.
+ */
+export function weightHeading(measure: Measure, aspect: Aspect, isDiff: boolean): string {
+  return isDiff
+    ? `${ASPECT_NAMES[aspect].heading} ${MEASURE_NAMES[measure].abbreviation}`
+    : MEASURE_NAMES[measure].heading;
+}
+
+/** Name for running text: "42,000 churn tokens", "1,200 LOC". */
+export function weightName(measure: Measure, aspect: Aspect, isDiff: boolean): string {
+  return isDiff && aspect !== "after"
+    ? `${ASPECT_NAMES[aspect].prose} ${MEASURE_NAMES[measure].prose}`
+    : MEASURE_NAMES[measure].prose;
+}
+
+/**
+ * Shortest form that still says which side it is: "net tok", "removed lines".
+ *
+ * A tile states one figure, and the switch that chose it is at the top of the
+ * page, so the figure has to name its own side or it means nothing on its own.
+ */
+export function weightAbbreviation(measure: Measure, aspect: Aspect, isDiff: boolean): string {
+  return isDiff
+    ? `${ASPECT_NAMES[aspect].prose} ${MEASURE_NAMES[measure].abbreviation}`
+    : MEASURE_NAMES[measure].abbreviation;
+}
+
 /** Every weight field, so the scanner can build one prefix sum for each. */
 export const WEIGHT_FIELD_NAMES: readonly WeightField[] =
   MEASURES.flatMap((measure) => ASPECTS.map((aspect) => weightField(measure, aspect)));
@@ -128,13 +247,17 @@ export const WEIGHT_FIELD_NAMES: readonly WeightField[] =
  * A sortable column of the file tables.
  *
  * Every metric here is a column both tables draw in the mode it belongs to,
- * and every numeric column they draw is a metric here. Sorting is the only way
- * to choose one, so a metric without a column would be unreachable.
+ * and every column they draw is a metric here. Sorting is the only way to
+ * choose one, so a metric without a column would be unreachable.
+ *
+ * `name` is the file column, the one metric that is not a quantity. It orders
+ * the rows A to Z, and it never decides which rows a curtailed list holds.
  *
  * The aspect names are the diff-mode columns: their unit is the active measure,
  * so sorting one chooses the aspect the way sorting `tokens` chooses a measure.
  */
 export type RankMetric =
+  | "name"
   | "tokens"
   | "lines"
   | "codeLines"
@@ -143,21 +266,34 @@ export type RankMetric =
   | "branches"
   | Aspect;
 
+/** Every sortable column that holds a figure, which is all of them but the file name. */
+export type MeasuredMetric = Exclude<RankMetric, "name">;
+
 /** Columns a scan draws. Every one is a plain numeric field of `FileRow`. */
-export const SCAN_RANK_METRICS: readonly RankMetric[] = [
+export const SCAN_RANK_METRICS: readonly MeasuredMetric[] = [
   "tokens", "lines", "codeLines", "commentLines", "functions", "branches",
 ];
 
 /** Columns a diff draws. The five aspect columns are `ASPECTS`, in its order. */
-export const DIFF_RANK_METRICS: readonly RankMetric[] = [
+export const DIFF_RANK_METRICS: readonly MeasuredMetric[] = [
   ...ASPECTS, "functions", "branches",
 ];
 
-export const RANK_METRICS: readonly RankMetric[] = [...SCAN_RANK_METRICS, ...ASPECTS];
+export const RANK_METRICS: readonly RankMetric[] = ["name", ...SCAN_RANK_METRICS, ...ASPECTS];
 
-/** Which columns a table draws, decided by the producer of the index. */
-export function rankMetricsFor(isDiff: boolean): readonly RankMetric[] {
+/** Which measured columns a table draws, decided by the producer of the index. */
+export function rankMetricsFor(isDiff: boolean): readonly MeasuredMetric[] {
   return isDiff ? DIFF_RANK_METRICS : SCAN_RANK_METRICS;
+}
+
+/**
+ * Every column a table can be sorted on in this mode.
+ *
+ * The file column stands in both modes and holds no figure, so it is not in
+ * either list of measured columns and is named here instead.
+ */
+export function sortMetricsFor(isDiff: boolean): readonly RankMetric[] {
+  return ["name", ...rankMetricsFor(isDiff)];
 }
 
 /**
@@ -238,6 +374,18 @@ export interface FileRow {
  * which the tree, the tiles, and the ribbon all draw as `.`.
  */
 export type RowKind = "folder" | "files";
+
+/**
+ * How much of the selected folder the file list holds.
+ *
+ * Only the list moves. The tiles, the headline figures, and the tree keep
+ * describing the whole selection, so this answers "what sits here" without
+ * making the reader leave the subtree the panel is about.
+ */
+export type FileScope = "folder" | "subtree";
+
+/** Narrow first, then wide, which is the order the switch that sets it reads. */
+export const FILE_SCOPES: readonly FileScope[] = ["folder", "subtree"];
 
 /** One rendered row of the source tree, already filtered and aggregated. */
 export interface TreeRow {
@@ -436,6 +584,8 @@ export interface ViewRequest {
   /** Folder that replaces the project root in the main workspace widgets. */
   drillPath: string;
   selected: { rowKind: RowKind; path: string };
+  /** How much of the selection the file list holds. A `.` selection is its own files already. */
+  fileScope: FileScope;
   /**
    * The sorted column of both file tables, and the ranking's order.
    *
@@ -512,6 +662,131 @@ export type ComparisonRequest =
   | { kind: "revisionToWorkingTree"; rev: string }
   | RevisionRange;
 
+/**
+ * One commit of a comparison's spine, and what it changed.
+ *
+ * The figures are the commit against its own first parent, with generated
+ * files left out and no filter applied, because the spine is the frame a
+ * review happens inside and has to state the same thing however the page
+ * below it is narrowed. Every field is named as `FileRow` names it, so one
+ * search finds both.
+ */
+export interface SpineEntry {
+  sha: string;
+  shortSha: string;
+  subject: string;
+  /** The message under the subject, trimmed. Empty when the commit has none. */
+  body: string;
+  /** Where the commit can be read on the forge, or `null` when there is none. */
+  url: string | null;
+  author: string;
+  /** ISO-8601 author date. */
+  date: string;
+  /** Files the commit changed, generated ones left out. */
+  files: number;
+  addedTokens: number;
+  removedTokens: number;
+  addedLines: number;
+  removedLines: number;
+  addedCodeLines: number;
+  removedCodeLines: number;
+}
+
+/**
+ * The commits a comparison spans, oldest first.
+ *
+ * A span over this list is a comparison of its own, which is how one control
+ * covers the whole change, one commit, and any run of commits between them.
+ */
+export interface CommitSpine {
+  /** The comparison this spine was built for, so the page can return to it whole. */
+  range: ComparisonRequest;
+  /** Commit the range starts from: the parent of the first listed commit. */
+  base: string;
+  commits: SpineEntry[];
+  /** Commits the range holds beyond the ones listed. */
+  omitted: number;
+}
+
+/** A run of commits inside a spine, by index, both ends included. */
+export interface Span {
+  start: number;
+  end: number;
+}
+
+/** Whether two requests name the same comparison. */
+export function sameComparisonRequest(one: ComparisonRequest, other: ComparisonRequest): boolean {
+  if (one.kind !== other.kind) return false;
+  switch (one.kind) {
+    case "workingTree": case "staged": return true;
+    case "revisionToWorkingTree": return one.rev === (other as { rev: string }).rev;
+    default: {
+      const pair = other as { base: string; target: string };
+      return one.base === pair.base && one.target === pair.target;
+    }
+  }
+}
+
+/**
+ * The comparison a span asks for.
+ *
+ * A span that starts at the first commit starts from the range's own base, so
+ * one control expresses a single commit, a run of them, and everything from the
+ * start of the range, without a mode to switch between them.
+ */
+export function requestForSpan(spine: CommitSpine, span: Span): ComparisonRequest {
+  const base = span.start === 0 ? spine.base : spine.commits[span.start - 1]!.sha;
+  return { kind: "revisionPair", base, target: spine.commits[span.end]!.sha };
+}
+
+/**
+ * The span a comparison is, or `null` when it is not one of this spine's.
+ *
+ * The whole range is not a span: it is the range itself, so a spine whose list
+ * was capped, or whose target is a merge, never claims to cover more than it
+ * lists.
+ */
+export function spanOf(spine: CommitSpine, request: ComparisonRequest): Span | null {
+  if (request.kind !== "revisionPair") return null;
+  const end = spine.commits.findIndex((commit) => commit.sha === request.target);
+  if (end < 0) return null;
+  const start = request.base === spine.base
+    ? 0
+    : spine.commits.findIndex((commit) => commit.sha === request.base) + 1;
+  if (start === 0 && request.base !== spine.base) return null;
+  return start > end ? null : { start, end };
+}
+
+/**
+ * Whether a comparison is still inside the range this spine was built for.
+ *
+ * Both sides ask this. The page asks it to keep the band it is drawing, and the
+ * server asks it so that a reload in the middle of a walk still answers with
+ * the range being reviewed rather than with the one commit that is open.
+ */
+export function spansRequest(spine: CommitSpine, request: ComparisonRequest): boolean {
+  return sameComparisonRequest(request, spine.range) || spanOf(spine, request) !== null;
+}
+
+/**
+ * Slide a span by whole commits, keeping its width.
+ *
+ * `null` when it cannot move that far, which is also what disables the step
+ * that would do it. One control steps a single commit and slides a window,
+ * because a window of one is a single commit.
+ */
+export function slideSpan(spine: CommitSpine, span: Span, delta: number): Span | null {
+  const width = span.end - span.start;
+  const start = span.start + delta;
+  if (start < 0 || start + width > spine.commits.length - 1) return null;
+  return { start, end: start + width };
+}
+
+/** Extend a span from its anchor to a commit, which is what a shift-click asks for. */
+export function spanBetween(anchor: number, reached: number): Span {
+  return anchor <= reached ? { start: anchor, end: reached } : { start: reached, end: anchor };
+}
+
 /** A ref the page can offer as a side of a comparison. */
 export interface GitRef {
   /** Name as Git resolves it: `main`, `origin/main`, `v1.2.0`. */
@@ -577,4 +852,84 @@ export interface SkillInstallResponse {
   command: string;
   /** Every directory the command copies the skill into. */
   targets: SkillInstallTarget[];
+}
+
+/**
+ * A coding agent installed on this machine, and what its sign-in probe said.
+ *
+ * The page offers what the host proved it can run. A tool that reports no
+ * sign-in is still offered, marked, and askable: the probe reads what the tool
+ * says about itself, and the reader is the one who knows whether it is right.
+ */
+export interface AgentTool {
+  /** Stable name of the tool, also the id an ask names. */
+  id: string;
+  /** How the tool calls itself, for the menu. */
+  label: string;
+  /** Whether the tool reported that it can reach a model. */
+  signedIn: boolean;
+}
+
+export interface AgentsResponse {
+  agents: AgentTool[];
+}
+
+/** Ask one of the discovered agents a question about what the page is showing. */
+export interface AskRequest {
+  agentId: string;
+  /**
+   * The reader's own question. May be empty.
+   *
+   * The brief alone already names a subject, so an empty question asks the
+   * agent to describe what the reader is looking at.
+   */
+  question: string;
+  /** The state of the page, which the server turns into the brief the agent reads. */
+  view: ViewRequest;
+  /** Last file the reader opened in the preview, or `null` when they opened none. */
+  lastViewedPath: string | null;
+}
+
+/**
+ * Where one ask has got to.
+ *
+ * There is no cancelled state: dismissing a running ask stops the process and
+ * drops the task, because the `x` on the floater means "I am done with this".
+ */
+export type AskState = "running" | "answered" | "failed";
+
+/** One ask, as the floater and the answer dialog draw it. */
+export interface AskTask {
+  id: string;
+  agentId: string;
+  agentLabel: string;
+  /** The question as it was typed, empty when the reader asked none. */
+  question: string;
+  /** Everything the agent was given, so the page can show exactly what was asked. */
+  brief: string;
+  state: AskState;
+  /** ISO-8601 timestamp of the moment the agent process started. */
+  startedAt: string;
+  finishedAt: string | null;
+  /** The agent's answer in Markdown, once the state is `answered`. */
+  answer: string | null;
+  /** Why the run failed, once the state is `failed`. */
+  failure: string | null;
+  /** What the run cost, when the tool reports it. */
+  costUsd: number | null;
+}
+
+/**
+ * Every ask this server run holds, newest first.
+ *
+ * One list is the whole client state, so a reload finds the asks still running
+ * and the answers already back.
+ */
+export interface AskListResponse {
+  tasks: AskTask[];
+}
+
+/** Stop an ask if it still runs, and drop it from the list either way. */
+export interface DismissAskRequest {
+  id: string;
 }

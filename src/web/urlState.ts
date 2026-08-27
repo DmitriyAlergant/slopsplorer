@@ -1,5 +1,5 @@
 import type { FileKind, ViewRequest } from "../shared/api.ts";
-import { ASPECTS, FILE_KINDS, MEASURES, RANK_METRICS, TREE_SORTS } from "../shared/api.ts";
+import { ASPECTS, FILE_KINDS, FILE_SCOPES, MEASURES, RANK_METRICS, TREE_SORTS } from "../shared/api.ts";
 import type { ViewPreferences } from "./preferences.ts";
 
 /** Matches the server's own ceiling on how many ranked rows it will return. */
@@ -42,6 +42,7 @@ export function readRequest(search: string, stored: ViewPreferences | null = nul
   const treeSort = TREE_SORTS.find((candidate) => candidate === params.get("tree"));
   const measure = MEASURES.find((candidate) => candidate === params.get("measure"));
   const aspect = ASPECTS.find((candidate) => candidate === params.get("aspect"));
+  const fileScope = FILE_SCOPES.find((candidate) => candidate === params.get("files"));
   return {
     kinds: rawKinds !== null
       ? rawKinds.split(",").filter(isFileKind)
@@ -61,6 +62,7 @@ export function readRequest(search: string, stored: ViewPreferences | null = nul
       rowKind: insideDrill && params.get("sel") === "files" ? "files" : "folder",
       path: selectedPath,
     },
+    fileScope: fileScope ?? "subtree",
     rank: {
       metric: metric ?? (!embeddedPreferences && stored !== null ? stored.rankMetric : "tokens"),
       minWeight: Math.max(0, Number(params.get("min")) || 0),
@@ -87,6 +89,7 @@ export function writeRequest(request: ViewRequest): string {
   if (request.selected.path) params.set("path", request.selected.path);
   if (request.drillPath) params.set("drill", request.drillPath);
   if (request.selected.rowKind === "files") params.set("sel", "files");
+  if (request.fileScope !== "subtree") params.set("files", request.fileScope);
   if (request.kinds.length !== FILE_KINDS.length) {
     params.set("kinds", FILE_KINDS.filter((kind) => request.kinds.includes(kind)).join(","));
   }

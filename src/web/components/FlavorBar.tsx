@@ -1,6 +1,6 @@
 import type { Aspect, FlavorSlice, Measure } from "../../shared/api.ts";
-import { FILE_KIND_DETAILS } from "../fileKinds.ts";
-import { count, weightName } from "../format.ts";
+import { FILE_KIND_DETAILS, weightName } from "../../shared/api.ts";
+import { count } from "../format.ts";
 import { Tooltip, tooltipHandlers } from "./Tooltip.tsx";
 
 interface Props {

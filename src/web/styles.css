@@ -122,7 +122,25 @@ button { cursor: pointer; }
 :focus-visible {
   outline: 2px solid var(--signal);
   outline-offset: 2px;
-  border-radius: var(--radius-sm);
+}
+
+/*
+ * A control split into halves cannot take that offset ring: it would cross the
+ * edge the halves share, and a group that clips its overflow would cut it.
+ * Each half draws the ring inside its own shape instead.
+ */
+.agent-picker__ask:focus-visible,
+.agent-picker__more:focus-visible,
+.spine__step button:focus-visible,
+.switch__option:focus-visible {
+  outline: none;
+  border-color: var(--signal);
+  box-shadow: inset 0 0 0 2px var(--signal);
+  color: var(--signal);
+}
+.switch__option[aria-pressed="true"]:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--signal-ink);
+  color: var(--signal-ink);
 }
 
 .visually-hidden {
@@ -546,6 +564,263 @@ button { cursor: pointer; }
 .ribbon__segment[data-selected="true"] { box-shadow: inset 0 -4px 0 var(--signal); }
 .ribbon__segment[data-selected="true"] .ribbon__name { color: var(--signal); }
 
+/* ---- Commit band ------------------------------------------------------- */
+
+/*
+ * The commits a comparison spans, above the filter bar because its figures
+ * answer to no filter. It is the frame a review happens inside, so which
+ * commit is the heavy one has to stay one answer while the page below is
+ * narrowed.
+ */
+.spine {
+  margin-top: 14px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+/* Present and plainly working, rather than absent and then suddenly there. */
+.spine--pending .spine__where { animation: spine-pending 1.4s ease-in-out infinite; }
+.spine--pending .spine__disclose { color: var(--ink-faint); }
+@keyframes spine-pending {
+  0%, 100% { opacity: 0.45; }
+  50% { opacity: 1; }
+}
+.spine__head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 7px 10px 7px 8px;
+}
+.spine__disclose {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 2px 4px;
+  border: 0;
+  background: none;
+  color: var(--ink-soft);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.spine__disclose:hover { color: var(--signal); }
+.spine__caret {
+  width: 0;
+  height: 0;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  border-left: 6px solid currentColor;
+  transition: transform 120ms ease;
+}
+.spine__caret[data-open="true"] { transform: rotate(90deg); }
+
+/*
+ * The band shut is still the band: it says where the reader is and it still
+ * steps, so a page drawing one commit of fifty never looks like it is drawing
+ * the change.
+ */
+/*
+ * Every commit gets a tick. They shrink to fit rather than overflow, because a
+ * strip that quietly stopped at the fifty-seventh commit would put the reader
+ * in the wrong place on it.
+ */
+.spine__mini {
+  display: flex;
+  flex: 0 1 auto;
+  align-items: flex-end;
+  gap: 1px;
+  /* Sized by its ticks, so a short spine is short rather than a wide empty box. */
+  width: max-content;
+  max-width: 360px;
+  height: 18px;
+}
+.spine__tick {
+  flex: 0 1 auto;
+  width: 4px;
+  min-width: 1px;
+  height: calc(var(--mass) * 100%);
+  border-radius: 1px;
+  background: var(--rule-firm);
+}
+.spine__tick[data-in-span="true"] { background: var(--signal); }
+
+.spine__where {
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+.spine__step { display: flex; margin-left: auto; }
+.spine__step button {
+  position: relative;
+  width: 24px;
+  padding: 3px 0;
+  border: 1px solid var(--rule-firm);
+  background: var(--surface);
+  color: var(--ink-soft);
+  font-size: 14px;
+  line-height: 1;
+}
+.spine__step button:first-child { border-radius: var(--radius-sm) 0 0 var(--radius-sm); }
+.spine__step button:last-child { border-left: 0; border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
+.spine__step button:hover:not(:disabled) { color: var(--signal); }
+.spine__step button:disabled { color: var(--ink-faint); opacity: 0.5; }
+.spine__all {
+  padding: 4px 10px;
+  border: 1px solid var(--rule-firm);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink-soft);
+  font-size: 12px;
+  font-weight: 600;
+}
+.spine__all:hover:not(:disabled) { color: var(--signal); border-color: var(--signal); }
+.spine__all:disabled { color: var(--ink-faint); border-color: var(--rule); }
+
+.spine__list {
+  height: var(--spine-height);
+  overflow-y: auto;
+  border-top: 1px solid var(--rule);
+}
+/* One template for the heading and every row, so the columns cannot drift. */
+.spine__columns, .spine-row {
+  display: grid;
+  grid-template-columns:
+    72px minmax(0, 1fr) 100px minmax(96px, 190px) 74px 74px 74px;
+  align-items: center;
+  gap: 10px;
+  padding: 0 10px;
+  text-align: left;
+}
+.spine__columns {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding-top: 6px;
+  padding-bottom: 6px;
+  background: var(--sunk);
+  border-bottom: 1px solid var(--rule);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+.spine__columns span:nth-child(n + 5) { text-align: right; }
+
+.spine-row {
+  position: relative;
+  padding-top: 5px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid var(--rule);
+  color: var(--ink);
+  font-size: 12.5px;
+}
+.spine-row:last-of-type { border-bottom: 0; }
+.spine-row:hover { background: var(--sunk); }
+.spine-row[data-in-span="true"] { background: var(--signal-wash); }
+.spine-row[data-in-span="true"] .spine-row__subject { color: var(--ink); font-weight: 600; }
+/*
+ * The selector covers the row and sits under its cells, so a click anywhere
+ * chooses the commit while the object name above it stays a link.
+ */
+.spine-row__pick {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  border: 0;
+  background: none;
+}
+/* Positioned, so they paint over the selector that precedes them. */
+.spine-row > :not(.spine-row__pick) { position: relative; pointer-events: none; }
+.spine-row__sha { font-family: var(--font-mono); font-size: 11.5px; color: var(--ink-faint); }
+.spine-row__sha--link { pointer-events: auto; text-decoration: none; width: max-content; }
+.spine-row__sha--link:hover { color: var(--signal); text-decoration: underline; }
+/*
+ * The subject is the heading of the message, and the body follows it.
+ *
+ * A commit body is hard-wrapped by whoever wrote it, so the panel is wide
+ * enough to hold those lines whole and prints them as they were written. A
+ * narrow panel would wrap each of them a second time and turn a paragraph into
+ * a ragged column, and reflowing them instead would run a bullet list into one
+ * line.
+ */
+.spine-row__pick .tooltip {
+  width: min(540px, calc(100vw - 24px));
+  align-items: flex-start;
+}
+.spine-row__message { display: flex; flex-direction: column; gap: 6px; }
+.spine-row__body { white-space: pre-wrap; opacity: 0.82; }
+.spine-row__subject {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--ink-soft);
+}
+.spine-row__author {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 11.5px;
+  color: var(--ink-faint);
+}
+/*
+ * The same centre axis the source tree draws a net row with: removed to the
+ * left, added to the right, both against the heaviest churn in the band. One
+ * commit that traded 4,000 for 3,900 and one that added 100 read alike as a
+ * single number, and the two halves tell them apart.
+ *
+ * The columns beside it stay in the order of `ASPECTS`, as everywhere else on
+ * the page. The band is a number line and the figures are a list, which is the
+ * arrangement the tree and the folder head already use together.
+ */
+.spine-row__axis {
+  position: relative;
+  display: flex;
+  height: 9px;
+}
+.spine-row__axis::before {
+  content: "";
+  position: absolute;
+  inset-block: -1px;
+  left: 50%;
+  width: 1px;
+  background: var(--rule-firm);
+}
+.spine-row__half { display: flex; width: 50%; }
+/*
+ * Square ends, and a 2px floor so the quietest side still differs from a side
+ * that did nothing. A side that is nothing draws nothing.
+ */
+.spine-row__half::after { content: ""; display: block; height: 100%; min-width: 2px; }
+.spine-row__half[data-empty="true"]::after { min-width: 0; }
+.spine-row__half--removed { justify-content: flex-end; }
+.spine-row__half--removed::after {
+  width: calc(var(--share-removed) * 100%);
+  margin-right: 1px;
+  background: var(--status-deleted);
+}
+.spine-row__half--added::after {
+  width: calc(var(--share-added) * 100%);
+  margin-left: 1px;
+  background: var(--status-added);
+}
+.spine-row__figure {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  text-align: right;
+}
+.spine-row__figure[data-sign="positive"] { color: var(--status-added); }
+.spine-row__figure[data-sign="negative"] { color: var(--status-deleted); }
+.spine-row__net { font-weight: 600; color: var(--ink); }
+.spine__omitted {
+  margin: 0;
+  padding: 8px 10px;
+  font-size: 11.5px;
+  color: var(--ink-faint);
+}
+
 /* ---- Filters ----------------------------------------------------------- */
 
 /*
@@ -676,7 +951,11 @@ button { cursor: pointer; }
 }
 /* A path or a short label reads better as one line than as a padded block. */
 .tooltip[data-compact="true"] {
-  width: auto;
+  /* `max-content` and not `auto`: an auto-width fixed box placed near the right
+     edge is laid out in the sliver of room left of that edge, and a short label
+     comes out one letter per line. The width is taken from the text, and the
+     shift then brings the whole box back inside the window. */
+  width: max-content;
   max-width: min(420px, calc(100vw - 24px));
   min-height: 0;
   padding: 6px 9px;
@@ -696,6 +975,12 @@ button { cursor: pointer; }
   border-left: 1px solid var(--tooltip-rule);
   background: inherit;
   transform: translate(-50%, 5px) rotate(45deg);
+}
+/* Flipped with the panel, so the arrow still points at the control. */
+.tooltip[data-above]::before {
+  bottom: auto;
+  top: 100%;
+  transform: translate(-50%, -5px) rotate(225deg);
 }
 /* Opened from an event rather than from `:hover`. See src/web/tooltip.ts. */
 .tooltip[data-open] {
@@ -1101,6 +1386,11 @@ button { cursor: pointer; }
 /* A qualifier on the caption rather than a caption of its own, so it reads as
    part of the same line and not as a second claim. */
 .detail__caption-note { margin-left: 10px; color: var(--rule-firm); }
+/* The two controls of the file list share the right of its strip: what the rows
+   are, and the floor under them. */
+.detail__files-controls { display: flex; flex: none; align-items: center; gap: 14px; }
+/* Sized for a strip inside a panel rather than for the filter bar it borrows. */
+.switch--compact .switch__option { padding: 4px 9px; font-size: 11px; }
 .detail__threshold { display: flex; flex: none; align-items: center; gap: 8px; }
 .detail__threshold span {
   color: var(--ink-faint);
@@ -1206,8 +1496,10 @@ button { cursor: pointer; }
   border-bottom: 1px solid var(--rule);
   text-align: right; white-space: nowrap;
 }
+/* By class rather than by position: a diff draws one more column before the
+   file name, and a heading has to sit over the figures it names. */
 .metrics th:first-child, .metrics td:first-child,
-.metrics th:nth-child(2), .metrics td:nth-child(2) { text-align: left; }
+.metrics th.metrics__path, .metrics td.metrics__path { text-align: left; }
 .metrics tbody tr:hover { background: var(--sunk); }
 /* The whole heading is the target, so the button carries the cell's padding. */
 .metrics th:has(.metrics__sort) { padding: 0; }
@@ -1223,12 +1515,13 @@ button { cursor: pointer; }
   color: inherit;
   font: inherit; letter-spacing: inherit; text-transform: inherit;
 }
+.metrics th.metrics__path .metrics__sort { justify-content: flex-start; }
 .metrics__sort:hover { color: var(--ink); }
 /* Two different facts: bold marks the unit the page counts in, the caret and
    its heading colour mark the order the rows are in. Usually one column. */
 .metrics th[data-active="true"] { color: var(--ink); }
 .metrics td[data-active="true"] { color: var(--ink); font-weight: 600; }
-.metrics th[aria-sort="descending"] { color: var(--ink); }
+.metrics th[aria-sort="ascending"], .metrics th[aria-sort="descending"] { color: var(--ink); }
 .metrics td[data-sorted="true"] { color: var(--ink); }
 /* Colour repeats the sign the figure already carries; it never replaces it. */
 .metrics td[data-sign="positive"] { color: var(--status-added); }
@@ -1326,8 +1619,17 @@ button { cursor: pointer; }
  * overrides the user agent's `dialog:not([open]) { display: none }` and leaves
  * the closed dialog rendered inline at the foot of the page.
  */
+/*
+ * An answer is prose of an unknown length, so the panel is as tall as what it
+ * holds. A fixed height would leave a one-line answer in an empty window.
+ */
+.viewer--answer {
+  width: min(940px, calc(100% - 40px));
+  height: fit-content;
+  max-height: 88vh;
+}
 .viewer[open] { display: flex; }
-.viewer--narrow .viewer__body { flex: 0 1 auto; }
+.viewer--narrow .viewer__body, .viewer--answer .viewer__body { flex: 0 1 auto; }
 .viewer::backdrop { background: oklch(0.15 0.02 265 / 0.55); backdrop-filter: blur(3px); }
 .viewer__head {
   flex: none;
@@ -1446,6 +1748,204 @@ button { cursor: pointer; }
   padding: 1px 4px; border-radius: 3px; background: var(--sunk);
 }
 
+/* ---- Asking a local agent ---------------------------------------------- */
+
+/* The facts about the measurement, and the one act that is about all of it. */
+.instrument__right { display: flex; align-items: center; gap: 24px; }
+
+/*
+ * One split control: the wide half asks, the chevron chooses who answers. The
+ * two halves share a border, so they read as one control and not as two.
+ */
+.agent-picker { position: relative; display: flex; flex: none; }
+.agent-picker__ask, .agent-picker__more {
+  position: relative;
+  border: 1px solid var(--rule-firm);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 12.5px;
+  transition: border-color 120ms ease, color 120ms ease;
+}
+.agent-picker__ask {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 7px 12px;
+  border-right: 0;
+  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+}
+.agent-picker__more {
+  display: grid; place-items: center;
+  padding: 0 8px;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  color: var(--ink-soft);
+}
+.agent-picker__ask:hover, .agent-picker__more:hover { border-color: var(--signal); color: var(--signal); }
+/* The hovered half owns the shared edge, so the seam never reads as a gap. */
+.agent-picker__ask:hover + .agent-picker__more { border-left-color: var(--signal); }
+.agent-picker__ask:focus-visible + .agent-picker__more { border-left-color: var(--signal); }
+.agent-picker__more[aria-expanded="true"] { border-color: var(--signal); color: var(--signal); }
+.agent-mark { flex: none; }
+
+.agent-picker__panel {
+  position: absolute; top: calc(100% + 8px); right: 0; z-index: 60;
+  min-width: 208px;
+  display: flex; flex-direction: column;
+  padding: 5px;
+  border: 1px solid var(--rule-firm); border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: 0 12px 32px oklch(0.15 0.02 265 / 0.18);
+}
+.agent-picker__option {
+  display: flex; align-items: center; gap: 9px;
+  padding: 7px 9px;
+  border: 0; border-radius: var(--radius-sm);
+  background: transparent;
+  text-align: left;
+}
+.agent-picker__option:hover { background: var(--sunk); }
+/* The mark rests in ink and takes the page's colour under the pointer, so a row
+   reads as a plain list until the reader is on one. */
+.agent-picker__option:hover .agent-mark { color: var(--signal); }
+.agent-picker__option[aria-current="true"] { color: var(--signal); }
+.agent-picker__option[aria-current="true"] .agent-picker__option-name { font-weight: 600; }
+.agent-picker__option-name { flex: 1 1 auto; padding-right: 18px; font-size: 12.5px; }
+/* What the sign-in probe believed, which is the one thing that decides whether
+   an ask can answer at all. */
+.agent-picker__option-note { color: var(--ink-faint); font-size: 11px; }
+.agent-picker__option-note[data-signed-in="false"] { color: var(--status-deleted); }
+
+.ask__question {
+  display: block; width: 100%; margin: 0 0 14px; padding: 10px 12px;
+  border: 1px solid var(--rule-firm); border-radius: var(--radius-sm);
+  background: var(--surface); color: var(--ink);
+  font-family: var(--font-sans); font-size: 13px; line-height: 1.55;
+  resize: vertical;
+}
+
+/*
+ * An ask takes minutes, so it waits here instead of holding the page still.
+ * Newest sits nearest the corner, which is where the eye returns.
+ */
+.dock {
+  position: fixed; right: 20px; bottom: 20px; z-index: 90;
+  display: flex; flex-direction: column-reverse; gap: 8px;
+  width: min(330px, calc(100% - 40px));
+}
+.dock__task {
+  display: flex; align-items: stretch;
+  border: 1px solid var(--rule-firm); border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: 0 8px 24px oklch(0.15 0.02 265 / 0.16);
+  overflow: hidden;
+}
+/* Colour says the state and nothing else: green for an answer that is ready,
+   red for a run that failed, and the resting rule while one is still thinking. */
+.dock__task[data-state="answered"] { border-color: var(--status-added); }
+.dock__task[data-state="failed"] { border-color: var(--status-deleted); }
+.dock__open {
+  position: relative;
+  display: flex; flex: 1 1 auto; align-items: center; gap: 10px;
+  min-width: 0; padding: 10px 4px 10px 12px;
+  border: 0; background: transparent; text-align: left;
+}
+.dock__mark {
+  display: grid; place-items: center;
+  flex: none; width: 18px; height: 18px;
+  color: var(--ink-faint); font-size: 12px; font-weight: 700;
+}
+.dock__task[data-state="answered"] .dock__mark { color: var(--status-added); font-size: 13px; }
+.dock__task[data-state="failed"] .dock__mark { color: var(--status-deleted); }
+.dock__spinner {
+  width: 13px; height: 13px;
+  border: 2px solid var(--rule-firm); border-top-color: var(--signal); border-radius: 50%;
+  animation: progress-spin 700ms linear infinite;
+}
+.dock__copy { display: block; min-width: 0; }
+.dock__question {
+  display: block;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 12.5px;
+}
+.dock__open:hover .dock__question { color: var(--signal); }
+.dock__meta {
+  display: block; margin-top: 2px;
+  color: var(--ink-faint); font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+}
+.dock__dismiss {
+  position: relative;
+  flex: none; width: 30px;
+  border: 0; border-left: 1px solid var(--rule);
+  background: transparent; color: var(--ink-faint); font-size: 11px;
+}
+.dock__dismiss:hover { color: var(--signal); }
+
+/*
+ * An answer is prose a model wrote, so it is set as prose: one measure, plain
+ * rules, and code that keeps the same face the file previews use.
+ */
+.answer { color: var(--ink); font-size: 13.5px; line-height: 1.62; }
+.answer > :first-child { margin-top: 0; }
+.answer > :last-child { margin-bottom: 0; }
+.answer h1, .answer h2, .answer h3, .answer h4, .answer h5, .answer h6 {
+  margin: 22px 0 8px;
+  font-family: var(--font-mono); font-weight: 700; letter-spacing: -0.02em;
+}
+.answer h1 { font-size: 17px; }
+.answer h2 { font-size: 15.5px; }
+.answer h3 { font-size: 14px; }
+.answer h4, .answer h5, .answer h6 { font-size: 13px; }
+.answer p { margin: 0 0 12px; color: var(--ink); font-size: 13.5px; }
+.answer ul, .answer ol { margin: 0 0 12px; padding-left: 22px; }
+.answer li { margin: 0 0 5px; }
+.answer li[data-task] { list-style: none; margin-left: -22px; }
+.answer li[data-task] input { margin-right: 7px; }
+.answer blockquote {
+  margin: 0 0 12px; padding: 2px 0 2px 14px;
+  border-left: 2px solid var(--rule-firm);
+  color: var(--ink-soft);
+}
+.answer hr { margin: 18px 0; border: 0; border-top: 1px solid var(--rule); }
+.answer a { color: var(--signal); }
+.answer__code {
+  padding: 1px 4px; border-radius: 3px; background: var(--sunk);
+  font-family: var(--font-mono); font-size: 11.5px;
+}
+.answer__pre {
+  margin: 0 0 14px; padding: 12px 14px;
+  border: 1px solid var(--rule); border-radius: var(--radius-sm);
+  background: var(--sunk);
+  overflow-x: auto;
+  font-family: var(--font-mono); font-size: 11.5px; line-height: 1.6; tab-size: 2;
+}
+.answer__pre code { padding: 0; background: none; font-size: inherit; }
+.answer__table { width: 100%; margin: 0 0 14px; border-collapse: collapse; font-size: 12.5px; }
+.answer__table th, .answer__table td {
+  padding: 6px 10px; border-bottom: 1px solid var(--rule); text-align: left;
+}
+.answer__table th { color: var(--ink-faint); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; }
+.answer__image { max-width: 100%; border-radius: var(--radius-sm); }
+.answer__failure {
+  margin: 0 0 14px; padding: 12px 14px;
+  border: 1px solid var(--status-deleted); border-radius: var(--radius-sm);
+  color: var(--ink);
+  white-space: pre-wrap; word-break: break-word;
+  font-family: var(--font-mono); font-size: 11.5px; line-height: 1.55;
+}
+/* What the agent was told, under what it said: the reader wrote the question
+   and knows it, but never has to take the rest of the brief on trust. */
+.answer__brief { margin-top: 22px; border-top: 1px solid var(--rule); padding-top: 14px; }
+.answer__brief summary {
+  color: var(--ink-faint); font-size: 10px; letter-spacing: 0.11em; text-transform: uppercase;
+  cursor: pointer;
+}
+.answer__brief pre {
+  margin: 12px 0 0; padding: 12px 14px;
+  border-radius: var(--radius-sm); background: var(--sunk);
+  color: var(--ink-soft);
+  white-space: pre-wrap; word-break: break-word;
+  font-family: var(--font-mono); font-size: 11px; line-height: 1.6;
+}
+
 /* ---- Syntax highlighting ----------------------------------------------- */
 
 .hljs-comment, .hljs-quote { color: var(--ink-faint); font-style: italic; }
@@ -1486,6 +1986,8 @@ button { cursor: pointer; }
   .ribbon__actions, .detail__actions { flex-direction: row; align-items: center; gap: 20px; }
   .detail__files-head { flex-wrap: wrap; gap: 10px; }
   .instrument__path-hint { display: none; }
+  .instrument__right { gap: 14px; }
+  .dock { right: 12px; bottom: 12px; width: calc(100% - 24px); }
 }
 
 @media (prefers-reduced-motion: reduce) {

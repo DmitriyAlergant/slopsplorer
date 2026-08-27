@@ -38,13 +38,45 @@ slopsplorer --staged           # HEAD against the index
 slopsplorer main...HEAD        # what a pull request would show
 slopsplorer HEAD~5             # what the last five commits touched
 slopsplorer origin/main        # everything since origin/main, committed or not
+slopsplorer f53f4f9eb          # just that commit, against its parent
 slopsplorer v1.4 v1.5          # any two revisions
+slopsplorer --pr 619           # a pull request, fetched from the remote first
 ```
 
 An argument that names an existing folder is a path.
 Anything else is a revision.
+A named revision is a place to measure from, so it compares against the working tree.
+A pasted commit is that commit alone, against its parent, which is what a sha copied out of a log or a review page means.
+Write `<rev>^!` for one commit when a name points at it.
 `-C <dir>` points at a repository elsewhere.
 On the page, a picker on each side switches the comparison to any other branch, tag, or commit.
+
+## Reviewing a pull request
+
+```bash
+slopsplorer --pr 619
+slopsplorer https://github.com/owner/repo/pull/619
+slopsplorer https://gitlab.com/group/project/-/merge_requests/42
+```
+
+A squash merge deletes the branch and keeps none of its commits, so nothing local holds the change any more.
+`--pr` fetches it from the remote, works out the commit it was written against, and opens that.
+It reads the same range the forge shows, including a request raised against a release line rather than against the default branch.
+
+It needs `gh` or `glab` installed and signed in.
+That is the only way to learn which branch a request is against: Git holds both branches and no record that they were ever proposed against each other.
+No other command reaches the network.
+
+## Walking the commits
+
+A band above the filters lists the commits the comparison spans, with what each one added and removed.
+
+Click one to see that commit alone, shift-click to take a run of them, or step with `[` and `]`.
+Everything the band can select is one comparison of two commits, so there is no mode to keep track of: one commit, the first six, the middle four, or the whole change.
+
+The band answers to no filter, because it is the frame the review happens inside.
+Generated files stay out of it, so one regenerated lockfile cannot flatten every other commit.
+It opens shut, and shut it still says where you are and still steps.
 
 A switch beside the unit picks which side of the change every figure describes:
 
@@ -117,6 +149,9 @@ They do different things, and they compose.
   - Generated files (lockfiles and friends), off by default
 - **The tree checkboxes** drop a folder from every total and from the file table.
 - **Drill down** (**double-click**) rescopes the page to one subfolder.
+- **This folder / All below** lists the files of the selected folder alone or of everything under it. It moves the file list only, and changes no total.
+
+Click a column heading to sort the file list. The file name sorts A to Z; every other column sorts heaviest first.
 
 ## What it counts
 
@@ -153,6 +188,7 @@ slopsplorer <path>              # defaults to the current folder
   --tokenizer cl100k_base       # default o200k_base
   --no-open                     # do not open a browser on start
   --dev                         # Vite hot reload, for work on Slopsplorer itself
+  --pr 619                      # fetch a pull request and compare it, by number or URL
   --report                      # print a text report and exit, no server
   --unit loc                    # report unit: tokens (default), lines, or loc
   --aspect net                  # report side of a change: churn (default), net, added, removed, after
@@ -162,6 +198,25 @@ slopsplorer <path>              # defaults to the current folder
 Inside a Git worktree the file list comes from the Git index plus untracked files that no ignore rule covers, so dependencies and build output never distort the map.
 Outside one, the walker applies `.gitignore` itself, so a plain folder behaves the same way.
 `--all-files` disables both.
+
+## Ask an agent about it
+
+The map says where the weight sits, not why it sits there.
+If you have Claude Code, Codex, Cursor, or opencode installed, the **Ask** button in the header hands that question to one of them.
+
+Slopsplorer finds them at startup and asks each one whether it is signed in.
+The menu names every tool that starts, with its mark and what it answered, and a tool that reports no sign-in can still be asked: the answer comes back, or the card says what the tool complained about.
+Nothing is sent anywhere by Slopsplorer: the agent runs on your machine, under your own sign-in, in the folder being measured.
+
+You type the question.
+Slopsplorer adds what you have on screen - the scan or the comparison, the drill, the selection, the unit, the flavors counted, and the last file you opened - so the agent starts where you are instead of at the top of the repository.
+An answer takes minutes, so the question runs in the background and waits in a card at the corner of the window until it is ready.
+Open the card to read the answer, and open **What the agent was told** under it to see exactly what was sent.
+Dismissing a card stops the agent and the tools it started.
+
+Each tool is asked in the most restricted mode it offers: `plan` mode for Claude Code, the `read-only` sandbox for Codex, `ask` mode for Cursor, and the `plan` agent for opencode.
+The first three cannot write.
+What opencode's `plan` agent may do is decided by your own opencode configuration, so check that if it matters to you.
 
 ## Agent skill
 
@@ -174,6 +229,8 @@ On Windows you get the same command written for PowerShell.
 
 The server binds to loopback by default and is read-only.
 It serves only files that were part of the scan, and refuses any path outside it.
+Your question is passed to an agent as one argument and never through a shell.
+Each agent is asked in the most restricted mode it offers, which for three of the four cannot write; see [Ask an agent about it](#ask-an-agent-about-it).
 
 ## Development
 

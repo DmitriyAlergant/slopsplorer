@@ -1,18 +1,26 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
-  Aspect, ComparisonRequest, FileKind, Measure, RankMetric, RowKind, TreeRow, ViewRequest, ViewResponse,
+  AgentTool, Aspect, AskTask, CommitSpine, ComparisonRequest, FileKind, Measure, RankMetric, RowKind,
+  TreeRow, ViewRequest, ViewResponse,
 } from "../shared/api.ts";
-import { ASPECTS, MEASURES } from "../shared/api.ts";
-import { compare, fetchView, openRoot, rescan } from "./api.ts";
+import { ASPECTS, MEASURES, spansRequest } from "../shared/api.ts";
+import {
+  compare, dismissAsk, fetchAgents, fetchAsks, fetchSpine, fetchView, openRoot, rescan, startAsk,
+} from "./api.ts";
 import {
   DEFAULT_WORKSPACE_HEIGHT, MAX_WORKSPACE_HEIGHT, MIN_WORKSPACE_HEIGHT,
-  readPreferences, readTreePanelRatio, readWorkspaceHeight,
-  writePreferences, writeTreePanelRatio, writeWorkspaceHeight,
+  DEFAULT_SPINE_HEIGHT,
+  readAskAgent, readPreferences, readSpineExpanded, readSpineHeight, readTreePanelRatio,
+  readWorkspaceHeight, writeAskAgent, writePreferences, writeSpineExpanded, writeSpineHeight,
+  writeTreePanelRatio, writeWorkspaceHeight,
 } from "./preferences.ts";
 import { isInsideFolder } from "./displayPath.ts";
 import { comparisonLabel } from "./format.ts";
 import { closeTooltip } from "./tooltip.ts";
 import { readRequest, selectionKey, writeRequest } from "./urlState.ts";
+import { AnswerDialog } from "./components/AnswerDialog.tsx";
+import { AskDialog } from "./components/AskDialog.tsx";
+import { AskDock } from "./components/AskDock.tsx";
 import { FilterBar } from "./components/FilterBar.tsx";
 import { FolderDetail } from "./components/FolderDetail.tsx";
 import { InstrumentBar } from "./components/InstrumentBar.tsx";
@@ -20,16 +28,41 @@ import { MassRibbon } from "./components/MassRibbon.tsx";
 import { SkillInstallDialog } from "./components/SkillInstallDialog.tsx";
 import { SourceDialog, type Preview } from "./components/SourceDialog.tsx";
 import { SourceTree } from "./components/SourceTree.tsx";
+import { PendingSpineBand, SpineBand } from "./components/SpineBand.tsx";
 import { DEFAULT_TREE_PANEL_RATIO, HeightSplitter, WorkspaceSplitter } from "./components/Splitter.tsx";
 
 /** Long enough to coalesce a burst of typing, short enough to feel immediate. */
 const REQUEST_DEBOUNCE_MS = 80;
+
+/**
+ * How often a running ask is asked whether it has finished.
+ *
+ * An agent takes minutes, so this is about how soon the floater turns rather
+ * than about the answer arriving any sooner.
+ */
+const ASK_POLL_MS = 1200;
 
 function requestFromLocation(): ViewRequest {
   try {
     return readRequest(window.location.search, readPreferences(window.localStorage));
   } catch {
     return readRequest(window.location.search);
+  }
+}
+
+function spineHeightFromStorage(): number {
+  try {
+    return readSpineHeight(window.localStorage, DEFAULT_SPINE_HEIGHT);
+  } catch {
+    return DEFAULT_SPINE_HEIGHT;
+  }
+}
+
+function spineExpandedFromStorage(): boolean {
+  try {
+    return readSpineExpanded(window.localStorage);
+  } catch {
+    return false;
   }
 }
 
@@ -79,11 +112,33 @@ export function App(): React.JSX.Element {
   const [comparingLabel, setComparingLabel] = useState<string | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [skillOpen, setSkillOpen] = useState(false);
+  const [agents, setAgents] = useState<readonly AgentTool[]>([]);
+  const [agentId, setAgentId] = useState<string | null>(() => {
+    try {
+      return readAskAgent(window.localStorage);
+    } catch {
+      return null;
+    }
+  });
+  const [askOpen, setAskOpen] = useState(false);
+  const [askStarting, setAskStarting] = useState(false);
+  const [askFailure, setAskFailure] = useState<string | null>(null);
+  const [tasks, setTasks] = useState<readonly AskTask[]>([]);
+  const [openAnswerId, setOpenAnswerId] = useState<string | null>(null);
+  const [lastViewedPath, setLastViewedPath] = useState<string | null>(null);
+  const [spine, setSpine] = useState<CommitSpine | null>(null);
+  const [spineLoading, setSpineLoading] = useState(false);
+  const [spineExpanded, setSpineExpanded] = useState(spineExpandedFromStorage);
+  const [spineHeight, setSpineHeight] = useState(spineHeightFromStorage);
   const [treePanelRatio, setTreePanelRatio] = useState(treePanelRatioFromStorage);
   const [workspaceHeight, setWorkspaceHeight] = useState(workspaceHeightFromStorage);
   const requestRef = useRef(request);
   requestRef.current = request;
+  const spineRef = useRef(spine);
+  spineRef.current = spine;
   const lastSelectionRef = useRef(selectionKey(request));
+  const lastViewedPathRef = useRef(lastViewedPath);
+  lastViewedPathRef.current = lastViewedPath;
 
   /**
    * Mirror the view state into the URL so it can be linked and revisited.
@@ -154,6 +209,42 @@ export function App(): React.JSX.Element {
     };
   }, [request]);
 
+  /**
+   * What this host can ask, and what it was already asked.
+   *
+   * The agents were found once, before the server started listening, so this
+   * is a read of that list and never a search of its own. The asks come back
+   * too, which is what lets a reload find an answer that arrived while the
+   * page was closed.
+   */
+  useEffect(() => {
+    let cancelled = false;
+    const fail = (cause: unknown): void => {
+      if (!cancelled) setError(cause instanceof Error ? cause.message : String(cause));
+    };
+    fetchAgents().then((found) => { if (!cancelled) setAgents(found.agents); }, fail);
+    fetchAsks().then((held) => { if (!cancelled) setTasks(held.tasks); }, fail);
+    return () => { cancelled = true; };
+  }, []);
+
+  // Only while something runs: a dock of finished asks has nothing to learn.
+  const asksRunning = tasks.some((task) => task.state === "running");
+  useEffect(() => {
+    if (!asksRunning) return;
+    let cancelled = false;
+    const poll = (): void => {
+      fetchAsks().then(
+        (held) => { if (!cancelled) setTasks(held.tasks); },
+        (cause: unknown) => { if (!cancelled) setError(cause instanceof Error ? cause.message : String(cause)); },
+      );
+    };
+    const timer = setInterval(poll, ASK_POLL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [asksRunning]);
+
   // A new view re-lays out the tree and the tables, so whatever a tooltip was
   // describing may no longer sit under the pointer.
   useEffect(closeTooltip, [view]);
@@ -170,6 +261,45 @@ export function App(): React.JSX.Element {
     setRequest((previous) => ({ ...previous, rank: { ...previous.rank, metric: view.rankMetric } }));
   }, [view]);
 
+  /**
+   * Hold the spine of the range being reviewed.
+   *
+   * A step opens a comparison inside the same range, so the band must not be
+   * rebuilt as the reader walks it. It is asked for again only when a
+   * comparison arrives that the held spine does not span, which is what makes
+   * measuring a commit at a time affordable.
+   */
+  const diffSpec = view?.meta.diff?.spec ?? null;
+  useEffect(() => {
+    let cancelled = false;
+    const diff = view?.meta.diff ?? null;
+    if (diff === null) {
+      setSpine(null);
+    } else if (spineRef.current === null || !spansRequest(spineRef.current, diff.request)) {
+      // Dropped before the ask, so the band never draws a selection read from a
+      // range the page has already left.
+      setSpine(null);
+      setSpineLoading(true);
+      fetchSpine()
+        .then((next) => {
+          if (!cancelled) setSpine(next);
+        })
+        .catch((cause: unknown) => {
+          if (cancelled) return;
+          setSpine(null);
+          setError(cause instanceof Error ? cause.message : String(cause));
+        })
+        .finally(() => {
+          if (!cancelled) setSpineLoading(false);
+        });
+    }
+    return () => {
+      cancelled = true;
+    };
+    // The spec names the open comparison, which is the only thing that can
+    // move the page out of the range the held spine covers.
+  }, [diffSpec]);
+
   const handleRescan = useCallback(() => {
     setRescanning(true);
     rescan(requestRef.current)
@@ -181,16 +311,67 @@ export function App(): React.JSX.Element {
       .finally(() => setRescanning(false));
   }, []);
 
+  /** The agent the reader last chose, or the first one this host offers. */
+  const chosenAgent = agents.find((agent) => agent.id === agentId) ?? agents[0];
+  const chosenAgentId = chosenAgent?.id ?? null;
+
+  const chooseAgent = useCallback((chosen: string) => {
+    setAgentId(chosen);
+    writeAskAgent(window.localStorage, chosen);
+  }, []);
+
+  /**
+   * Start one agent on one question.
+   *
+   * The request goes with it, so the brief the server writes describes the
+   * page as it is at the moment of asking and not as it is when the answer
+   * arrives. The dialog closes at once, because the answer is minutes away
+   * and the dock is where it will appear.
+   */
+  const handleAsk = useCallback((question: string) => {
+    if (chosenAgentId === null) return;
+    setAskStarting(true);
+    setAskFailure(null);
+    startAsk({
+      agentId: chosenAgentId,
+      question,
+      view: requestRef.current,
+      lastViewedPath: lastViewedPathRef.current,
+    })
+      .then((task) => {
+        setTasks((previous) => [task, ...previous]);
+        setAskOpen(false);
+      })
+      .catch((cause: unknown) => setAskFailure(cause instanceof Error ? cause.message : String(cause)))
+      .finally(() => setAskStarting(false));
+  }, [chosenAgentId]);
+
+  const handleDismissAsk = useCallback((id: string) => {
+    setOpenAnswerId((open) => (open === id ? null : open));
+    dismissAsk(id)
+      .then((held) => setTasks(held.tasks))
+      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause)));
+  }, []);
+
+  const openFile = useCallback((path: string) => {
+    setLastViewedPath(path);
+    setPreview({ kind: "file", path });
+  }, []);
+
   /**
    * Aim the page at a new index, and reset what only the old one could mean.
    *
    * Another folder and another comparison both replace the file list, so an
    * exclusion or a drill carried across would name a path that may not exist.
+   *
+   * A step along the commit band is the exception: it opens a comparison inside
+   * the range already being reviewed, and throwing the reader back to the
+   * project root on every step would make walking commits unusable.
    */
   const reaim = useCallback((
-    start: (view: ViewRequest) => Promise<ViewResponse>, finish: () => void,
+    start: (view: ViewRequest) => Promise<ViewResponse>, finish: () => void, keepPlace = false,
   ) => {
-    const nextRequest: ViewRequest = {
+    const nextRequest: ViewRequest = keepPlace ? { ...requestRef.current } : {
       ...requestRef.current,
       excludedFolders: [],
       excludedDirectFiles: [],
@@ -214,10 +395,33 @@ export function App(): React.JSX.Element {
     reaim((view) => openRoot(root, view), () => setOpeningRoot(null));
   }, [reaim]);
 
-  const handleCompare = useCallback((comparison: ComparisonRequest) => {
+  const handleCompare = useCallback((comparison: ComparisonRequest, keepPlace = false) => {
     setComparingLabel(comparisonLabel(comparison));
-    reaim((view) => compare(comparison, view), () => setComparingLabel(null));
+    reaim((view) => compare(comparison, view), () => setComparingLabel(null), keepPlace);
   }, [reaim]);
+
+  /** Walking the band never leaves the range, so it never loses the reader's place. */
+  const handleSpan = useCallback((comparison: ComparisonRequest) => {
+    handleCompare(comparison, true);
+  }, [handleCompare]);
+
+  const resizeSpine = useCallback((height: number) => {
+    setSpineHeight(height);
+    try {
+      writeSpineHeight(window.localStorage, height);
+    } catch {
+      // Storage may be denied; the band still keeps the height for this visit.
+    }
+  }, []);
+
+  const toggleSpineExpanded = useCallback((expanded: boolean) => {
+    setSpineExpanded(expanded);
+    try {
+      writeSpineExpanded(window.localStorage, expanded);
+    } catch {
+      // Storage may be denied; the band still opens for this visit.
+    }
+  }, []);
 
   const toggleKind = useCallback((kind: FileKind) => {
     setRequest((previous) => ({
@@ -436,7 +640,30 @@ export function App(): React.JSX.Element {
         onRescan={handleRescan}
         onOpen={handleOpen}
         onCompare={handleCompare}
+        agents={agents}
+        agentId={chosenAgentId ?? ""}
+        onChooseAgent={chooseAgent}
+        onAsk={() => {
+          setAskFailure(null);
+          setAskOpen(true);
+        }}
       />
+
+      {view && view.meta.diff && spine === null && spineLoading ? <PendingSpineBand /> : null}
+
+      {view && view.meta.diff && spine && spine.commits.length > 0 ? (
+        <SpineBand
+          spine={spine}
+          measure={view.measure}
+          request={view.meta.diff.request}
+          disabled={busy || scanning}
+          expanded={spineExpanded}
+          onExpandedChange={toggleSpineExpanded}
+          onSelect={handleSpan}
+          height={spineHeight}
+          onHeightChange={resizeSpine}
+        />
+      ) : null}
 
       <FilterBar
         request={request}
@@ -490,11 +717,13 @@ export function App(): React.JSX.Element {
           path={request.selected.path}
           onSelect={select}
           directFilesOnly={request.selected.rowKind === "files"}
+          fileScope={request.fileScope}
+          onFileScopeChange={(fileScope) => patch({ fileScope })}
           canDrill={request.selected.rowKind === "folder" && request.selected.path !== request.drillPath}
           onDrill={() => drill(request.selected.path)}
           rank={request.rank}
           onRankChange={setRank}
-          onOpenSource={(path) => setPreview({ kind: "file", path })}
+          onOpenSource={openFile}
           onCapacityChange={setCardColumns}
         />
       </div>
@@ -525,6 +754,28 @@ export function App(): React.JSX.Element {
           Install the agent skill
         </button>
       </p>
+
+      <AskDock
+        tasks={tasks}
+        onOpen={(task) => setOpenAnswerId(task.id)}
+        onDismiss={handleDismissAsk}
+      />
+
+      {chosenAgent !== undefined ? (
+        <AskDialog
+          open={askOpen}
+          agent={chosenAgent}
+          starting={askStarting}
+          failure={askFailure}
+          onClose={() => setAskOpen(false)}
+          onAsk={handleAsk}
+        />
+      ) : null}
+
+      <AnswerDialog
+        task={tasks.find((task) => task.id === openAnswerId) ?? null}
+        onClose={() => setOpenAnswerId(null)}
+      />
 
       <SourceDialog preview={preview} onClose={() => setPreview(null)} />
       <SkillInstallDialog

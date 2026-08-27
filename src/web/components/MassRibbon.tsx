@@ -1,8 +1,6 @@
 import type { Aspect, Measure, RowKind, SummaryView, ViewRequest } from "../../shared/api.ts";
-import { ASPECTS, MEASURES, aspectTotals } from "../../shared/api.ts";
-import {
-  aspectFigure, compact, count, measureHeading, percent, weightCount, weightHeading, weightName,
-} from "../format.ts";
+import { ASPECTS, MEASURES, aspectTotals, measureHeading, weightHeading, weightName } from "../../shared/api.ts";
+import { aspectFigure, compact, count, percent, weightCount } from "../format.ts";
 import { Readout } from "./Readout.tsx";
 import { Tooltip, tooltipHandlers } from "./Tooltip.tsx";
 

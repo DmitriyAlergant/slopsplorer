@@ -1,6 +1,7 @@
-import { ASPECTS, FILE_KINDS, MEASURES, type Aspect, type FileKind, type Measure, type ViewRequest } from "../../shared/api.ts";
-import { FILE_KIND_DETAILS } from "../fileKinds.ts";
-import { aspectDescription, aspectHeading, measureHeading } from "../format.ts";
+import {
+  ASPECTS, FILE_KINDS, FILE_KIND_DETAILS, MEASURES, aspectDescription, aspectHeading, measureHeading,
+  type Aspect, type FileKind, type Measure, type ViewRequest,
+} from "../../shared/api.ts";
 import { Tooltip, tooltipHandlers } from "./Tooltip.tsx";
 
 interface Props {

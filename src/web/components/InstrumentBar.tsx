@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import type { ComparisonRequest, FileSource, ScanMeta } from "../../shared/api.ts";
+import type { AgentTool, ComparisonRequest, FileSource, ScanMeta } from "../../shared/api.ts";
 import { countOf, since } from "../format.ts";
+import { AgentPicker } from "./AgentPicker.tsx";
 import { ComparisonPicker } from "./ComparisonPicker.tsx";
 import { Tooltip, tooltipHandlers } from "./Tooltip.tsx";
 
@@ -12,6 +13,11 @@ interface Props {
   onRescan: () => void;
   onOpen: (root: string) => void;
   onCompare: (comparison: ComparisonRequest) => void;
+  /** Agents this host can run. No agent, no control: there is nothing to ask. */
+  agents: readonly AgentTool[];
+  agentId: string;
+  onChooseAgent: (agentId: string) => void;
+  onAsk: () => void;
 }
 
 /** Where a file list came from, named in the reader's terms rather than ours. */
@@ -23,7 +29,9 @@ const FILE_SOURCE_LABELS: Readonly<Record<FileSource, string>> = {
 };
 
 /** The fixed readout strip: what was measured, how, and how long ago. */
-export function InstrumentBar({ meta, rescanning, scanning, onRescan, onOpen, onCompare }: Props): React.JSX.Element {
+export function InstrumentBar({
+  meta, rescanning, scanning, onRescan, onOpen, onCompare, agents, agentId, onChooseAgent, onAsk,
+}: Props): React.JSX.Element {
   const [editingPath, setEditingPath] = useState(false);
   const [pathValue, setPathValue] = useState(meta?.rootPath ?? "");
   const pathInput = useRef<HTMLInputElement>(null);
@@ -136,20 +144,27 @@ export function InstrumentBar({ meta, rescanning, scanning, onRescan, onOpen, on
         )}
       </div>
 
-      <dl className="instrument__facts">
-        <div className="fact">
-          <dt>Tokenizer</dt>
-          <dd>{meta?.tokenizer ?? "-"}</dd>
-        </div>
-        <div className="fact">
-          <dt>Source</dt>
-          <dd>{meta ? FILE_SOURCE_LABELS[meta.fileSource] : "-"}</dd>
-        </div>
-        <div className="fact">
-          <dt>Scanned</dt>
-          <dd>{meta ? since(meta.scannedAt) : "-"}</dd>
-        </div>
-      </dl>
+      <div className="instrument__right">
+        {/* Beside the facts about the measurement, because asking is an act on
+            the whole page rather than on any one panel of it. */}
+        {agents.length > 0 ? (
+          <AgentPicker agents={agents} agentId={agentId} onChoose={onChooseAgent} onAsk={onAsk} />
+        ) : null}
+        <dl className="instrument__facts">
+          <div className="fact">
+            <dt>Tokenizer</dt>
+            <dd>{meta?.tokenizer ?? "-"}</dd>
+          </div>
+          <div className="fact">
+            <dt>Source</dt>
+            <dd>{meta ? FILE_SOURCE_LABELS[meta.fileSource] : "-"}</dd>
+          </div>
+          <div className="fact">
+            <dt>Scanned</dt>
+            <dd>{meta ? since(meta.scannedAt) : "-"}</dd>
+          </div>
+        </dl>
+      </div>
 
       {meta && meta.skippedLargeFiles > 0 ? (
         <p className="instrument__note">

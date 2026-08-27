@@ -9,6 +9,7 @@ The map does not change.
 A folder that holds most of a diff reads the same way as a folder that holds most of a tree.
 That is why diff mode is a second producer of `ScanIndex` and not a second program.
 
+For the commits inside a comparison, read [commit-band.md](./commit-band.md).
 For the parts it shares, read [architecture.md](./architecture.md).
 For the rules that decide what each file is, read [classification.md](./classification.md).
 
@@ -21,9 +22,18 @@ For the rules that decide what each file is, read [classification.md](./classifi
 | `slopsplorer --diff` | HEAD to the working tree. |
 | `slopsplorer --staged` | HEAD to the index. |
 | `slopsplorer <rev>` | That revision to the working tree. |
+| `slopsplorer <commit>` | A raw object name: that commit to its parent. |
+| `slopsplorer <rev>^!` | The same, whatever names the commit. |
 | `slopsplorer <revA> <revB>` | A to B. |
 | `slopsplorer <revA>..<revB>` | A to B. |
 | `slopsplorer <revA>...<revB>` | The merge base of A and B, to B. |
+| `slopsplorer --pr <number>` | A pull request, fetched from the remote first. |
+| `slopsplorer <pull request URL>` | The same, named by the page a reviewer was reading. |
+
+A single revision carries two intents, and the text tells them apart.
+A named one, such as `origin/main` or `HEAD~5`, is a place to measure from, so it compares to the working tree.
+A raw object name is one commit, because a bare `f53f4f9eb` arrives from a log, a review page, or another tool, and never from a person describing how far back to look.
+`OBJECT_NAME` in `src/scanner/gitdiff.ts` is the whole rule, and `<rev>^!` is Git's own notation for the same thing when a name rather than an object name points at the commit.
 
 A positional is a directory when the filesystem holds one at that path.
 A folder named `main` therefore still scans, and the rule needs no escape syntax.
@@ -37,6 +47,42 @@ A positional that is not a directory is a revision when `git rev-parse --verify`
 `--exclude` and `--max-file-bytes` apply to both modes.
 
 The scan root is the top of the worktree, because `git diff` reports paths from there.
+
+`resolveComparison()` refuses a comparison whose two sides are one commit.
+`main..main` can only draw an empty page, and saying so is better than measuring nothing and serving it.
+The same rule catches `A...B` where B is already an ancestor of A, because the merge base is then B itself.
+
+## Reviewing a pull request
+
+A squash merge deletes the branch and keeps none of its commits, so a pull request's own revisions are in no local branch and `git rev-parse` refuses every one of them.
+`--pr` fetches the change instead of asking the repository for something it does not hold.
+
+`--pr` needs `gh` or `glab` installed and signed in, and that is not a convenience.
+The branch a request is against is the one fact Git has no record of.
+A repository holds the head and the base branch as commits, and nothing in it anywhere says the two were ever proposed against each other.
+Guessing the repository default is wrong for every request raised against anything else, and wrong quietly: the page draws a comparison and never says it measured a different one.
+
+`readPullRequestMetadata()` in `src/scanner/gitdiff.ts` asks for three things: the base branch, the head commit, and the commit that took the request in, which is `null` while it is open.
+The host decides which command answers, and the failure is a message naming the command rather than a wrong measurement.
+
+`pullRequestBase()` then applies one rule for every state a request can be in: the merge base of the head and the base branch **as it stood the last time the request was measured against it**.
+While the request is open that is the branch tip.
+Once it has landed the branch has moved past it, and where the merge sat is where it stood, whether the forge squashed, rebased, or merged.
+Taking the branch tip after a merge would be wrong twice over: for a squash or a rebase it is too far ahead, and for a merge commit the head is inside the branch, so the merge base would be the head and the change would read as empty.
+
+The head lands in `refs/slopsplorer/pull/<number>`, which is a namespace of ours, so no branch a person named is touched.
+`shortRevision()` prints that ref as `PR <number>`.
+
+`nameForBase()` says what the base is rather than spelling it.
+A ref that points exactly at the commit says what an object name cannot, and the base branch is the one worth naming.
+Failing that, `git describe` still places it, as `v2.0.0-23-g6bf16a921`: the last release, how far past it the branch forked, and the commit.
+That is a landmark and a revision at once, because the trailing object name pins it, so the name on the chip can never drift away from the commit it was measured at.
+
+The remote is the one serving the project a URL names, or `origin` when only a number was given.
+Its URL is read from the config rather than through `git remote get-url`, which applies `insteadOf` and would answer with the mirror a fetch is rewritten to.
+Only `--pr` and a pull request URL reach the network.
+A revision this repository does not hold is still an error and never a fetch, because a read-only tool must not talk to a remote by surprise.
+Git is told not to prompt, so a missing credential is an error the command line prints rather than a wait with nothing on screen.
 
 ## Changing the comparison
 

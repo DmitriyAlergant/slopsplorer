@@ -199,5 +199,10 @@ describe("aggregating a scan the same way", () => {
       .toBe("net");
     expect(buildView(diffIndex, request({ rank: { metric: "functions", minWeight: 0, limit: 100 } })).rankMetric)
       .toBe("functions");
+    // The file column stands in both modes, so neither clamps a name sort away.
+    expect(buildView(scanIndex, request({ rank: { metric: "name", minWeight: 0, limit: 100 } })).rankMetric)
+      .toBe("name");
+    expect(buildView(diffIndex, request({ rank: { metric: "name", minWeight: 0, limit: 100 } })).rankMetric)
+      .toBe("name");
   });
 });

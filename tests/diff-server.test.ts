@@ -8,7 +8,7 @@ import { scanDiff, type DiffScanOptions } from "../src/scanner/diffScan.ts";
 import { resolveComparison } from "../src/scanner/gitdiff.ts";
 import { createSlopsplorerServer, type SlopsplorerServer } from "../src/server/server.ts";
 import type {
-  ComparisonRequest, RepositoryRefs, ScanMeta, SourceResponse, ViewResponse,
+  CommitSpine, ComparisonRequest, RepositoryRefs, ScanMeta, SourceResponse, ViewResponse,
 } from "../src/shared/api.ts";
 
 const execFileAsync = promisify(execFile);
@@ -18,8 +18,9 @@ let root: string;
 let server: SlopsplorerServer;
 let serverUrl: string;
 
-async function git(...args: string[]): Promise<void> {
-  await execFileAsync("git", args, { cwd: root });
+async function git(...args: string[]): Promise<string> {
+  const { stdout } = await execFileAsync("git", args, { cwd: root });
+  return stdout;
 }
 
 async function write(relativePath: string, contents: string): Promise<void> {
@@ -157,4 +158,50 @@ describe("the preview of one compared file", () => {
     ]);
     expect(source.lines[0]).toEqual({ marker: " ", text: committed[0], beforeLine: 1, afterLine: 1 });
   });
+});
+
+describe("the commits a comparison spans", () => {
+  it("lists them for a range, measured one commit at a time", async () => {
+    expect((await postCompare({ kind: "revisionPair", base: "HEAD~1", target: "HEAD" })).status).toBe(200);
+
+    const response = await fetch(`${serverUrl}/api/spine`);
+    expect(response.status).toBe(200);
+    const spine = await response.json() as CommitSpine;
+    const head = (await git("rev-parse", "HEAD")).trim();
+    const subject = (await git("log", "-1", "--format=%s")).trim();
+    expect(spine.commits.map((entry) => entry.sha)).toEqual([head]);
+    expect(spine.commits[0]?.subject).toBe(subject);
+    expect(spine.commits[0]?.addedLines).toBeGreaterThan(0);
+    expect(spine.omitted).toBe(0);
+    expect(spine.range).toEqual({ kind: "revisionPair", base: "HEAD~1", target: "HEAD" });
+  }, SCAN_TIMEOUT_MS);
+
+  /**
+   * The bug this guards: a step opens a comparison of one commit, so a spine
+   * rebuilt from the open comparison would list that one commit and the band
+   * would collapse as the reader walked it.
+   */
+  it("stays the range's spine while a comparison inside the range is open", async () => {
+    expect((await postCompare({ kind: "revisionPair", base: "HEAD~2", target: "HEAD" })).status).toBe(200);
+    const range = await (await fetch(`${serverUrl}/api/spine`)).json() as CommitSpine;
+    expect(range.commits.length).toBe(2);
+
+    // Step onto the first commit of the range, as the band does.
+    const step: ComparisonRequest = {
+      kind: "revisionPair", base: range.base, target: range.commits[0]!.sha,
+    };
+    expect((await postCompare(step)).status).toBe(200);
+
+    const stepped = await (await fetch(`${serverUrl}/api/spine`)).json() as CommitSpine;
+    expect(stepped.commits.map((entry) => entry.sha)).toEqual(range.commits.map((entry) => entry.sha));
+    expect(stepped.range).toEqual(range.range);
+  }, SCAN_TIMEOUT_MS);
+
+  it("has none when a side is the working tree, because neither end is a commit", async () => {
+    expect((await postCompare({ kind: "workingTree" })).status).toBe(200);
+
+    const response = await fetch(`${serverUrl}/api/spine`);
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toBeNull();
+  }, SCAN_TIMEOUT_MS);
 });

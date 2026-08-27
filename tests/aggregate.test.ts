@@ -325,6 +325,38 @@ describe("file ranking", () => {
     expect(byComments.ranked.map((file) => file.path)).toEqual(["src/util.ts", "src/main.ts"]);
   });
 
+  it("orders by file name A to Z, so a reader who knows the path can find the row", () => {
+    const view = buildView(index, request({ rank: { metric: "name", minWeight: 0, limit: 100 } }));
+    expect(view.ranked.map((file) => file.path)).toEqual([
+      "README.md", "src/deep/helper.ts", "src/main.ts", "src/util.ts", "tests/main.test.ts",
+    ]);
+    expect(view.rankMetric).toBe("name");
+  });
+
+  it("cuts a name-sorted list by weight, so ordering the rows A to Z cannot bury the heavy ones", () => {
+    const byTokens = buildView(index, request({ rank: { metric: "tokens", minWeight: 0, limit: 2 } }));
+    const byName = buildView(index, request({ rank: { metric: "name", minWeight: 0, limit: 2 } }));
+    expect(byName.ranked.map((file) => file.path))
+      .toEqual(byTokens.ranked.map((file) => file.path).sort());
+    expect(byName.rankedTotal).toBe(5);
+  });
+
+  it("lists only a folder's own files in the folder scope, and the whole subtree in the other", () => {
+    const subtree = buildView(index, request({
+      selected: { rowKind: "folder", path: "src" }, fileScope: "subtree",
+    }));
+    expect(subtree.ranked.map((file) => file.path).sort())
+      .toEqual(["src/deep/helper.ts", "src/main.ts", "src/util.ts"]);
+
+    const folderOnly = buildView(index, request({
+      selected: { rowKind: "folder", path: "src" }, fileScope: "folder",
+    }));
+    expect(folderOnly.ranked.map((file) => file.path).sort()).toEqual(["src/main.ts", "src/util.ts"]);
+    expect(folderOnly.rankedTotal).toBe(2);
+    // Only the list narrows: the panel around it still describes the subtree.
+    expect(folderOnly.detail.weight).toBe(subtree.detail.weight);
+  });
+
   it("ranks only what is in scope, so an excluded folder cannot reappear in the top-files list", () => {
     const view = buildView(index, request({ excludedFolders: ["src"] }));
     expect(view.ranked.map((file) => file.path).sort()).toEqual(["README.md", "tests/main.test.ts"]);
@@ -354,6 +386,9 @@ describe("request parsing", () => {
     expect(parseViewRequest({ rank: { metric: "commentLines" } }).rank.metric).toBe("commentLines");
     // Every metric is a table column now, and classes has none to be sorted by.
     expect(parseViewRequest({ rank: { metric: "classes" } }).rank.metric).toBe("tokens");
+    expect(parseViewRequest({ rank: { metric: "name" } }).rank.metric).toBe("name");
+    expect(parseViewRequest({ fileScope: "folder" }).fileScope).toBe("folder");
+    expect(parseViewRequest({ fileScope: "elsewhere" }).fileScope).toBe("subtree");
   });
 
   it("accepts only known source-tree sort orders", () => {

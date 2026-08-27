@@ -69,6 +69,16 @@ describe("primary measure URL state", () => {
     expect(writeRequest(defaulted)).not.toContain("rank=");
   });
 
+  it("carries the file list scope, so a link opens on the same rows", () => {
+    const request = readRequest("?path=src&files=folder");
+    expect(request.fileScope).toBe("folder");
+    expect(writeRequest(request)).toContain("files=folder");
+
+    const defaulted = readRequest("?path=src&files=everything");
+    expect(defaulted.fileScope).toBe("subtree");
+    expect(writeRequest(defaulted)).not.toContain("files=");
+  });
+
   it("carries the ranking threshold in whatever measure is active", () => {
     const request = readRequest("?measure=lines&min=40");
     expect(request.rank.minWeight).toBe(40);

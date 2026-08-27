@@ -41,8 +41,33 @@ const I18N_DIRECTORIES: ReadonlySet<string> = new Set([
   "i18n", "intl", "lang", "locale", "locales", "translation", "translations",
 ]);
 
+/**
+ * Directory names that hold a test tree.
+ *
+ * Curated rather than pattern-matched, for the same reason the language codes
+ * are: a rule that accepted any name ending in `test` or `specs` would take
+ * `db_engine_specs` and `plugin-chart-paired-t-test`, which are ordinary
+ * source. The second group is the Gradle and Kotlin Multiplatform source sets,
+ * where a whole test tree hangs off a name that is never the word `test` alone.
+ */
 const TEST_DIRECTORIES: ReadonlySet<string> = new Set([
   "__tests__", "e2e", "spec", "specs", "test", "tests",
+  "androidinstrumentedtest", "androidtest", "androidunittest", "commontest",
+  "functionaltest", "integrationtest", "iostest", "jstest", "jvmtest",
+  "nativetest", "testfixtures",
+]);
+
+/**
+ * Directory names that state that what they hold is a payload.
+ *
+ * A `.txt` or `.md` is prose by extension, but under one of these it is the
+ * input or the recorded output of a test. Two files in neovim's
+ * `test/functional/fixtures/` are 13% of that repository, and reporting them
+ * as documentation says something false about the whole tree.
+ */
+const FIXTURE_DIRECTORIES: ReadonlySet<string> = new Set([
+  "__snapshots__", "data", "fixture", "fixtures", "golden", "goldens",
+  "sample", "samples", "snapshot", "snapshots", "testdata",
 ]);
 
 /**
@@ -77,10 +102,46 @@ function isLocaleStem(stem: string): boolean {
 }
 
 /**
- * Whether the filename itself declares the file to be a test.
+ * Whether the file sits in one language's folder of a translation tree, as
+ * `conf/locale/nl/formats.py` and `Translation/lang/en/validation.php` do.
+ *
+ * Everything in such a folder is that language's copy, whatever format it is
+ * written in. Both halves are needed. A bare `it/` or `id/` folder is not a
+ * locale, and hugo's `docs/content/en/functions/lang/` holds prose about
+ * translation rather than a translation, which is why the language code has to
+ * be the folder the file is actually in.
+ */
+function isLocaleDirectory(directories: readonly string[]): boolean {
+  const parent = directories[directories.length - 1];
+  if (parent === undefined || !isLocaleStem(parent)) return false;
+  return containsAny(directories, I18N_DIRECTORIES);
+}
+
+/**
+ * A stem ending in a separated `test` or `spec`: `service_test`, `sbom.tests`,
+ * `router-spec`, and vitest's type-test suffix, as in `defineComponent.test-d`.
+ *
+ * The separator is what makes the rule safe. Without it `latest` and
+ * `manifest` would both read as tests.
+ */
+const SEPARATED_TEST_STEM = /(?:^|[^A-Za-z0-9])(?:test|spec)s?(?:-d)?$/i;
+
+/**
+ * A stem ending in a camel-case `Test` or `Spec`, which is how the JVM and
+ * .NET name a test: `CallTest`, `HttpUrlTests`, `RouterSpec`.
+ *
+ * Case-sensitive on purpose. The uppercase letter is the whole word boundary
+ * here, so reading this case-insensitively would call `latest.ts` a test.
+ */
+const CAMEL_TEST_STEM = /(?:^|[A-Za-z0-9])(?:Test|Spec)s?$/;
+
+/**
+ * Whether the filename declares the file to be a test whatever its format.
  *
  * This is the strong half of test detection: the name is an assertion about
- * the file's role, so it outranks what the extension says about its format.
+ * the file's role, so it outranks what the extension says. Only the markers
+ * that can mean nothing else belong here, which is why the broader suffix
+ * conventions sit in `isTestSourceName` instead.
  */
 function isTestFileName(name: string): boolean {
   if (name.startsWith("test_") || name.startsWith("spec_")) return true;
@@ -89,30 +150,55 @@ function isTestFileName(name: string): boolean {
 }
 
 /**
+ * Whether a source filename follows one of the test-suffix conventions.
+ *
+ * Read for a code extension only. On any other format the same suffix reads
+ * as being *about* tests rather than being one: `.github/workflows/tests.yml`
+ * is the CI configuration, `docs/unit-tests.txt` and `WritingPesterTests.md`
+ * are prose, and `RolloutSpec.json` is a deployment specification.
+ */
+function isTestSourceName(name: string): boolean {
+  const stem = name.slice(0, name.length - path.posix.extname(name).length);
+  return SEPARATED_TEST_STEM.test(stem) || CAMEL_TEST_STEM.test(stem);
+}
+
+/**
  * Classify a file into the buckets the visibility switches control.
  *
- * The two halves of test detection carry different weight. A test-shaped
- * filename outranks the extension, because the name states the file's role.
- * Sitting in a test directory is only a location, and a test tree holds
- * fixtures, corpora, and sample documents alongside its code, so that signal
- * ranks below format: `tests/fixtures/events.json` is data and
- * `tests/paste/clipboard.html` is other, while `tests/conftest.py` is a test.
+ * One rule orders the whole function: a filename states the file's role, a
+ * format states what the file is, and a directory only states where it sits.
+ * So a test-shaped filename outranks the extension, and both outrank the
+ * directory. The exception is the broad test-suffix conventions, which are
+ * how source files are named and are read for a code extension only.
+ *
+ * A test tree holds fixtures, corpora, and sample documents beside its code,
+ * and a translation tree holds the code that reads the catalogues beside the
+ * catalogues, so location alone decides nothing: `tests/fixtures/events.json`
+ * is data, `tests/paste/clipboard.html` is other, and `tests/conftest.py` is a
+ * test, while `langs/i18n/i18n.go` is code and `docs/topics/i18n/
+ * translation.txt` is prose.
+ *
+ * A directory is still what tells one use of an ambiguous format from another,
+ * because `locales/fr_CA.json` and `config/api.json` are one format, and so
+ * are a page of prose and a fixture with a `.txt` on the end.
  */
 export function classifyFile(relativePath: string): FileKind {
-  const name = path.posix.basename(relativePath).toLowerCase();
-  const extension = path.posix.extname(name);
-  const stem = name.slice(0, name.length - extension.length);
-  const directories = new Set(path.posix.dirname(relativePath).toLowerCase().split("/").filter((part) => part && part !== "."));
+  const name = path.posix.basename(relativePath);
+  const lowercasedName = name.toLowerCase();
+  const extension = path.posix.extname(lowercasedName);
+  const stem = lowercasedName.slice(0, lowercasedName.length - extension.length);
+  const directories = path.posix.dirname(relativePath).toLowerCase().split("/").filter((part) => part && part !== ".");
 
   if (extension === ".po" || extension === ".pot") return "i18n";
-  if (containsAny(directories, I18N_DIRECTORIES)) return "i18n";
   if ((extension === ".json" || extension === ".yaml" || extension === ".yml") && isLocaleStem(stem)) return "i18n";
-  if (isTestFileName(name)) return "test";
-  if (DATA_NAMES.has(name)) return "data";
-  if (DATA_EXTENSIONS.has(extension)) return "data";
-  if (TEXT_EXTENSIONS.has(extension)) return "text";
-  const inTestDirectory = containsAny(directories, TEST_DIRECTORIES);
-  if (CODE_EXTENSIONS.has(extension)) return inTestDirectory ? "test" : "code";
+  if (isTestFileName(lowercasedName)) return "test";
+  if (isLocaleDirectory(directories)) return "i18n";
+  if (DATA_NAMES.has(lowercasedName)) return "data";
+  if (DATA_EXTENSIONS.has(extension)) return containsAny(directories, I18N_DIRECTORIES) ? "i18n" : "data";
+  if (TEXT_EXTENSIONS.has(extension)) return containsAny(directories, FIXTURE_DIRECTORIES) ? "data" : "text";
+  if (CODE_EXTENSIONS.has(extension)) {
+    return isTestSourceName(name) || containsAny(directories, TEST_DIRECTORIES) ? "test" : "code";
+  }
   return "other";
 }
 
@@ -134,7 +220,13 @@ const DATA_LITERAL_SHARE = 0.9;
 /** The share of literal content one single literal may hold. */
 const MAX_LITERAL_DOMINANCE = 0.25;
 
-/** Filenames that name the catalogue's purpose, as in `desktop-i18n.ts`. */
+/**
+ * Paths that name the catalogue's purpose, as in `desktop-i18n.ts` or
+ * `src/Illuminate/Translation/lang/en/validation.php`.
+ *
+ * The whole path, because a catalogue is as often named by the folder holding
+ * it as by its own filename.
+ */
 const I18N_NAME = /i18n|intl|translat|locale/;
 
 /** What one file's content says about it, beyond what its path says. */
@@ -169,7 +261,7 @@ export function refineKindByContent(kind: FileKind, relativePath: string, shape:
   if (shape.contentChars < MIN_CONTENT_CHARS) return kind;
   if (shape.literalChars < shape.contentChars * DATA_LITERAL_SHARE) return kind;
   if (shape.largestLiteral > shape.literalChars * MAX_LITERAL_DOMINANCE) return kind;
-  return I18N_NAME.test(path.posix.basename(relativePath).toLowerCase()) ? "i18n" : "data";
+  return I18N_NAME.test(relativePath.toLowerCase()) ? "i18n" : "data";
 }
 
 const GENERATED_DIRECTORIES: ReadonlySet<string> = new Set([
@@ -177,10 +269,20 @@ const GENERATED_DIRECTORIES: ReadonlySet<string> = new Set([
 ]);
 
 const GENERATED_SUFFIXES: readonly string[] = [
-  ".generated.ts", ".generated.tsx", ".generated.js", ".g.ts", ".g.dart",
-  ".gen.go", "_generated.go", ".pb.go", "_pb2.py", "_pb2_grpc.py", "_pb.ts",
-  ".min.js", ".min.css", ".map", ".lock",
+  ".g.ts", ".g.dart", ".pb.go", "_pb2.py", "_pb2_grpc.py", "_pb.ts",
+  ".min.js", ".min.css", ".bundle.js", ".map", ".lock",
 ];
+
+/**
+ * The word a build tool puts in a stem, in whatever language it writes:
+ * `vimfn.gen.lua`, `contracts.generated.ts`, `serializer.autogen.cs`,
+ * `client_generated.go`, `zz_generated.deepcopy.go`.
+ *
+ * `gen` needs the dot, because `hugo_gen.md` documents the `gen` command and
+ * `gen.go` is the generator. The past participle is safe after any separator,
+ * since nothing names itself `generated` unless it is.
+ */
+const GENERATED_STEM = /[._-](?:generated|autogen)(?:$|[._-])|\.gen$/i;
 
 const GENERATED_NAMES: ReadonlySet<string> = new Set([
   "package-lock.json", "pnpm-lock.yaml", "yarn.lock", "bun.lockb", "composer.lock",
@@ -192,7 +294,8 @@ export function isGenerated(relativePath: string): boolean {
   const directories = path.posix.dirname(relativePath).toLowerCase().split("/").filter((part) => part && part !== ".");
   if (containsAny(directories, GENERATED_DIRECTORIES)) return true;
   if (GENERATED_NAMES.has(name)) return true;
-  return GENERATED_SUFFIXES.some((suffix) => name.endsWith(suffix));
+  if (GENERATED_SUFFIXES.some((suffix) => name.endsWith(suffix))) return true;
+  return GENERATED_STEM.test(name.slice(0, name.length - path.posix.extname(name).length));
 }
 
 /** Trailing version digits on an interpreter name, as in `python3.12` or `perl5`. */
