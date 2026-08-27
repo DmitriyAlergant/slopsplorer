@@ -4,6 +4,28 @@ All notable user-facing changes to Slopsplorer are recorded here.
 
 <!-- towncrier release notes start -->
 
+## [0.4.2](https://github.com/DmitriyAlergant/slopsplorer/releases/tag/v0.4.2) - 2026-08-27
+
+### Features
+
+- A folder's own files now take a tile of their own in the folder panel, ranked among the subfolder tiles by weight and selectable like them, so the tiles divide the whole folder. ([c289028](https://github.com/DmitriyAlergant/slopsplorer/commit/c289028))
+- Expand and Collapse in the source tree now act on the selected folder's subtree rather than on the whole tree. ([80cea2c](https://github.com/DmitriyAlergant/slopsplorer/commit/80cea2c))
+- A folder's own files now read as the first row of every level of the source tree, above the subfolders, whichever order the level is sorted by. ([da6f3ce](https://github.com/DmitriyAlergant/slopsplorer/commit/da6f3ce))
+- The folder panel now holds the heaviest files below its subfolder tiles, so one panel divides a folder by folder and by file, and the separate heaviest-files table at the foot of the page is gone with its threshold moved beside the rows it thins. ([da6f3ce](https://github.com/DmitriyAlergant/slopsplorer/commit/da6f3ce))
+- The subfolder tiles are one row high, so the file table below them always starts in the same position. ([da6f3ce](https://github.com/DmitriyAlergant/slopsplorer/commit/da6f3ce))
+- A folder tile's bar now divides by flavor in a comparison as well as in a scan, and it draws against a whole the flavor filters never change, so turning a flavor off shortens the bars instead of stretching the rest, and generated files are never in one. ([deca33d](https://github.com/DmitriyAlergant/slopsplorer/commit/deca33d))
+- The install command for the agent skill now copies the skill into both `~/.claude/skills` and `~/.agents/skills` instead of linking one to the other, reads as PowerShell on Windows, and the dialog offers `SKILL.md` in the same preview the scanned files open in. ([fe01977](https://github.com/DmitriyAlergant/slopsplorer/commit/fe01977))
+
+### Other Changes
+
+- The app icon draws the snout bars in ink rather than orange, which holds its edges at a favicon's size. ([1346acd](https://github.com/DmitriyAlergant/slopsplorer/commit/1346acd))
+- The flavor filters now take a row of their own when the filter bar runs out of width, instead of folding into two rows beside the switches, and the side and the unit switch stand further apart. ([449c500](https://github.com/DmitriyAlergant/slopsplorer/commit/449c500))
+- The instrument bar is re-dressed: the artwork sits beside the wordmark, Rescan and Recompare are one icon beside what they re-read, the drill trail is now the source tree's heading instead of a row above the panels, and the agent skill is a link at the foot of the page. ([80cea2c](https://github.com/DmitriyAlergant/slopsplorer/commit/80cea2c))
+- The change column now marks a file with Git's own letter - A, M, D, R - instead of a second coloured tag beside the flavor. ([da6f3ce](https://github.com/DmitriyAlergant/slopsplorer/commit/da6f3ce))
+- The scope strip under the workspace now states the same columns as the folder head, in the same order, and every figure on the page keeps its place when the unit, the side of the change, or the drill scope moves. ([da6f3ce](https://github.com/DmitriyAlergant/slopsplorer/commit/da6f3ce))
+- The bundled agent skill now states that Slopsplorer sorts every file into a flavor by itself, from the path and the content, with no configuration. ([8183fa4](https://github.com/DmitriyAlergant/slopsplorer/commit/8183fa4))
+
+
 ## [0.4.1](https://github.com/DmitriyAlergant/slopsplorer/releases/tag/v0.4.1) - 2026-08-27
 
 ### Features
