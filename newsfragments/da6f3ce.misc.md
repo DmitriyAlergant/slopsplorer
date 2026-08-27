@@ -1,0 +1,1 @@
+The scope strip under the workspace now states the same columns as the folder head, in the same order, and every figure on the page keeps its place when the unit, the side of the change, or the drill scope moves.
