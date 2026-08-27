@@ -176,7 +176,13 @@ The two halves are `--share-removed` and `--share-added`, which the server compu
 They divide `visibleChurn` in `src/server/aggregate.ts`, the churn the active filters leave in the drill scope, not the unfiltered `scopeBaseline` the percentages use.
 A code-only view of a large repository holds a small part of the project's churn, and against the unfiltered whole every band in it would round to nothing.
 Because the halves divide the scope's own churn, the scope's own row fills the whole band.
-The exact figures sit in the row's tooltip, and the band carries the same pair as its `aria-label`.
+
+Each side also states its own figure over its own bar, muted, from the axis outwards: the removed figure ends at the axis and the added figure starts at it, so the pair reads either side of one line.
+The row is still named and sorted by the net figure at its right edge, and the two muted figures only explain it.
+A name is drawn over the band, so a name or the net figure can reach the pixels a side figure wants.
+The text wins, and the figure it reaches is not drawn, while the bar below the text stays.
+`SourceTree` settles that by measurement after each render and on a resize, because a name is text of an unknown width and the axis is a position in the row.
+The row's tooltip carries the pair whether or not the band draws it.
 Position carries the direction, because the two halves sit on opposite sides of the axis, so no reading depends on hue.
 Around one man in twelve cannot separate red from green.
 

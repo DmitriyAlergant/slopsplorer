@@ -1,6 +1,6 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import type { Aspect, Measure, TreeRow, TreeSort } from "../../shared/api.ts";
-import { count, weightCount, weightHeading } from "../format.ts";
+import { count, sideCount, weightCount, weightHeading } from "../format.ts";
 import { SortCaret } from "./SortCaret.tsx";
 import { Tooltip, tooltipHandlers } from "./Tooltip.tsx";
 
@@ -21,6 +21,9 @@ interface Props {
   onExpandAll: () => void;
   onCollapseAll: () => void;
 }
+
+/** Gap a band figure keeps from the name beside it before it gives the pixels up. */
+const FIGURE_CLEARANCE = 8;
 
 /** Drawn rather than typed: the Unicode triangles render far too small to hit. */
 function Chevron({ open }: { open: boolean }): React.JSX.Element {
@@ -63,6 +66,41 @@ export function SourceTree({
   // runs the width of the row, under the name and the figure, because it is one
   // scale for the whole tree and the smallest rows need every pixel of it.
   const centreAxis = isDiff && aspect === "net";
+  const scrollRef = useRef<HTMLDivElement>(null);
+  // The band runs under the whole row, so a side figure at the axis and the
+  // row's own text can want the same pixels. The text wins and the figure it
+  // reaches is not drawn: one reading missing is better than two in the same
+  // place, the bar under the name is unharmed, and the row's tooltip still
+  // carries the pair. Only measurement can settle it, because a name is text of
+  // an unknown width while the axis is a position in the row.
+  useLayoutEffect(() => {
+    const scroll = scrollRef.current;
+    if (!scroll) return undefined;
+    const settle = (): void => {
+      const crossings: { figure: HTMLElement; crossed: boolean }[] = [];
+      for (const row of scroll.querySelectorAll<HTMLElement>(".tree__row")) {
+        const name = row.querySelector<HTMLElement>(".tree__name");
+        const label = row.querySelector<HTMLElement>(".tree__label");
+        const net = row.querySelector<HTMLElement>(".tree__count");
+        if (!name || !label || !net) continue;
+        // The label clips its own text, so the name ends at the nearer of the two.
+        const nameRight = Math.min(name.getBoundingClientRect().right, label.getBoundingClientRect().right);
+        const netLeft = net.getBoundingClientRect().left;
+        for (const figure of row.querySelectorAll<HTMLElement>(".tree__axis-figure")) {
+          const box = figure.getBoundingClientRect();
+          const crossed = box.left < nameRight + FIGURE_CLEARANCE || box.right > netLeft - FIGURE_CLEARANCE;
+          crossings.push({ figure, crossed });
+        }
+      }
+      // Written only after every rect is read, so one pass costs one layout.
+      // A crossed figure keeps its box, so the next pass measures the same row.
+      for (const { figure, crossed } of crossings) figure.dataset.crossed = String(crossed);
+    };
+    settle();
+    const observer = new ResizeObserver(settle);
+    observer.observe(scroll);
+    return () => observer.disconnect();
+  }, [rows, centreAxis]);
   return (
     <section className="panel tree" aria-label="Source tree">
       <div className="panel__head">
@@ -78,7 +116,7 @@ export function SourceTree({
         </div>
       </div>
 
-      <div className="tree__scroll" data-axis={centreAxis}>
+      <div className="tree__scroll" data-axis={centreAxis} ref={scrollRef}>
         {/* Aligned to the row grid, so each heading sits over the column it orders. */}
         <div className="tree__columns">
           <span className="tree__disclose tree__disclose--leaf" aria-hidden="true" />
@@ -129,8 +167,19 @@ export function SourceTree({
             >
               {centreAxis && row.included ? (
                 <span className="tree__axis" aria-hidden="true">
-                  <span className="tree__axis-half tree__axis-half--removed" data-empty={row.removed === 0} />
-                  <span className="tree__axis-half tree__axis-half--added" data-empty={row.added === 0} />
+                  {/* Each side states its own figure at the axis, so the row says
+                      what it traded without a hover. A side that is nothing says
+                      nothing: the absence is the reading. */}
+                  <span className="tree__axis-half tree__axis-half--removed" data-empty={row.removed === 0}>
+                    {row.removed === 0 ? null : (
+                      <span className="tree__axis-figure">{sideCount(row.removed, "-")}</span>
+                    )}
+                  </span>
+                  <span className="tree__axis-half tree__axis-half--added" data-empty={row.added === 0}>
+                    {row.added === 0 ? null : (
+                      <span className="tree__axis-figure">{sideCount(row.added, "+")}</span>
+                    )}
+                  </span>
                 </span>
               ) : null}
 
@@ -162,7 +211,7 @@ export function SourceTree({
                 onDoubleClick={() => onDrill(row.path)}
                 {...(row.rowKind === "files" ? tooltipHandlers : {})}
               >
-                {row.name}
+                <span className="tree__name">{row.name}</span>
                 {row.rowKind === "files" ? <Tooltip compact>Files directly in this folder</Tooltip> : null}
               </button>
 

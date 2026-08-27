@@ -820,7 +820,7 @@ button { cursor: pointer; }
   width: 1px;
   background: var(--rule-firm);
 }
-.tree__axis-half { display: flex; width: 50%; }
+.tree__axis-half { position: relative; display: flex; width: 50%; }
 /*
  * Square ends, because a rounded one crossing a digit reads as a clipped glyph
  * rather than as the end of a bar. A change that exists keeps a 2px floor, so
@@ -840,6 +840,27 @@ button { cursor: pointer; }
   margin-left: 1px;
   background: color-mix(in oklab, var(--status-added) 26%, transparent);
 }
+/*
+ * Each side states its figure over its own bar, from the axis outwards, so the
+ * two sit either side of one line and the eye reads them as a pair. They are
+ * muted, because the row is named and sorted by the net figure at its right
+ * edge and these two only explain it. A figure the name reaches is not drawn,
+ * and its bar stays under the name: the name is the row's identity, and two
+ * readings in the same pixels are worse than one of them missing.
+ */
+.tree__axis-figure {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--ink-faint);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.tree__axis-figure[data-crossed="true"] { visibility: hidden; }
+.tree__axis-half--removed .tree__axis-figure { right: 5px; }
+.tree__axis-half--added .tree__axis-figure { left: 5px; }
 /* The row's own content sits over the band rather than under it. */
 .tree__scroll[data-axis="true"] .tree__disclose,
 .tree__scroll[data-axis="true"] .tree__check,
