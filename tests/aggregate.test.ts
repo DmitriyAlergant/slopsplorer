@@ -454,81 +454,57 @@ describe("primary measure", () => {
   });
 });
 
-describe("bar normalisation", () => {
+describe("share denominators", () => {
   /**
-   * The bars are normalised against unfiltered totals precisely so that this
-   * holds. Normalising against the visible total grows the denominator when a
-   * kind is enabled, which visibly shrinks any tile that holds none of it.
+   * Every share divides by the scope as the filters leave it, so a percentage
+   * names the tree the reader is looking at rather than one they cannot see.
    */
-  it("never shortens a bar when a file kind is switched on", () => {
-    const progression: FileKind[][] = [
-      ["code"],
-      ["code", "test"],
-      ["code", "test", "text"],
-      ALL_KINDS,
-    ];
+  it("divides every row and every tile by the visible scope", () => {
+    const view = buildView(index, request({ kinds: ["code"] }));
+    const visible = view.summary.selectedWeight;
 
-    let previousCards = new Map<string, number>();
-    let previousRows = new Map<string, number>();
-
-    for (const kinds of progression) {
-      const view = buildView(index, request({ kinds }));
-
-      for (const card of view.detail.cards) {
-        const key = card.path ?? card.name;
-        const earlier = previousCards.get(key);
-        if (earlier !== undefined) {
-          expect(card.shareOfScope, `tile ${key} shrank after enabling a kind`)
-            .toBeGreaterThanOrEqual(earlier - 1e-9);
-        }
-      }
-
-      for (const row of view.tree) {
-        const key = `${row.rowKind}:${row.path}`;
-        const earlier = previousRows.get(key);
-        if (earlier !== undefined) {
-          expect(row.shareOfScope, `tree row ${key} shrank after enabling a kind`)
-            .toBeGreaterThanOrEqual(earlier - 1e-9);
-        }
-      }
-
-      previousCards = new Map(view.detail.cards.map((card) => [card.path ?? card.name, card.shareOfScope]));
-      previousRows = new Map(view.tree.map((row) => [`${row.rowKind}:${row.path}`, row.shareOfScope]));
+    for (const row of view.tree) {
+      expect(row.shareOfScope, `tree row ${row.rowKind}:${row.path}`)
+        .toBeCloseTo(row.weight / visible, 10);
+    }
+    for (const card of view.detail.cards) {
+      expect(card.shareOfScope, `tile ${card.path ?? card.name}`)
+        .toBeCloseTo(card.weight / visible, 10);
     }
   });
 
-  it("measures a tile against the whole scope, so filtered tiles sum to less than one", () => {
-    const everything = buildView(index, request());
-    const codeOnly = buildView(index, request({ kinds: ["code"] }));
-
-    const sum = (cards: readonly { shareOfScope: number }[]): number =>
-      cards.reduce((total, card) => total + card.shareOfScope, 0);
-
-    expect(sum(everything.detail.cards)).toBeGreaterThan(sum(codeOnly.detail.cards));
-    expect(sum(everything.detail.cards)).toBeLessThanOrEqual(1 + 1e-9);
-  });
-
-  it("keeps a tile's bar fixed when a kind it does not contain is switched on", () => {
-    // `src/deep` holds only TypeScript, so enabling docs must not move it.
+  /**
+   * The consequence of dividing by the visible scope, and the reason to state
+   * it: enabling a kind moves the whole as well as the parts.
+   */
+  it("shrinks a folder's share when a kind it does not hold is switched on", () => {
+    // `src/deep` holds only TypeScript, so enabling docs adds nothing to it.
     const codeOnly = buildView(index, request({ selected: { rowKind: "folder", path: "src" }, kinds: ["code"] }));
     const withDocs = buildView(index, request({ selected: { rowKind: "folder", path: "src" }, kinds: ["code", "text"] }));
 
-    const deepBefore = codeOnly.detail.cards.find((card) => card.path === "src/deep");
-    const deepAfter = withDocs.detail.cards.find((card) => card.path === "src/deep");
+    const deepBefore = codeOnly.detail.cards.find((card) => card.path === "src/deep")!;
+    const deepAfter = withDocs.detail.cards.find((card) => card.path === "src/deep")!;
 
-    expect(deepBefore).toBeDefined();
-    expect(deepAfter).toBeDefined();
-    expect(deepAfter!.shareOfScope).toBeCloseTo(deepBefore!.shareOfScope, 10);
+    expect(deepAfter.weight).toBe(deepBefore.weight);
+    expect(deepAfter.shareOfScope).toBeLessThan(deepBefore.shareOfScope);
   });
 
-  it("uses one absolute baseline for every source-tree row", () => {
+  it("partitions the scope, so the ribbon segments sum to one", () => {
+    for (const kinds of [["code"] as FileKind[], ALL_KINDS]) {
+      const view = buildView(index, request({ kinds }));
+      const total = view.summary.ribbon.reduce((sum, segment) => sum + segment.shareOfScope, 0);
+      expect(total).toBeCloseTo(1, 10);
+    }
+  });
+
+  it("uses one baseline for every source-tree row", () => {
     const view = buildView(index, request());
     const deep = folderRow(view.tree, "src/deep")!;
     const deepFiles = filesRow(view.tree, "src/deep")!;
 
     expect(deep.weight).toBe(deepFiles.weight);
     expect(deep.shareOfScope).toBeCloseTo(deepFiles.shareOfScope, 10);
-    expect(deep.shareOfScope).toBeCloseTo(deep.weight / view.summary.projectWeight, 10);
+    expect(deep.shareOfScope).toBeCloseTo(deep.weight / view.summary.selectedWeight, 10);
   });
 });
 
@@ -549,7 +525,6 @@ describe("drill scope", () => {
     const deep = folderRow(drilled.tree, "src/deep")!;
     expect(deep.shareOfScope).toBeCloseTo(deep.weight / scopeTokens, 10);
     expect(drilled.detail.shareOfScope).toBeCloseTo(deep.weight / scopeTokens, 10);
-    expect(drilled.detail.shareOfProject).toBeCloseTo(deep.weight / project.summary.projectWeight, 10);
   });
 
   it("re-roots the headline figures and the ribbon onto the drilled folder", () => {
@@ -570,7 +545,6 @@ describe("drill scope", () => {
     const deepSegment = drilled.summary.ribbon.find((segment) => segment.path === "src/deep")!;
     expect(deepSegment.weight).toBe(tokensOf("src/deep/helper.ts"));
     expect(deepSegment.shareOfScope).toBeCloseTo(deepSegment.weight / scopeTokens, 10);
-    expect(deepSegment.shareOfProject).toBeCloseTo(deepSegment.weight / project.summary.projectWeight, 10);
 
     expect(project.summary.scopePath).toBe("");
     expect(project.summary.scopeWeight).toBe(project.summary.projectWeight);
@@ -723,8 +697,8 @@ describe("folder heading", () => {
     expect(direct.detail.cards).toEqual([]);
     expect(direct.detail.weight).toBe(tokensOf("src/main.ts", "src/util.ts"));
     expect(direct.detail.files).toBe(2);
-    expect(direct.detail.shareOfProject)
-      .toBeCloseTo(direct.detail.weight / direct.summary.projectWeight, 10);
+    expect(direct.detail.shareOfScope)
+      .toBeCloseTo(direct.detail.weight / direct.summary.selectedWeight, 10);
 
     expect(direct.rankScope).toBe("src/.");
     expect(folder.rankScope).toBe("src");

@@ -67,7 +67,9 @@ That makes every folder's descendants one contiguous range of the array, which `
 The total for a subtree is then a slice, not a pass over the project.
 
 `ScanIndex.weightPrefix` holds one running-total array for each weight field, so the unfiltered weight of any folder in any measure and aspect is one subtraction.
-The aggregator uses that number as the denominator of every percentage, which is why a percentage does not move when a visibility switch changes.
+The summary states that number beside the visible weight, which is how the ribbon says what share of the tree the filters keep.
+No percentage divides by it: every share divides by `visibleScopeWeight`, the drill scope as the filters leave it, so a percentage names the tree the reader is looking at.
+Turning a flavor on therefore moves the whole as well as the parts, and a folder that holds none of that flavor takes a smaller share of a larger scope.
 
 The sort is what makes the range correct: any path that starts with `a/b/` sorts between `a/b/` and `a/b0`, because `0` is the next code point after `/`.
 `tests/scan.test.ts` holds sibling folders with shared name prefixes to keep this true.
