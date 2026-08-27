@@ -1,23 +1,34 @@
 import { useEffect, useRef, useState } from "react";
-import type { ScanMeta } from "../../shared/api.ts";
-import { count, since } from "../format.ts";
+import type { ComparisonRequest, FileSource, ScanMeta } from "../../shared/api.ts";
+import { countOf, since } from "../format.ts";
+import { ComparisonPicker } from "./ComparisonPicker.tsx";
 import { Tooltip, tooltipHandlers } from "./Tooltip.tsx";
 
 interface Props {
   meta: ScanMeta | null;
   rescanning: boolean;
-  opening: boolean;
+  /** A measurement is running, so nothing may start another one. */
+  scanning: boolean;
   onRescan: () => void;
   onOpen: (root: string) => void;
+  onCompare: (comparison: ComparisonRequest) => void;
   onInstallSkill: () => void;
 }
 
-/** The fixed readout strip: what was scanned, how, and how long ago. */
-export function InstrumentBar({ meta, rescanning, opening, onRescan, onOpen, onInstallSkill }: Props): React.JSX.Element {
+/** Where a file list came from, named in the reader's terms rather than ours. */
+const FILE_SOURCE_LABELS: Readonly<Record<FileSource, string>> = {
+  "git-index": "git index",
+  "walk-gitignore": "walk + gitignore",
+  "walk-all": "walk, all files",
+  "git-diff": "git diff",
+};
+
+/** The fixed readout strip: what was measured, how, and how long ago. */
+export function InstrumentBar({ meta, rescanning, scanning, onRescan, onOpen, onCompare, onInstallSkill }: Props): React.JSX.Element {
   const [editingPath, setEditingPath] = useState(false);
   const [pathValue, setPathValue] = useState(meta?.rootPath ?? "");
   const pathInput = useRef<HTMLInputElement>(null);
-  const scanning = rescanning || opening;
+  const diff = meta?.diff ?? null;
 
   useEffect(() => {
     if (!editingPath) setPathValue(meta?.rootPath ?? "");
@@ -48,8 +59,20 @@ export function InstrumentBar({ meta, rescanning, opening, onRescan, onOpen, onI
   return (
     <header className="instrument">
       <div className="instrument__identity">
-        <h1 className="wordmark">Slopsplorer</h1>
-        {editingPath ? (
+        <div className="instrument__title">
+          {/* The wordmark says which of the two questions the page answers,
+              because every figure below it means something different in each. */}
+          <h1 className="wordmark">{diff ? "Slopsplorer Diff" : "Slopsplorer"}</h1>
+          {/* What is compared outranks every other fact in the strip, so it
+              sits beside the wordmark rather than among them. */}
+          {diff ? <ComparisonPicker diff={diff} disabled={scanning} onCompare={onCompare} /> : null}
+        </div>
+
+        {/* A comparison belongs to one repository, so only a scan can be
+            re-aimed at another folder. */}
+        {diff ? (
+          <p className="instrument__root">{meta ? meta.rootPath : ""}</p>
+        ) : editingPath ? (
           <form className="instrument__path-form" onSubmit={submitPath}>
             <label className="visually-hidden" htmlFor="scan-root">Absolute directory path</label>
             <input
@@ -88,7 +111,7 @@ export function InstrumentBar({ meta, rescanning, opening, onRescan, onOpen, onI
         </div>
         <div className="fact">
           <dt>Source</dt>
-          <dd>{meta ? (meta.gitTracked ? "git index" : meta.respectsGitignore ? "walk + gitignore" : "walk, all files") : "-"}</dd>
+          <dd>{meta ? FILE_SOURCE_LABELS[meta.fileSource] : "-"}</dd>
         </div>
         <div className="fact">
           <dt>Grammars</dt>
@@ -102,7 +125,7 @@ export function InstrumentBar({ meta, rescanning, opening, onRescan, onOpen, onI
 
       <div className="instrument__actions">
         <button type="button" className="button" onClick={onRescan} disabled={scanning}>
-          {rescanning ? "Rescanning" : "Rescan"}
+          {rescanning ? (diff ? "Comparing" : "Rescanning") : (diff ? "Recompare" : "Rescan")}
         </button>
         <button type="button" className="button" onClick={onInstallSkill}>
           Install agent skill
@@ -111,7 +134,7 @@ export function InstrumentBar({ meta, rescanning, opening, onRescan, onOpen, onI
 
       {meta && meta.skippedLargeFiles > 0 ? (
         <p className="instrument__note">
-          {count(meta.skippedLargeFiles)} file{meta.skippedLargeFiles === 1 ? "" : "s"} skipped for exceeding the per-file size ceiling.
+          {countOf(meta.skippedLargeFiles, "file")} skipped for exceeding the per-file size ceiling.
         </p>
       ) : null}
     </header>

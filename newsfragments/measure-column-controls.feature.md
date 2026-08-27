@@ -1,1 +1,0 @@
-The primary measure and the file ordering are now chosen from the columns that show them: the source tree's numbers heading is a menu of tokens, lines, and LOC, and every numeric column of both file tables sorts on click, so the standalone measure switch and the "rank by" list are gone.

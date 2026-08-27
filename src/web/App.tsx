@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { FileKind, Measure, RankMetric, TreeRow, ViewRequest, ViewResponse } from "../shared/api.ts";
-import { MEASURES } from "../shared/api.ts";
-import { fetchView, openRoot, rescan } from "./api.ts";
+import type {
+  Aspect, ComparisonRequest, FileKind, Measure, RankMetric, TreeRow, ViewRequest, ViewResponse,
+} from "../shared/api.ts";
+import { ASPECTS, MEASURES } from "../shared/api.ts";
+import { compare, fetchView, openRoot, rescan } from "./api.ts";
 import {
   DEFAULT_RANKING_HEIGHT, DEFAULT_WORKSPACE_HEIGHT, MAX_WORKSPACE_HEIGHT, MIN_WORKSPACE_HEIGHT,
   readPreferences, readRankingHeight, readTreePanelRatio, readWorkspaceHeight,
   writePreferences, writeRankingHeight, writeTreePanelRatio, writeWorkspaceHeight,
 } from "./preferences.ts";
+import { comparisonLabel } from "./format.ts";
 import { closeTooltip } from "./tooltip.ts";
 import { readRequest, selectionKey, writeRequest } from "./urlState.ts";
 import { FilterBar } from "./components/FilterBar.tsx";
@@ -62,6 +65,7 @@ export function App(): React.JSX.Element {
   const [busy, setBusy] = useState(false);
   const [rescanning, setRescanning] = useState(false);
   const [openingRoot, setOpeningRoot] = useState<string | null>(null);
+  const [comparingLabel, setComparingLabel] = useState<string | null>(null);
   const [sourcePath, setSourcePath] = useState<string | null>(null);
   const [skillOpen, setSkillOpen] = useState(false);
   const [treePanelRatio, setTreePanelRatio] = useState(treePanelRatioFromStorage);
@@ -107,7 +111,7 @@ export function App(): React.JSX.Element {
     } catch {
       // Accessing localStorage itself can be denied in locked-down contexts.
     }
-  }, [request.kinds, request.showGenerated, request.treeSort, request.measure, request.rank.metric]);
+  }, [request.kinds, request.showGenerated, request.treeSort, request.measure, request.aspect, request.rank.metric]);
 
   useEffect(() => {
     writeTreePanelRatio(window.localStorage, treePanelRatio);
@@ -152,6 +156,14 @@ export function App(): React.JSX.Element {
     setRequest((previous) => ({ ...previous, ...change }));
   }, []);
 
+  // A scan and a diff draw different columns, so a stored or linked sort can
+  // name one the open index has not got. The server clamps it and echoes what
+  // it used; adopting that is what keeps the caret under a real heading.
+  useEffect(() => {
+    if (!view || view.rankMetric === requestRef.current.rank.metric) return;
+    setRequest((previous) => ({ ...previous, rank: { ...previous.rank, metric: view.rankMetric } }));
+  }, [view]);
+
   const handleRescan = useCallback(() => {
     setRescanning(true);
     rescan(requestRef.current)
@@ -163,7 +175,15 @@ export function App(): React.JSX.Element {
       .finally(() => setRescanning(false));
   }, []);
 
-  const handleOpen = useCallback((root: string) => {
+  /**
+   * Aim the page at a new index, and reset what only the old one could mean.
+   *
+   * Another folder and another comparison both replace the file list, so an
+   * exclusion or a drill carried across would name a path that may not exist.
+   */
+  const reaim = useCallback((
+    start: (view: ViewRequest) => Promise<ViewResponse>, finish: () => void,
+  ) => {
     const nextRequest: ViewRequest = {
       ...requestRef.current,
       excludedFolders: [],
@@ -172,8 +192,7 @@ export function App(): React.JSX.Element {
       drillPath: "",
       selected: { rowKind: "folder", path: "" },
     };
-    setOpeningRoot(root);
-    openRoot(root, nextRequest)
+    start(nextRequest)
       .then((next) => {
         setRequest(nextRequest);
         setView(next);
@@ -181,8 +200,18 @@ export function App(): React.JSX.Element {
         setError(null);
       })
       .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause)))
-      .finally(() => setOpeningRoot(null));
+      .finally(finish);
   }, []);
+
+  const handleOpen = useCallback((root: string) => {
+    setOpeningRoot(root);
+    reaim((view) => openRoot(root, view), () => setOpeningRoot(null));
+  }, [reaim]);
+
+  const handleCompare = useCallback((comparison: ComparisonRequest) => {
+    setComparingLabel(comparisonLabel(comparison));
+    reaim((view) => compare(comparison, view), () => setComparingLabel(null));
+  }, [reaim]);
 
   const toggleKind = useCallback((kind: FileKind) => {
     setRequest((previous) => ({
@@ -277,9 +306,9 @@ export function App(): React.JSX.Element {
   }, []);
 
   /**
-   * Switch the unit every figure is expressed in, from the tree's numbers heading.
+   * Switch the unit every figure is expressed in.
    *
-   * Choosing a measure there is also how the tree is put on that column, so an
+   * Choosing a measure is also how the tree is put on its numbers column, so an
    * unchanged measure still moves the sort. The file tables follow, because a
    * page counting code lines that ranks its files by tokens reads as a bug. A
    * sort on a metric outside the measures, such as comment lines, is a
@@ -316,16 +345,46 @@ export function App(): React.JSX.Element {
    */
   const setRankMetric = useCallback((metric: RankMetric) => {
     setRequest((previous) => {
-      if (previous.rank.metric === metric) return previous;
       const measure = MEASURES.find((candidate) => candidate === metric);
+      const aspect = ASPECTS.find((candidate) => candidate === metric);
       const measureChanges = measure !== undefined && measure !== previous.measure;
+      const aspectChanges = aspect !== undefined && aspect !== previous.aspect;
+      if (previous.rank.metric === metric && !measureChanges && !aspectChanges) return previous;
       return {
         ...previous,
         measure: measureChanges ? measure : previous.measure,
+        aspect: aspectChanges ? aspect : previous.aspect,
         rank: {
           ...previous.rank,
           metric,
-          minWeight: measureChanges ? 0 : previous.rank.minWeight,
+          minWeight: measureChanges || aspectChanges ? 0 : previous.rank.minWeight,
+        },
+      };
+    });
+  }, []);
+
+  /**
+   * Switch which side of a change every figure describes.
+   *
+   * The switch beside the unit owns it, and it moves the same three things the
+   * unit does: the tree onto its numbers column, the file tables onto the
+   * matching column, and the threshold back to zero, because a floor of 2,000
+   * churn tokens is not a floor of 2,000 net tokens.
+   */
+  const setAspect = useCallback((aspect: Aspect) => {
+    setRequest((previous) => {
+      if (previous.aspect === aspect) {
+        return previous.treeSort === "weight" ? previous : { ...previous, treeSort: "weight" };
+      }
+      const followsAspect = ASPECTS.some((candidate) => candidate === previous.rank.metric);
+      return {
+        ...previous,
+        aspect,
+        treeSort: "weight",
+        rank: {
+          ...previous.rank,
+          metric: followsAspect ? aspect : previous.rank.metric,
+          minWeight: 0,
         },
       };
     });
@@ -341,22 +400,47 @@ export function App(): React.JSX.Element {
     );
   }
 
+  // Taken from the response rather than the pending request, so a heading
+  // never claims a mode the numbers beside it are not in.
+  const isDiff = view?.meta.diff != null;
+  const scanning = rescanning || openingRoot !== null || comparingLabel !== null;
+  // Re-aiming replaces the whole data model, so the stale page stays covered
+  // until the new figures arrive.
+  const reaiming = openingRoot !== null
+    ? {
+      title: "Opening folder",
+      subject: openingRoot,
+      hint: "Scanning and measuring the source tree. Large folders can take a moment.",
+    }
+    : comparingLabel !== null
+      ? {
+        title: "Comparing",
+        subject: comparingLabel,
+        hint: "Reading both sides and measuring the change. A wide comparison can take a moment.",
+      }
+      : null;
+  const aspect = view?.aspect ?? request.aspect;
+
   return (
-    <main className="app" data-busy={busy || rescanning || openingRoot !== null}>
+    <main className="app" data-busy={busy || scanning}>
       <InstrumentBar
         meta={view?.meta ?? null}
         rescanning={rescanning}
-        opening={openingRoot !== null}
+        scanning={scanning}
         onRescan={handleRescan}
         onOpen={handleOpen}
+        onCompare={handleCompare}
         onInstallSkill={() => setSkillOpen(true)}
       />
 
       <FilterBar
         request={request}
+        isDiff={isDiff}
         onToggleKind={toggleKind}
         onToggleGenerated={() => patch({ showGenerated: !request.showGenerated })}
         onQueryChange={(query) => patch({ query })}
+        onMeasureChange={setMeasure}
+        onAspectChange={setAspect}
       />
 
       {/* The trail names the scope the tree beneath it is rooted in, and is the
@@ -381,10 +465,11 @@ export function App(): React.JSX.Element {
           rows={view?.tree ?? []}
           sort={request.treeSort}
           measure={view?.measure ?? request.measure}
+          aspect={aspect}
+          isDiff={isDiff}
           onSelect={select}
           onDrill={drill}
           onSortChange={(treeSort) => patch({ treeSort })}
-          onMeasureChange={setMeasure}
           onToggleExpanded={toggleExpanded}
           onToggleFolder={toggleFolder}
           onToggleDirectFiles={toggleDirectFiles}
@@ -395,6 +480,8 @@ export function App(): React.JSX.Element {
         <FolderDetail
           detail={view?.detail ?? null}
           measure={view?.measure ?? request.measure}
+          aspect={aspect}
+          isDiff={isDiff}
           sort={request.rank.metric}
           onSortChange={setRankMetric}
           path={request.selected.path}
@@ -422,6 +509,8 @@ export function App(): React.JSX.Element {
       <MassRibbon
         summary={view?.summary ?? null}
         measure={view?.measure ?? request.measure}
+        aspect={aspect}
+        isDiff={isDiff}
         selectedPath={request.selected.rowKind === "folder" ? request.selected.path : null}
         onSelect={(path) => select("folder", path)}
       />
@@ -429,6 +518,8 @@ export function App(): React.JSX.Element {
       <LargestFiles
         files={view?.ranked ?? []}
         measure={view?.measure ?? request.measure}
+        aspect={aspect}
+        isDiff={isDiff}
         total={view?.rankedTotal ?? 0}
         scopePath={request.selected.path}
         directFilesOnly={request.selected.rowKind === "files"}
@@ -444,14 +535,14 @@ export function App(): React.JSX.Element {
 
       <SourceDialog path={sourcePath} onClose={() => setSourcePath(null)} />
       <SkillInstallDialog open={skillOpen} onClose={() => setSkillOpen(false)} />
-      {openingRoot ? (
-        <div className="progress-modal" role="dialog" aria-modal="true" aria-labelledby="opening-folder-title">
+      {reaiming ? (
+        <div className="progress-modal" role="dialog" aria-modal="true" aria-labelledby="reaim-title">
           <div className="progress-modal__card">
             <span className="progress-modal__spinner" aria-hidden="true" />
             <div className="progress-modal__copy">
-              <h2 id="opening-folder-title">Opening folder</h2>
-              <p className="progress-modal__path">{openingRoot}</p>
-              <p className="progress-modal__hint">Scanning and measuring the source tree. Large folders can take a moment.</p>
+              <h2 id="reaim-title">{reaiming.title}</h2>
+              <p className="progress-modal__path">{reaiming.subject}</p>
+              <p className="progress-modal__hint">{reaiming.hint}</p>
             </div>
           </div>
         </div>

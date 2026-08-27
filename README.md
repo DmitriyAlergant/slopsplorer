@@ -18,9 +18,73 @@ cd vibe-coded-repo
 slopsplorer .
 ```
 
+## Diff mode
+
+The same map, pointed at a change instead of a tree. Where does the weight of this branch sit, and how much of it must a reviewer read?
+
+```bash
+slopsplorer --diff             # HEAD against the working tree, untracked files included
+slopsplorer --staged           # HEAD against the index
+slopsplorer main...HEAD        # what a pull request would show
+slopsplorer HEAD~5             # what the last five commits touched
+slopsplorer origin/main        # everything since origin/main, committed or not
+slopsplorer v1.4 v1.5          # any two revisions
+```
+
+A positional is a folder when one exists at that path, and a revision otherwise, so a branch named like a directory needs no escape syntax. Use `-C <dir>` to name a repository elsewhere. Once the page is open, a picker on each side of the comparison points it at any other one, by branch, tag, or a commit typed by hand, without restarting the tool.
+
+A switch beside the unit then picks which side of the change every figure describes:
+
+| Aspect | Means |
+| --- | --- |
+| **Added** / **Removed** | one side on its own. |
+| **Net** | added - removed. What the change leaves behind, signed. The default. |
+| **Churn** | added + removed. The volume of the change, never negative. |
+| **After** | the whole file as the change leaves it. |
+
+In net, every row of the source tree draws a band from a centre axis, removed left and added right, because a rewrite at `+500 / -480` and an addition of `+20` have nearly the same net and are not the same change. Renames are followed rather than counted twice, and a file preview shows the unified diff.
+
 ![Slopsplorer reading its own repository: flavor filters above a source tree and a folder panel, then the headline readouts, the mass ribbon, and the heaviest-files table.](https://raw.githubusercontent.com/DmitriyAlergant/slopsplorer/main/docs/screenshot.png)
 
 *Slopsplorer reading its own source tree.*
+
+## Text report
+
+A coding agent cannot open the page.
+`--report` prints the same map as text and exits, for a tree or for a change.
+
+```bash
+slopsplorer --report                 # the current folder
+slopsplorer --report main...HEAD     # a pull request
+slopsplorer --report --unit loc      # lines of code instead of tokens
+slopsplorer --report --threshold 1   # expand deeper
+```
+
+The report has one section per flavor.
+Code and tests are walked as a tree.
+Docs, data, i18n, and other files get one line each, with their heaviest files.
+Generated files are excluded from every figure and reported last.
+
+The walk follows one rule: a node is expanded when it reaches the threshold share of its section, 3% by default.
+An expanded folder lists the children that pass the same test, then one `...` row for the rest, so every level sums to its parent.
+A folder above the threshold with no child above it prints as a leaf.
+To see more, lower the threshold or point the command at a subfolder.
+
+```
+CODE  99k tokens, 48 files, 17% comment
+./                   99k  100%  48 files
+  src/               99k  100%  46 files
+    web/             48k   49%  31 files
+      components/    22k   22%  19 files
+      styles.css     15k   15%  1.1k loc
+      ... 11 files   12k   12%
+    scanner/         23k   24%  10 files
+    server/          18k   18%  3 files
+    ... 2 files     9.0k    9%
+  ... 2 files        191   <1%
+```
+
+*Slopsplorer reporting its own source tree at `--threshold 8`.*
 
 ## Three ways to filter and narrow-down
 
@@ -45,7 +109,7 @@ The page reads downwards. What you choose at the top decides every number below 
 - **A folder panel** beside it, showing how the selected folder divides among its children as cards, then listing its own files. Each card's bar is scaled to the folder rather than to the project.
 - **Headline readouts**, then **a mass ribbon**: the current scope as one bar, split by the folders directly inside it and shaded darkest-first by rank. Clicking a segment selects that folder in the panel above.
 - **A heaviest-files table** for the current selection, sorted by any column, with a minimum threshold in the active measure. A dot marks a file whose lines are mostly commentary, a common shape for generated bulk.
-- **Read-only source previews**, capped at 512 KiB.
+- **Read-only source previews**, capped at 512 KiB. Inside a comparison, the unified diff instead.
 
 ## What it counts
 
@@ -61,10 +125,10 @@ Per file:
 
 No line measure counts blank lines, and `lines = codeLines + commentLines` always.
 
-Tokens, Lines, or LOC is the unit every total, bar, and ranking is expressed in.
-The unit belongs to the columns that display it, so you choose it there: from the source tree's numbers heading, which is a menu, or by sorting a file table on one of those columns.
+Every total, bar, and ranking uses one unit: Tokens, Lines, or LOC.
+You pick the unit once, from the switch at the top of the page, and sorting a file table on one of those columns picks it too.
 Tokens answer what a review or a context window will cost.
-LOC answers how much logic is actually there, which is the question a comment-padded file distorts.
+LOC answers how much logic is there, which is the question a comment-padded file distorts.
 
 Structure counts come from prebuilt WASM grammars for thirteen languages.
 A file outside them still gets token and line counts, and reports zero structure rather than a guess.
@@ -86,6 +150,10 @@ slopsplorer <path>              # defaults to the current folder
   --tokenizer cl100k_base       # default o200k_base
   --no-open                     # do not open a browser on start
   --dev                         # Vite hot reload, for work on Slopsplorer itself
+  --report                      # print a text report and exit, no server
+  --unit loc                    # report unit: tokens (default), lines, or loc
+  --aspect net                  # report side of a change: churn (default), net, added, removed, after
+  --threshold 1                 # report expands a node at this share of its section, default 3
 ```
 
 Inside a Git worktree the file list comes from the Git index plus untracked files that no ignore rule covers, so dependencies and build output never distort the map.

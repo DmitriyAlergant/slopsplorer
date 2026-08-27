@@ -1,6 +1,6 @@
-import type { FileRow, Measure, RankMetric, ViewRequest } from "../../shared/api.ts";
+import type { Aspect, FileRow, Measure, RankMetric, ViewRequest } from "../../shared/api.ts";
 import { DEFAULT_RANKING_HEIGHT, MAX_RANKING_HEIGHT, MIN_RANKING_HEIGHT } from "../preferences.ts";
-import { count, measureName } from "../format.ts";
+import { count, countOf, weightName } from "../format.ts";
 import { FileTable } from "./FileTable.tsx";
 import { HeightSplitter } from "./Splitter.tsx";
 
@@ -8,6 +8,9 @@ interface Props {
   files: readonly FileRow[];
   /** The measure the threshold is applied in, and the column the table highlights. */
   measure: Measure;
+  /** The side of the change the threshold and the highlighted column describe. */
+  aspect: Aspect;
+  isDiff: boolean;
   total: number;
   /** Project-relative folder the ranking covers. */
   scopePath: string;
@@ -31,7 +34,8 @@ interface Props {
 const THRESHOLD_STEPS: Record<Measure, number> = { tokens: 500, lines: 50, codeLines: 50 };
 
 /** The ranked file list for whatever scope the tree currently describes. */
-export function LargestFiles({ files, measure, total, scopePath, directFilesOnly, rootName, displayRoot, rank, height, onHeightChange, onRankChange, onSortChange, onOpenSource }: Props): React.JSX.Element {
+export function LargestFiles({ files, measure, aspect, isDiff, total, scopePath, directFilesOnly, rootName, displayRoot, rank, height, onHeightChange, onRankChange, onSortChange, onOpenSource }: Props): React.JSX.Element {
+  const unit = weightName(measure, aspect, isDiff);
   // The whole path from the scan root, so the heading names a place rather than
   // an offset from one. The rows below stay relative, which the caption states.
   const scopeSegments = scopePath ? scopePath.split("/") : [];
@@ -47,12 +51,14 @@ export function LargestFiles({ files, measure, total, scopePath, directFilesOnly
         {/* The scope qualifies the heading, so it reads after it, the way the
             folder panel puts its figures under the name they describe. */}
         <div>
-          <h2>Heaviest files</h2>
-          <p className="panel__scope">Within {scopeLabel}</p>
+          <h2>{isDiff ? "Heaviest changes" : "Heaviest files"}</h2>
+          {/* The scope is a place, so the whole line carries the signal colour
+              the rest of the page uses for one. */}
+          <p className="panel__scope">within {scopeLabel}</p>
         </div>
         <div className="ranking__controls">
           <label>
-            <span>Minimum {measureName(measure)}</span>
+            <span>Minimum {unit}</span>
             <input
               type="number"
               min={0}
@@ -66,18 +72,20 @@ export function LargestFiles({ files, measure, total, scopePath, directFilesOnly
 
       {truncated ? (
         <p className="detail__caption">
-          Showing the heaviest {count(files.length)} of {count(total)} matching files
+          Showing the heaviest {count(files.length)} of {countOf(total, "matching file")}
         </p>
       ) : null}
       <FileTable
         files={files}
         measure={measure}
+        aspect={aspect}
+        isDiff={isDiff}
         sort={rank.metric}
         onSortChange={onSortChange}
         displayRoot={displayRoot}
         prefixRelativePaths
         onOpenSource={onOpenSource}
-        emptyMessage={`No files match the current filters, scope, and minimum ${measureName(measure)} threshold.`}
+        emptyMessage={`No files match the current filters, scope, and minimum ${unit} threshold.`}
       />
       {/* Directly after the table, because the boundary sizes the box before it.
           An empty list has no rows to curtail, so it has no boundary either. */}

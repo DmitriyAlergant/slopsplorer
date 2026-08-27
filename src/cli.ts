@@ -4,10 +4,17 @@ import { readFileSync, statSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { parseArgs } from "node:util";
+import { scanDiff, type DiffScanOptions } from "./scanner/diffScan.ts";
+import {
+  GitError, parseComparisonSpec, parseRevisionArgument, repositoryRoot, resolveComparison,
+  verifyComparisonRequest, type Comparison,
+} from "./scanner/gitdiff.ts";
 import { DEFAULT_MAX_FILE_BYTES, scanSourceTree } from "./scanner/scan.ts";
 import type { ScanIndex, ScanOptions, ScanProgress } from "./scanner/scan.ts";
+import { ASPECTS, type Aspect, type ComparisonRequest } from "./shared/api.ts";
 import { DEFAULT_TOKENIZER, isTokenizerName, TOKENIZERS } from "./scanner/tokenize.ts";
-import { createSlopsplorerServer, resolvePackageRoot } from "./server/server.ts";
+import { buildReport, DEFAULT_REPORT_THRESHOLD, REPORT_UNITS, type ReportOptions } from "./server/report.ts";
+import { createSlopsplorerServer, resolvePackageRoot, type IndexProducer } from "./server/server.ts";
 
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_PORT = 8765;
@@ -15,25 +22,64 @@ const DEFAULT_PORT = 8765;
 /** Reading is IO-bound, so oversubscribing the core count is deliberate. */
 const DEFAULT_CONCURRENCY = Math.max(4, os.availableParallelism());
 
+/** Erase the whole progress line, so a shorter update cannot leave a tail behind. */
+const CLEAR_LINE = "\u001B[2K";
+
 const USAGE = `slopsplorer - local, token-weighted source tree explorer.
 
-Usage: slopsplorer [root] [options]
+USAGE
+  slopsplorer [<dir>] [options]           Scan a source tree. Default: current folder.
+  slopsplorer --diff [options]            Compare HEAD against the working tree,
+                                          untracked files included.
+  slopsplorer --staged [options]          Compare HEAD against the index.
+  slopsplorer <rev> [options]             Compare <rev> against the working tree.
+  slopsplorer <revA> <revB> [options]     Compare <revA> against <revB>.
+  slopsplorer <revA>..<revB> [options]    The same, written as a range.
+  slopsplorer <revA>...<revB> [options]   Compare the merge base of A and B against B.
 
-  root                    Directory to scan. Defaults to the current directory.
+  A single positional is read as a directory if a directory exists at that path,
+  otherwise as a revision.
 
-Options:
+OPTIONS
+  -C <dir>                Run as if started in <dir>. A comparison uses this to
+                          locate the repository.
   --host <address>        Interface to bind. Default ${DEFAULT_HOST}.
   --port <number>         Port to bind. Use 0 for any free port. Default ${DEFAULT_PORT}.
-  --dev                   Serve the client through Vite with hot reload on the same port.
-  --all-files             Ignore Git and .gitignore. Built-in directory exclusions still apply.
+  --dev                   Serve the client through Vite with hot reload on the
+                          same port.
+  --all-files             Ignore Git and .gitignore. Built-in directory exclusions
+                          still apply. Scan mode only; rejected with a comparison.
   --exclude <dir>         Skip a directory name anywhere in the tree. Repeatable.
+                          Applies to both modes.
   --tokenizer <name>      One of ${TOKENIZERS.join(", ")}. Default ${DEFAULT_TOKENIZER}.
   --max-file-bytes <n>    Skip files larger than this. Default ${DEFAULT_MAX_FILE_BYTES} bytes.
-  --concurrency <n>       Number of files to read in parallel. Default ${DEFAULT_CONCURRENCY} on this machine.
-  --open                  Open the URL in the default browser when the scan finishes. This is the default outside --dev.
+                          In a comparison, either side over the limit skips the file.
+  --concurrency <n>       Files measured in parallel. Default ${DEFAULT_CONCURRENCY} on this machine.
+  --open                  Open the URL in the default browser when the scan finishes.
+                          This is the default outside --dev.
   --no-open               Do not open a browser.
   -h, --help              Show this help.
   --version               Show the version.
+
+REPORT
+  --report                Print a text report to stdout and exit. No server.
+  --unit <name>           Unit of the report: ${Object.keys(REPORT_UNITS).join(", ")}. Default tokens.
+  --aspect <name>         Side of the change the report describes: ${ASPECTS.join(", ")}.
+                          Default churn. Comparison only.
+  --threshold <percent>   A node is expanded when it reaches this share of its
+                          section. Default ${DEFAULT_REPORT_THRESHOLD}.
+
+EXAMPLES
+  slopsplorer .                   Scan the current folder. The same with no argument.
+  slopsplorer --report            Print a text report of the current folder.
+  slopsplorer --report --diff     Print a text report of the working-tree change.
+  slopsplorer ../other-project    Scan a folder elsewhere.
+  slopsplorer --diff              Compare HEAD against the working tree.
+  slopsplorer --staged            Compare HEAD against the index.
+  slopsplorer main...HEAD         Compare the merge base of main and HEAD to HEAD.
+  slopsplorer HEAD~5              Compare HEAD~5 against the working tree.
+  slopsplorer origin/main         All work since origin/main, uncommitted included.
+  slopsplorer -C ~/src/app v1 v2  Compare two revisions of a repository elsewhere.
 `;
 
 function fail(message: string): never {
@@ -73,11 +119,16 @@ function formatCount(value: number): string {
   return value.toLocaleString("en-US");
 }
 
+/** Signed, because a net figure that lost its sign states the opposite of the truth. */
+function formatSigned(value: number): string {
+  return `${value < 0 ? "-" : "+"}${formatCount(Math.abs(value))}`;
+}
+
 function formatDuration(milliseconds: number): string {
   return milliseconds < 1000 ? `${milliseconds} ms` : `${(milliseconds / 1000).toFixed(1)} s`;
 }
 
-function createProgressReporter(): ((progress: ScanProgress) => void) | undefined {
+function createProgressReporter(label: string): ((progress: ScanProgress) => void) | undefined {
   if (process.stderr.isTTY !== true) return undefined;
 
   const minimumVisibleMs = 200;
@@ -107,7 +158,7 @@ function createProgressReporter(): ((progress: ScanProgress) => void) | undefine
     const bar = `${"=".repeat(filledWidth)}${" ".repeat(barWidth - filledWidth)}`;
     const percent = Math.floor(ratio * 100).toString().padStart(3);
     process.stderr.write(
-      `\r\u001B[2K  scanning  [${bar}] ${percent}%  ${formatCount(completedFiles)}/${formatCount(totalFiles)} files`,
+      `\r${CLEAR_LINE}  ${label}  [${bar}] ${percent}%  ${formatCount(completedFiles)}/${formatCount(totalFiles)} files`,
     );
     visible = true;
     lastUpdateAt = now;
@@ -115,25 +166,147 @@ function createProgressReporter(): ((progress: ScanProgress) => void) | undefine
   };
 }
 
-function printScanSummary(index: ScanIndex, options: ScanOptions): void {
-  const totalTokens = index.files.reduce((sum, file) => sum + file.tokens, 0);
-  const source = index.meta.gitTracked
-    ? "git ls-files"
-    : index.meta.respectsGitignore
-      ? "filesystem walk, .gitignore applied"
-      : "filesystem walk, all files";
-  const skipped = index.meta.skippedLargeFiles > 0
-    ? `, ${formatCount(index.meta.skippedLargeFiles)} skipped over ${formatCount(options.maxFileBytes)} bytes`
+type FileSourceName = ScanIndex["meta"]["fileSource"];
+
+const FILE_SOURCE_LABELS: Readonly<Record<FileSourceName, string>> = {
+  "git-index": "git ls-files",
+  "walk-gitignore": "filesystem walk, .gitignore applied",
+  "walk-all": "filesystem walk, all files",
+  "git-diff": "git diff",
+};
+
+function printSummary(index: ScanIndex, maxFileBytes: number): void {
+  const { meta } = index;
+  const skipped = meta.skippedLargeFiles > 0
+    ? `, ${formatCount(meta.skippedLargeFiles)} skipped over ${formatCount(maxFileBytes)} bytes`
     : "";
-  const lines = [
-    `root       ${path.resolve(options.root)}`,
-    `files      ${formatCount(index.meta.fileCount)}${skipped}`,
-    `folders    ${formatCount(index.meta.folderCount)}`,
-    `tokens     ${formatCount(totalTokens)} (${index.meta.tokenizer})`,
-    `scan       ${formatDuration(index.meta.durationMs)} via ${source}`,
-    `grammars   ${index.meta.languages.length > 0 ? index.meta.languages.join(", ") : "none"}`,
-  ];
+  const lines: string[] = [`root       ${path.resolve(meta.rootPath)}`];
+  const sum = (pick: (file: ScanIndex["files"][number]) => number): number =>
+    index.files.reduce((total, file) => total + pick(file), 0);
+
+  if (meta.diff) {
+    const addedLines = sum((file) => file.addedLines);
+    const removedLines = sum((file) => file.removedLines);
+    const addedTokens = sum((file) => file.addedTokens);
+    const removedTokens = sum((file) => file.removedTokens);
+    const counts = [
+      `${formatCount(meta.diff.filesAdded)} added`,
+      `${formatCount(meta.diff.filesModified)} modified`,
+      `${formatCount(meta.diff.filesDeleted)} deleted`,
+      `${formatCount(meta.diff.filesRenamed)} renamed`,
+    ];
+    lines.push(
+      `compare    ${meta.diff.base} -> ${meta.diff.target}`,
+      `files      ${formatCount(meta.fileCount)} changed (${counts.join(", ")})${skipped}`,
+      `lines      ${formatCount(addedLines + removedLines)} churn (+${formatCount(addedLines)} / -${formatCount(removedLines)}), net ${formatSigned(addedLines - removedLines)}`,
+      `tokens     ${formatCount(addedTokens + removedTokens)} churn (+${formatCount(addedTokens)} / -${formatCount(removedTokens)}), net ${formatSigned(addedTokens - removedTokens)} (${meta.tokenizer})`,
+    );
+    if (meta.diff.cappedFiles > 0) {
+      lines.push(`capped     ${formatCount(meta.diff.cappedFiles)} files changed too widely to align, counted as replaced`);
+    }
+  } else {
+    lines.push(
+      `files      ${formatCount(meta.fileCount)}${skipped}`,
+      `folders    ${formatCount(meta.folderCount)}`,
+      `tokens     ${formatCount(sum((file) => file.tokens))} (${meta.tokenizer})`,
+    );
+  }
+
+  lines.push(
+    `scan       ${formatDuration(meta.durationMs)} via ${FILE_SOURCE_LABELS[meta.fileSource]}`,
+    `grammars   ${meta.languages.length > 0 ? meta.languages.join(", ") : "none"}`,
+  );
   process.stderr.write(`${lines.map((line) => `  ${line}`).join("\n")}\n`);
+}
+
+/** Whether the filesystem holds a directory at this path. */
+function isDirectory(candidate: string): boolean {
+  return statSync(candidate, { throwIfNoEntry: false })?.isDirectory() === true;
+}
+
+/**
+ * Decide what the positional arguments asked for.
+ *
+ * `null` means a plain scan, so the caller never has to test the same
+ * conditions a second time.
+ */
+async function readComparisonRequest(
+  directory: string, positionals: readonly string[], wantsWorkingTree: boolean, wantsStaged: boolean,
+): Promise<ComparisonRequest | null> {
+  if (wantsWorkingTree && wantsStaged) fail("--diff and --staged name two different comparisons");
+  if (wantsWorkingTree || wantsStaged) {
+    if (positionals.length > 0) {
+      fail(`${wantsStaged ? "--staged" : "--diff"} already names the comparison, so "${positionals[0]}" has nowhere to go`);
+    }
+    return parseComparisonSpec([wantsStaged ? "--staged" : "--diff"]);
+  }
+
+  if (positionals.length === 0) return null;
+
+  // The directory rule belongs to the command line, which is the only place a
+  // folder can occupy the positional slot. Everything after it is the shared
+  // spec grammar the page takes as well.
+  const only = positionals[0];
+  const namesDirectory = positionals.length === 1
+    && only !== undefined
+    && isDirectory(path.resolve(directory, only));
+  if (namesDirectory) return null;
+
+  try {
+    const request = parseComparisonSpec(positionals);
+    await verifyComparisonRequest(directory, request);
+    return request;
+  } catch (cause) {
+    if (!(cause instanceof GitError)) throw cause;
+    fail(positionals.length === 1 && parseRevisionArgument(only!) === null
+      ? `no such directory, and not a revision in this repository: ${only}`
+      : cause.message);
+  }
+}
+
+interface ReportFlags {
+  report?: boolean | undefined;
+  unit?: string | undefined;
+  aspect?: string | undefined;
+  threshold?: string | undefined;
+  host?: string | undefined;
+  port?: string | undefined;
+  dev?: boolean | undefined;
+  open?: boolean | undefined;
+}
+
+/**
+ * The report's options, or `null` when the run serves the page instead.
+ *
+ * A report flag without `--report` and a server flag with it are both
+ * refused, so a flag never silently does nothing.
+ */
+function readReportOptions(values: ReportFlags, isDiff: boolean): ReportOptions | null {
+  if (values.report !== true) {
+    for (const flag of ["unit", "aspect", "threshold"] as const) {
+      if (values[flag] !== undefined) fail(`--${flag} describes a report, so it needs --report`);
+    }
+    return null;
+  }
+  for (const flag of ["host", "port", "dev", "open"] as const) {
+    if (values[flag] !== undefined) fail(`--${flag} belongs to the server, and --report starts none`);
+  }
+
+  const unitName = values.unit ?? "tokens";
+  const measure = REPORT_UNITS[unitName];
+  if (measure === undefined) fail(`unknown unit "${unitName}". Known units: ${Object.keys(REPORT_UNITS).join(", ")}`);
+
+  if (values.aspect !== undefined && !isDiff) fail("--aspect names a side of a change, and a scan has none");
+  const aspectName = values.aspect ?? (isDiff ? "churn" : "after");
+  const aspect: Aspect | undefined = ASPECTS.find((candidate) => candidate === aspectName);
+  if (aspect === undefined) fail(`unknown aspect "${aspectName}". Known aspects: ${ASPECTS.join(", ")}`);
+
+  const threshold = values.threshold === undefined ? DEFAULT_REPORT_THRESHOLD : Number(values.threshold);
+  if (!Number.isFinite(threshold) || threshold < 0 || threshold > 100) {
+    fail(`--threshold expects a percent between 0 and 100, got "${values.threshold}"`);
+  }
+
+  return { measure, aspect, threshold };
 }
 
 async function main(): Promise<void> {
@@ -143,9 +316,12 @@ async function main(): Promise<void> {
       args: process.argv.slice(2),
       allowPositionals: true,
       options: {
+        C: { type: "string", short: "C" },
         host: { type: "string" },
         port: { type: "string" },
         dev: { type: "boolean" },
+        diff: { type: "boolean" },
+        staged: { type: "boolean" },
         "all-files": { type: "boolean" },
         exclude: { type: "string", multiple: true },
         tokenizer: { type: "string" },
@@ -154,6 +330,10 @@ async function main(): Promise<void> {
         open: { type: "boolean" },
         // parseArgs has no negation syntax, so the opt-out is its own flag.
         "no-open": { type: "boolean" },
+        report: { type: "boolean" },
+        unit: { type: "string" },
+        aspect: { type: "string" },
+        threshold: { type: "string" },
         help: { type: "boolean", short: "h" },
         version: { type: "boolean" },
       },
@@ -171,40 +351,79 @@ async function main(): Promise<void> {
     process.stdout.write(`${readPackageVersion()}\n`);
     return;
   }
-  if (positionals.length > 1) fail(`expected at most one root directory, got ${positionals.length}`);
 
-  const root = path.resolve(positionals[0] ?? ".");
-  const rootInfo = statSync(root, { throwIfNoEntry: false });
-  if (rootInfo === undefined) fail(`no such directory: ${root}`);
-  if (!rootInfo.isDirectory()) fail(`not a directory: ${root}`);
+  const workingDirectory = path.resolve(values.C ?? ".");
+  if (!isDirectory(workingDirectory)) fail(`no such directory: ${workingDirectory}`);
 
   const tokenizer = values.tokenizer ?? DEFAULT_TOKENIZER;
   if (!isTokenizerName(tokenizer)) {
     fail(`unknown tokenizer "${tokenizer}". Known tokenizers: ${TOKENIZERS.join(", ")}`);
   }
 
-  const onProgress = createProgressReporter();
-  const scanOptions: ScanOptions = {
-    root,
-    tokenizer,
-    allFiles: values["all-files"] === true,
-    exclude: values.exclude ?? [],
-    maxFileBytes: values["max-file-bytes"] === undefined
-      ? DEFAULT_MAX_FILE_BYTES
-      : parseIntegerOption("max-file-bytes", values["max-file-bytes"], 1, Number.MAX_SAFE_INTEGER),
-    concurrency: values.concurrency === undefined
-      ? DEFAULT_CONCURRENCY
-      : parseIntegerOption("concurrency", values.concurrency, 1, 1024),
-    ...(onProgress ? { onProgress } : {}),
-  };
+  const comparisonRequest = await readComparisonRequest(
+    workingDirectory, positionals, values.diff === true, values.staged === true,
+  );
+  if (comparisonRequest !== null && values["all-files"] === true) {
+    fail("--all-files widens a filesystem walk, and a diff runs none");
+  }
+  const reportOptions = readReportOptions(values, comparisonRequest !== null);
+
+  const maxFileBytes = values["max-file-bytes"] === undefined
+    ? DEFAULT_MAX_FILE_BYTES
+    : parseIntegerOption("max-file-bytes", values["max-file-bytes"], 1, Number.MAX_SAFE_INTEGER);
+  const concurrency = values.concurrency === undefined
+    ? DEFAULT_CONCURRENCY
+    : parseIntegerOption("concurrency", values.concurrency, 1, 1024);
+  const exclude = values.exclude ?? [];
+
+  let producer: IndexProducer;
+  if (comparisonRequest === null) {
+    const root = path.resolve(workingDirectory, positionals[0] ?? ".");
+    if (!isDirectory(root)) fail(`no such directory: ${root}`);
+    const onProgress = createProgressReporter("scanning");
+    producer = {
+      kind: "scan",
+      options: {
+        root, tokenizer, allFiles: values["all-files"] === true, exclude, maxFileBytes, concurrency,
+        ...(onProgress ? { onProgress } : {}),
+      } satisfies ScanOptions,
+    };
+  } else {
+    let comparison: Comparison;
+    let root: string;
+    try {
+      root = await repositoryRoot(workingDirectory);
+      comparison = await resolveComparison(workingDirectory, comparisonRequest);
+    } catch (cause) {
+      fail(cause instanceof GitError ? cause.message : String(cause));
+    }
+    const onProgress = createProgressReporter("comparing");
+    producer = {
+      kind: "diff",
+      options: {
+        root, comparison, tokenizer, exclude, maxFileBytes, concurrency,
+        ...(onProgress ? { onProgress } : {}),
+      } satisfies DiffScanOptions,
+    };
+  }
 
   const host = values.host ?? DEFAULT_HOST;
   const port = values.port === undefined ? DEFAULT_PORT : parseIntegerOption("port", values.port, 0, 65535);
 
-  const index = await scanSourceTree(scanOptions);
-  printScanSummary(index, scanOptions);
+  let index: ScanIndex;
+  try {
+    index = producer.kind === "diff" ? await scanDiff(producer.options) : await scanSourceTree(producer.options);
+  } catch (cause) {
+    if (cause instanceof GitError) fail(cause.message);
+    throw cause;
+  }
+  if (reportOptions !== null) {
+    process.stdout.write(buildReport(index, reportOptions));
+    return;
+  }
+  printSummary(index, maxFileBytes);
 
-  const server = createSlopsplorerServer({ index, scanOptions, host, port, dev: values.dev === true });
+  const server = createSlopsplorerServer({ index, producer, host, port, dev: values.dev === true });
   const address = await server.listen();
   process.stderr.write(`\n  slopsplorer ready on ${address.url}\n\n`);
 

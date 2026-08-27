@@ -1,7 +1,6 @@
-import { useEffect, useRef } from "react";
-import type { Measure, TreeRow, TreeSort } from "../../shared/api.ts";
-import { count } from "../format.ts";
-import { MeasureMenu } from "./MeasureMenu.tsx";
+import { useEffect, useLayoutEffect, useRef } from "react";
+import type { Aspect, Measure, TreeRow, TreeSort } from "../../shared/api.ts";
+import { count, sideCount, weightCount, weightHeading } from "../format.ts";
 import { SortCaret } from "./SortCaret.tsx";
 import { Tooltip, tooltipHandlers } from "./Tooltip.tsx";
 
@@ -10,17 +9,21 @@ interface Props {
   sort: TreeSort;
   /** Names the numbers column, and the unit every figure on the page is in. */
   measure: Measure;
+  /** Side of the change the numbers describe. Only `net` is signed. */
+  aspect: Aspect;
+  isDiff: boolean;
   onSelect: (rowKind: "folder" | "files", path: string) => void;
   onDrill: (path: string) => void;
   onSortChange: (sort: TreeSort) => void;
-  /** Picking a measure also orders the tree by it, so the menu is the weight sort. */
-  onMeasureChange: (measure: Measure) => void;
   onToggleExpanded: (path: string) => void;
   onToggleFolder: (row: TreeRow) => void;
   onToggleDirectFiles: (row: TreeRow) => void;
   onExpandAll: () => void;
   onCollapseAll: () => void;
 }
+
+/** Gap a band figure keeps from the name beside it before it gives the pixels up. */
+const FIGURE_CLEARANCE = 8;
 
 /** Drawn rather than typed: the Unicode triangles render far too small to hit. */
 function Chevron({ open }: { open: boolean }): React.JSX.Element {
@@ -52,10 +55,52 @@ function ScopeCheckbox({ row, onChange }: { row: TreeRow; onChange: () => void }
 
 /** The folder hierarchy, with every row measured against the active scope root. */
 export function SourceTree({
-  rows, sort, measure, onSelect, onDrill, onSortChange, onMeasureChange, onToggleExpanded, onToggleFolder, onToggleDirectFiles, onExpandAll, onCollapseAll,
+  rows, sort, measure, aspect, isDiff, onSelect, onDrill, onSortChange, onToggleExpanded, onToggleFolder, onToggleDirectFiles, onExpandAll, onCollapseAll,
 }: Props): React.JSX.Element {
   const expandableRows = rows.filter((row) => row.rowKind === "folder" && row.hasChildren);
   const allExpanded = expandableRows.length > 0 && expandableRows.every((row) => row.expanded);
+  // A net total states what a folder kept, and hides what it cost: -6,448 reads
+  // the same whether nothing happened or 33,000 tokens were traded for 39,000.
+  // In net the band therefore carries the two sides, from a centre axis, and the
+  // figure stays the one quantity the column is named and sorted by. The band
+  // runs the width of the row, under the name and the figure, because it is one
+  // scale for the whole tree and the smallest rows need every pixel of it.
+  const centreAxis = isDiff && aspect === "net";
+  const scrollRef = useRef<HTMLDivElement>(null);
+  // The band runs under the whole row, so a side figure at the axis and the
+  // row's own text can want the same pixels. The text wins and the figure it
+  // reaches is not drawn: one reading missing is better than two in the same
+  // place, the bar under the name is unharmed, and the row's tooltip still
+  // carries the pair. Only measurement can settle it, because a name is text of
+  // an unknown width while the axis is a position in the row.
+  useLayoutEffect(() => {
+    const scroll = scrollRef.current;
+    if (!scroll) return undefined;
+    const settle = (): void => {
+      const crossings: { figure: HTMLElement; crossed: boolean }[] = [];
+      for (const row of scroll.querySelectorAll<HTMLElement>(".tree__row")) {
+        const name = row.querySelector<HTMLElement>(".tree__name");
+        const label = row.querySelector<HTMLElement>(".tree__label");
+        const net = row.querySelector<HTMLElement>(".tree__count");
+        if (!name || !label || !net) continue;
+        // The label clips its own text, so the name ends at the nearer of the two.
+        const nameRight = Math.min(name.getBoundingClientRect().right, label.getBoundingClientRect().right);
+        const netLeft = net.getBoundingClientRect().left;
+        for (const figure of row.querySelectorAll<HTMLElement>(".tree__axis-figure")) {
+          const box = figure.getBoundingClientRect();
+          const crossed = box.left < nameRight + FIGURE_CLEARANCE || box.right > netLeft - FIGURE_CLEARANCE;
+          crossings.push({ figure, crossed });
+        }
+      }
+      // Written only after every rect is read, so one pass costs one layout.
+      // A crossed figure keeps its box, so the next pass measures the same row.
+      for (const { figure, crossed } of crossings) figure.dataset.crossed = String(crossed);
+    };
+    settle();
+    const observer = new ResizeObserver(settle);
+    observer.observe(scroll);
+    return () => observer.disconnect();
+  }, [rows, centreAxis]);
   return (
     <section className="panel tree" aria-label="Source tree">
       <div className="panel__head">
@@ -71,7 +116,7 @@ export function SourceTree({
         </div>
       </div>
 
-      <div className="tree__scroll">
+      <div className="tree__scroll" data-axis={centreAxis} ref={scrollRef}>
         {/* Aligned to the row grid, so each heading sits over the column it orders. */}
         <div className="tree__columns">
           <span className="tree__disclose tree__disclose--leaf" aria-hidden="true" />
@@ -86,9 +131,21 @@ export function SourceTree({
             Name
             {sort === "name" ? <SortCaret ascending /> : null}
           </button>
-          {/* The numbers column has no separate sort control: choosing the measure
-              is what puts the tree on it, so one heading carries both jobs. */}
-          <MeasureMenu measure={measure} sorted={sort === "weight"} onChange={onMeasureChange} />
+          {/* The heading names the column and orders the tree by it. What that
+              column holds is chosen in the filter bar, which owns both the unit
+              and the side of the change. */}
+          <button
+            type="button"
+            className="tree__column tree__column--weight"
+            aria-pressed={sort === "weight"}
+            aria-label={`Sort by ${weightHeading(measure, aspect, isDiff).toLowerCase()}, heaviest first`}
+            onClick={() => onSortChange("weight")}
+          >
+            {/* Ahead of the label, so the label keeps the right edge it shares
+                with the numbers running below it. */}
+            <SortCaret placeholder={sort !== "weight"} />
+            {weightHeading(measure, aspect, isDiff)}
+          </button>
         </div>
 
         {rows.length === 0 ? (
@@ -101,8 +158,31 @@ export function SourceTree({
               data-kind={row.rowKind}
               data-selected={row.selected}
               data-muted={!row.included}
-              style={{ "--indent": row.depth, "--mass": Math.min(1, Math.max(0, row.shareOfScope)) } as React.CSSProperties}
+              style={{
+                "--indent": row.depth,
+                "--mass": row.shareOfScope,
+                "--share-added": row.shareAdded,
+                "--share-removed": row.shareRemoved,
+              } as React.CSSProperties}
             >
+              {centreAxis && row.included ? (
+                <span className="tree__axis" aria-hidden="true">
+                  {/* Each side states its own figure at the axis, so the row says
+                      what it traded without a hover. A side that is nothing says
+                      nothing: the absence is the reading. */}
+                  <span className="tree__axis-half tree__axis-half--removed" data-empty={row.removed === 0}>
+                    {row.removed === 0 ? null : (
+                      <span className="tree__axis-figure">{sideCount(row.removed, "-")}</span>
+                    )}
+                  </span>
+                  <span className="tree__axis-half tree__axis-half--added" data-empty={row.added === 0}>
+                    {row.added === 0 ? null : (
+                      <span className="tree__axis-figure">{sideCount(row.added, "+")}</span>
+                    )}
+                  </span>
+                </span>
+              ) : null}
+
               {row.rowKind === "folder" && row.hasChildren ? (
                 <button
                   type="button"
@@ -131,15 +211,20 @@ export function SourceTree({
                 onDoubleClick={() => onDrill(row.path)}
                 {...(row.rowKind === "files" ? tooltipHandlers : {})}
               >
-                {row.name}
+                <span className="tree__name">{row.name}</span>
                 {row.rowKind === "files" ? <Tooltip compact>Files directly in this folder</Tooltip> : null}
               </button>
 
               <span className="tree__weight">
                 {row.included ? (
                   <>
-                    <span className="tree__mass" aria-hidden="true" />
-                    <span className="tree__count">{count(row.weight)}</span>
+                    {centreAxis ? null : <span className="tree__mass" aria-hidden="true" />}
+                    <span className="tree__count" {...(centreAxis ? tooltipHandlers : {})}>
+                      {weightCount(row.weight, aspect)}
+                      {centreAxis ? (
+                        <Tooltip compact>{`${count(row.added)} added, ${count(row.removed)} removed`}</Tooltip>
+                      ) : null}
+                    </span>
                   </>
                 ) : null}
               </span>

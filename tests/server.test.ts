@@ -66,7 +66,7 @@ beforeAll(async () => {
     concurrency: 2,
   };
   const index = await scanSourceTree(scanOptions);
-  server = createSlopsplorerServer({ index, scanOptions, host: "127.0.0.1", port: 0 });
+  server = createSlopsplorerServer({ index, producer: { kind: "scan", options: scanOptions }, host: "127.0.0.1", port: 0 });
   serverUrl = (await server.listen()).url;
 }, SCAN_TIMEOUT_MS);
 
@@ -93,8 +93,8 @@ describe("opening a scan root", () => {
 
     const sourceResponse = await fetch(`${serverUrl}/api/source?path=next.ts`);
     expect(sourceResponse.status).toBe(200);
-    const source = await sourceResponse.json() as SourceResponse;
-    expect(source.content).toBe("export const next = true;\n");
+    const source = await sourceResponse.json() as Extract<SourceResponse, { mode: "source" }>;
+    expect(source).toMatchObject({ mode: "source", content: "export const next = true;\n" });
 
     const oldSourceResponse = await fetch(`${serverUrl}/api/source?path=initial.ts`);
     expect(oldSourceResponse.status).toBe(404);
@@ -113,6 +113,21 @@ describe("opening a scan root", () => {
     const health = await healthResponse.json() as { meta: { rootPath: string } };
     expect(health.meta.rootPath).toBe(nextRoot);
   });
+
+  it("refuses to recompare a scan, which has nothing to compare against", async () => {
+    const compareResponse = await fetch(`${serverUrl}/api/compare`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ comparison: { kind: "workingTree" }, view: {} }),
+    });
+    expect(compareResponse.status).toBe(400);
+    await expect(compareResponse.json()).resolves.toEqual({
+      error: "the open index is a scan, so there is nothing to compare against",
+    });
+
+    const refsResponse = await fetch(`${serverUrl}/api/refs`);
+    expect(refsResponse.status).toBe(400);
+  });
 });
 
 describe("development server shutdown", () => {
@@ -128,7 +143,7 @@ describe("development server shutdown", () => {
     const index = await scanSourceTree(scanOptions);
     const developmentServer = createSlopsplorerServer({
       index,
-      scanOptions,
+      producer: { kind: "scan", options: scanOptions },
       host: "127.0.0.1",
       port: 0,
       dev: true,

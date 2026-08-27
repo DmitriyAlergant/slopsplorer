@@ -6,9 +6,14 @@ import path from "node:path";
 import { StringDecoder } from "node:string_decoder";
 import { fileURLToPath } from "node:url";
 import type { ViteDevServer } from "vite";
+import { diffOneFile, scanDiff } from "../scanner/diffScan.ts";
+import type { DiffScanOptions } from "../scanner/diffScan.ts";
+import { GitError, listRefs, resolveComparison, verifyComparisonRequest } from "../scanner/gitdiff.ts";
 import { scanSourceTree } from "../scanner/scan.ts";
 import type { ScanIndex, ScanOptions } from "../scanner/scan.ts";
-import type { OpenRootRequest, SkillInstallResponse, SourceResponse } from "../shared/api.ts";
+import type {
+  CompareRequest, ComparisonRequest, DiffLine, OpenRootRequest, SkillInstallResponse, SourceResponse,
+} from "../shared/api.ts";
 import { buildView, parseViewRequest } from "./aggregate.ts";
 
 /** Ceiling on `POST` bodies. A view request is a few kilobytes even for a huge tree. */
@@ -16,6 +21,21 @@ const MAX_REQUEST_BODY_BYTES = 1024 * 1024;
 
 /** Ceiling on a source preview, so one generated bundle cannot stall the browser. */
 const MAX_SOURCE_BYTES = 512 * 1024;
+
+/**
+ * Cut a compared file at the same ceiling a previewed file gets, on a line
+ * boundary. `totalBytes` counts the whole change, so the note the page draws
+ * says how much was left out.
+ */
+function takeUpToByteCeiling(aligned: readonly DiffLine[]): { lines: DiffLine[]; totalBytes: number } {
+  let totalBytes = 0;
+  let kept = aligned.length;
+  for (const [index, line] of aligned.entries()) {
+    totalBytes += Buffer.byteLength(line.text) + 1;
+    if (totalBytes > MAX_SOURCE_BYTES && index < kept) kept = index;
+  }
+  return { lines: aligned.slice(0, kept), totalBytes };
+}
 
 const SKILL_NAME = "slopsplorer";
 
@@ -51,11 +71,47 @@ class BadRequestError extends Error {}
 /** A valid request that cannot run until the active scan finishes. */
 class ConflictError extends Error {}
 
+/**
+ * Read a comparison out of an untrusted body.
+ *
+ * Every branch names its own fields, so a request that reaches
+ * `resolveComparison` is one of the five comparisons and nothing else.
+ */
+function parseComparisonRequest(raw: unknown): ComparisonRequest {
+  const candidate = (typeof raw === "object" && raw !== null ? raw : {}) as Record<string, unknown>;
+  const revision = (key: string): string => {
+    const value = candidate[key];
+    if (typeof value !== "string" || value.trim() === "") {
+      throw new BadRequestError(`\`comparison.${key}\` must name a revision`);
+    }
+    return value.trim();
+  };
+  switch (candidate["kind"]) {
+    case "workingTree": return { kind: "workingTree" };
+    case "staged": return { kind: "staged" };
+    case "revisionToWorkingTree": return { kind: "revisionToWorkingTree", rev: revision("rev") };
+    case "revisionPair": return { kind: "revisionPair", base: revision("base"), target: revision("target") };
+    case "mergeBase": return { kind: "mergeBase", base: revision("base"), target: revision("target") };
+    default: throw new BadRequestError("`comparison.kind` must name one of the five comparisons");
+  }
+}
+
+/**
+ * What produces the index, and what a rescan therefore repeats.
+ *
+ * Opening a folder always installs a scan producer, because a directory is not
+ * a comparison and quietly keeping the old one would leave the page reporting
+ * churn for a tree nobody compared.
+ */
+export type IndexProducer =
+  | { kind: "scan"; options: ScanOptions }
+  | { kind: "diff"; options: DiffScanOptions };
+
 export interface SlopsplorerServerOptions {
   /** The index the server starts with, so the CLI can report the scan before listening. */
   index: ScanIndex;
   /** Reused verbatim by `POST /api/rescan`, so a rescan sees the same scope. */
-  scanOptions: ScanOptions;
+  producer: IndexProducer;
   host: string;
   port: number;
   /** Serve the client through Vite in middleware mode instead of `dist/web`. */
@@ -202,21 +258,36 @@ export function createSlopsplorerServer(options: SlopsplorerServerOptions): Slop
   const staticRoot = path.join(packageRoot, "dist", "web");
   const skillInstall = buildSkillInstall(packageRoot);
 
-  let scanState = { index: options.index, options: options.scanOptions };
-  let scanInFlight: { root: string; promise: Promise<ScanIndex> } | null = null;
+  let scanState = { index: options.index, producer: options.producer };
+  let scanInFlight: { label: string; promise: Promise<ScanIndex> } | null = null;
   let vite: ViteDevServer | null = null;
 
+  /**
+   * What a running measurement is of, so a repeat of it can join it.
+   *
+   * A comparison carries its spec, because two comparisons of one repository
+   * are two different measurements and joining them would answer the second
+   * with the first one's figures.
+   */
+  function producerLabel(producer: IndexProducer): string {
+    return producer.kind === "diff"
+      ? `${producer.options.root} (${producer.options.comparison.spec})`
+      : producer.options.root;
+  }
+
   /** Replace the complete state only after a scan succeeds. */
-  function runScan(nextOptions: ScanOptions): Promise<ScanIndex> {
+  function runScan(producer: IndexProducer): Promise<ScanIndex> {
+    const label = producerLabel(producer);
     if (scanInFlight) {
-      if (scanInFlight.root === nextOptions.root) return scanInFlight.promise;
-      throw new ConflictError(`already scanning ${scanInFlight.root}`);
+      if (scanInFlight.label === label) return scanInFlight.promise;
+      throw new ConflictError(`already scanning ${scanInFlight.label}`);
     }
-    const running = scanSourceTree(nextOptions).then((next) => {
-      scanState = { index: next, options: nextOptions };
+    const measuring = producer.kind === "diff" ? scanDiff(producer.options) : scanSourceTree(producer.options);
+    const running = measuring.then((next) => {
+      scanState = { index: next, producer };
       return next;
     });
-    const activeScan = { root: nextOptions.root, promise: running };
+    const activeScan = { label, promise: running };
     scanInFlight = activeScan;
     const release = (): void => {
       if (scanInFlight === activeScan) scanInFlight = null;
@@ -227,7 +298,7 @@ export function createSlopsplorerServer(options: SlopsplorerServerOptions): Slop
 
   /** Coalesce concurrent rescans of the active root. */
   function rescan(): Promise<ScanIndex> {
-    return runScan(scanState.options);
+    return runScan(scanState.producer);
   }
 
   async function parseOpenRootRequest(body: unknown): Promise<OpenRootRequest> {
@@ -250,6 +321,12 @@ export function createSlopsplorerServer(options: SlopsplorerServerOptions): Slop
     return { root: path.resolve(requestedRoot), view: parseViewRequest(candidate.view) };
   }
 
+  function parseCompareRequest(body: unknown): CompareRequest {
+    if (typeof body !== "object" || body === null) throw new BadRequestError("request body must be an object");
+    const candidate = body as { comparison?: unknown; view?: unknown };
+    return { comparison: parseComparisonRequest(candidate.comparison), view: parseViewRequest(candidate.view) };
+  }
+
   async function handleSource(response: ServerResponse, url: URL): Promise<void> {
     const state = scanState;
     const requestedPath = url.searchParams.get("path");
@@ -263,7 +340,25 @@ export function createSlopsplorerServer(options: SlopsplorerServerOptions): Slop
     }
     const row = state.index.files[fileIndex]!;
 
-    const scanRoot = path.resolve(state.options.root);
+    // Inside a diff, a file has two contents, so showing either one alone
+    // would be a claim the page cannot support. Both sides go over whole and
+    // the page decides how much of the unchanged text to draw.
+    if (state.producer.kind === "diff") {
+      const aligned = await diffOneFile(state.producer.options, row);
+      const kept = takeUpToByteCeiling(aligned);
+      const payload: SourceResponse = {
+        path: row.path,
+        lines: kept.lines,
+        mode: "diff",
+        truncated: kept.lines.length < aligned.length,
+        totalBytes: kept.totalBytes,
+        language: row.language,
+      };
+      sendJson(response, 200, payload);
+      return;
+    }
+
+    const scanRoot = path.resolve(state.producer.options.root);
     const absolutePath = path.resolve(scanRoot, requestedPath);
     let realFilePath: string;
     let realScanRoot: string;
@@ -290,6 +385,7 @@ export function createSlopsplorerServer(options: SlopsplorerServerOptions): Slop
     const payload: SourceResponse = {
       path: row.path,
       content,
+      mode: "source",
       truncated,
       totalBytes: buffer.byteLength,
       language: row.language,
@@ -323,9 +419,54 @@ export function createSlopsplorerServer(options: SlopsplorerServerOptions): Slop
           return;
         }
         const openRequest = await parseOpenRootRequest(await readJsonBody(request));
-        const nextOptions = { ...scanState.options, root: openRequest.root };
-        const opened = await runScan(nextOptions);
+        const previous = scanState.producer;
+        const scanOptions: ScanOptions = previous.kind === "scan"
+          ? { ...previous.options, root: openRequest.root }
+          : {
+            root: openRequest.root,
+            tokenizer: previous.options.tokenizer,
+            allFiles: false,
+            exclude: previous.options.exclude,
+            maxFileBytes: previous.options.maxFileBytes,
+            concurrency: previous.options.concurrency,
+          };
+        const opened = await runScan({ kind: "scan", options: scanOptions });
         sendJson(response, 200, buildView(opened, openRequest.view));
+        return;
+      }
+      case "/api/compare": {
+        if (request.method !== "POST") {
+          sendJson(response, 405, { error: "use POST" });
+          return;
+        }
+        const compareRequest = parseCompareRequest(await readJsonBody(request));
+        const previous = scanState.producer;
+        // Only a comparison can be recompared: a scan has no repository the
+        // page could name a second revision against.
+        if (previous.kind !== "diff") {
+          throw new BadRequestError("the open index is a scan, so there is nothing to compare against");
+        }
+        const root = previous.options.root;
+        let comparison;
+        try {
+          await verifyComparisonRequest(root, compareRequest.comparison);
+          comparison = await resolveComparison(root, compareRequest.comparison);
+        } catch (cause) {
+          // The picker offers what the repository holds, so a name it does not
+          // is the caller's mistake and not a fault of ours.
+          if (!(cause instanceof GitError)) throw cause;
+          throw new BadRequestError(cause.message);
+        }
+        const compared = await runScan({ kind: "diff", options: { ...previous.options, comparison } });
+        sendJson(response, 200, buildView(compared, compareRequest.view));
+        return;
+      }
+      case "/api/refs": {
+        // Only a comparison has a repository, and only the picker asks.
+        if (scanState.producer.kind !== "diff") {
+          throw new BadRequestError("the open index is a scan, so it has no repository to list refs from");
+        }
+        sendJson(response, 200, await listRefs(scanState.producer.options.root));
         return;
       }
       case "/api/source": {

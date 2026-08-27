@@ -1,4 +1,4 @@
-import { measureLines, measureLinesByMarkers, type LineMetrics } from "./lines.ts";
+import { classifyLines, classifyLinesByMarkers, splitLines, totalsFromBuckets, type LineBucket, type LineMetrics } from "./lines.ts";
 import { grammarForFile, type StructureAnalyzer, type StructureCounts } from "./structure.ts";
 
 /** Everything one file's content yields, before path-derived attributes. */
@@ -7,6 +7,10 @@ export interface FileMeasurement {
   grammar: string | null;
   structure: StructureCounts;
   lines: LineMetrics;
+  /** The file's physical lines, so a diff can align two contents. */
+  lineTexts: string[];
+  /** One verdict per entry of `lineTexts`, so a diff can sum over changed lines. */
+  buckets: LineBucket[];
 }
 
 /**
@@ -26,8 +30,8 @@ export async function measureFile(
   // A grammar gives exact comment spans anywhere in the file. Everything else
   // falls back to comment markers, which report every content line as code for
   // a format with no known comment syntax rather than reporting nothing.
-  const lines = grammar
-    ? measureLines(text, structure.commentRanges)
-    : measureLinesByMarkers(text, fileName);
-  return { grammar, structure, lines };
+  const buckets = grammar
+    ? classifyLines(text, structure.commentRanges)
+    : classifyLinesByMarkers(text, fileName);
+  return { grammar, structure, lines: totalsFromBuckets(buckets), lineTexts: splitLines(text), buckets };
 }

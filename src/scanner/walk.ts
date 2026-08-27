@@ -129,13 +129,27 @@ export async function listSourceFiles(root: string, options: ListOptions): Promi
     ? await listGitFiles(root)
     : await listFilesystemFiles(root, extraExclusions, respectGitignore);
 
-  const relativePaths = candidates
+  return {
+    relativePaths: acceptSourcePaths(candidates, options.exclude),
+    gitTracked: useGit,
+    respectsGitignore: respectGitignore,
+  };
+}
+
+/**
+ * Reduce a candidate list to the files a scan measures, sorted by path.
+ *
+ * Both producers of an index end here, so a diff and a scan can never disagree
+ * about what counts as a source file. The sort is what makes every subtree a
+ * contiguous slice of `ScanIndex.files`.
+ */
+export function acceptSourcePaths(candidates: readonly string[], exclude: readonly string[]): string[] {
+  const extraExclusions = new Set(exclude);
+  return candidates
     .filter((relativePath) => isSourceFile(relativePath))
     .filter((relativePath) => {
       const directories = path.posix.dirname(relativePath).split("/").filter((part) => part && part !== ".");
       return !directories.some((directory) => extraExclusions.has(directory));
     })
     .sort();
-
-  return { relativePaths, gitTracked: useGit, respectsGitignore: respectGitignore };
 }

@@ -1,0 +1,1 @@
+`--report` prints a text report of a tree or a change to stdout and exits: code and tests walked to a threshold share of their section, the other flavors one line each, steered by `--unit`, `--aspect`, and `--threshold`.

@@ -34,6 +34,17 @@
   --flavor-other: oklch(0.68 0.02 265);
   --flavor-generated: oklch(0.60 0.13 12);
 
+  /*
+   * Change colours. Nothing on the page depends on hue alone: an added figure
+   * carries a "+" and a removed one carries a "-", and around one man in
+   * twelve cannot separate red from green.
+   */
+  --status-added: oklch(0.57 0.13 152);
+  --status-modified: oklch(0.60 0.11 240);
+  --status-deleted: oklch(0.58 0.15 22);
+  --status-renamed: oklch(0.58 0.13 305);
+  --status-unchanged: oklch(0.68 0.02 265);
+
   --font-mono: ui-monospace, "SF Mono", SFMono-Regular, "JetBrains Mono", Menlo, Consolas, monospace;
   --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 
@@ -66,6 +77,11 @@
     --flavor-data: oklch(0.76 0.11 82);
     --flavor-other: oklch(0.60 0.02 265);
     --flavor-generated: oklch(0.70 0.13 12);
+    --status-added: oklch(0.72 0.14 152);
+    --status-modified: oklch(0.72 0.11 240);
+    --status-deleted: oklch(0.70 0.15 22);
+    --status-renamed: oklch(0.70 0.13 305);
+    --status-unchanged: oklch(0.60 0.02 265);
   }
 }
 
@@ -89,7 +105,8 @@ body:has(.viewer[open]) { overflow: hidden; }
 
 /* Every figure in this interface is meant to be compared vertically. */
 .mono, .readout__value, .tree__weight, .metrics td, .metrics th,
-.instrument__path, .fact dd, .ribbon__weight, .command {
+.instrument__path, .instrument__root, .picker__chip,
+.fact dd, .ribbon__weight, .command {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
 }
@@ -146,11 +163,13 @@ button { cursor: pointer; }
   letter-spacing: -0.045em;
   line-height: 1;
 }
-.instrument__path, .instrument__path-input {
+/* The comparison sits on the wordmark's line, above the repository it is in. */
+.instrument__title { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.instrument__path, .instrument__root, .instrument__path-input {
   color: var(--ink-faint);
   font-size: 11.5px;
 }
-.instrument__path {
+.instrument__path, .instrument__root {
   display: block;
   width: 100%;
   margin: 6px 0 0;
@@ -177,6 +196,7 @@ button { cursor: pointer; }
   font-family: var(--font-mono);
 }
 .instrument__path-hint { flex: none; color: var(--ink-faint); font-size: 9.5px; }
+
 .instrument__facts { display: flex; gap: 24px; margin: 0; }
 .fact dt {
   color: var(--ink-faint);
@@ -186,6 +206,130 @@ button { cursor: pointer; }
 }
 .fact dd { margin: 2px 0 0; font-size: 12px; color: var(--ink-soft); }
 .instrument__actions { display: flex; gap: 8px; }
+
+/* ---- Comparison picker -------------------------------------------------- */
+
+/* Two chips and the link between them: one side each, and the range operator
+   that joins them, so no control claims to decide more than its own end. */
+.picker { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.picker__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+  padding: 4px 10px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: var(--sunk);
+  font-size: 13px;
+}
+.picker__chip:hover:not(:disabled):not([aria-disabled="true"]),
+.picker__chip[aria-expanded="true"] { border-color: var(--signal); color: var(--signal); }
+.picker__chip:disabled { opacity: 0.6; cursor: progress; }
+/* Marks the chip as opening a panel, not as sorting a column. */
+.menu-chevron { flex: none; opacity: 0.75; }
+.picker__chip[aria-disabled="true"] { color: var(--ink-faint); cursor: default; }
+.picker__chip-name { max-width: 26ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.picker__chip-tag {
+  flex: none;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--signal-wash);
+  color: var(--signal);
+  font-family: var(--font-sans);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+}
+.picker__swap {
+  flex: none;
+  padding: 2px 5px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ink-soft);
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 700;
+}
+.picker__swap:hover:not(:disabled):not([aria-disabled="true"]) { background: var(--sunk); color: var(--signal); }
+.picker__swap:disabled { opacity: 0.6; cursor: progress; }
+.picker__swap[aria-disabled="true"] { cursor: default; }
+
+/* Fixed and placed on open, so the panel is never clipped by the strip. */
+.picker__panel {
+  position: fixed;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 360px;
+  padding: 12px;
+  border: 1px solid var(--rule-firm);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: 0 16px 40px oklch(0.2 0.02 265 / 0.18);
+}
+.picker__panel-title {
+  margin: 0;
+  color: var(--ink-faint);
+  font-size: 9.5px; font-weight: 600; letter-spacing: 0.11em; text-transform: uppercase;
+}
+.picker__search {
+  padding: 5px 8px;
+  border: 1px solid var(--rule-firm);
+  border-radius: 4px;
+  background: var(--paper);
+  font-size: 12px;
+}
+.picker__list {
+  max-height: 224px;
+  overflow-y: auto;
+  padding: 2px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-sm);
+}
+.picker__group + .picker__group { margin-top: 4px; }
+.picker__group-title {
+  margin: 0;
+  padding: 4px 7px 2px;
+  color: var(--ink-faint);
+  font-size: 9.5px; letter-spacing: 0.09em; text-transform: uppercase;
+}
+.picker__option {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  padding: 4px 7px;
+  border: 0; border-radius: 4px;
+  background: transparent;
+  text-align: left;
+}
+.picker__option:hover, .picker__option:focus-visible { background: var(--sunk); }
+.picker__option[aria-selected="true"] { background: var(--signal-wash); color: var(--signal); }
+.picker__option-name {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono); font-size: 12px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.picker__option-note {
+  flex: 0 1 auto;
+  min-width: 0;
+  color: var(--ink-faint);
+  font-family: var(--font-mono); font-size: 10.5px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.picker__empty { margin: 8px 7px; color: var(--ink-faint); font-size: 11.5px; }
+.picker__merge {
+  display: flex; align-items: center; gap: 8px;
+  margin-top: 2px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.picker__merge[aria-disabled="true"] { color: var(--ink-faint); cursor: default; }
+.picker__error { margin: 2px 0 0; color: var(--signal); font-size: 11.5px; }
 .instrument__note {
   grid-column: 1 / -1;
   margin: 0;
@@ -204,6 +348,17 @@ button { cursor: pointer; }
 .button:hover:not(:disabled) { border-color: var(--signal); color: var(--signal); }
 .button:disabled { opacity: 0.5; cursor: progress; }
 .button--tiny { padding: 3px 8px; font-size: 11px; }
+/* Declared after `.button`, which it shares specificity with and must outrank. */
+.button--primary {
+  border-color: var(--signal);
+  background: var(--signal);
+  color: var(--signal-ink);
+}
+.button--primary:hover:not(:disabled) {
+  border-color: var(--signal);
+  color: var(--signal-ink);
+  filter: brightness(1.08);
+}
 
 /* Opening a different root replaces the entire data model, so stale results stay covered until the scan completes. */
 .progress-modal {
@@ -243,10 +398,15 @@ button { cursor: pointer; }
 /* Closer to the splitter above it than the splitter is to the panels it
    resizes, so the grip reads as the panels' edge rather than the strip's. */
 .ribbon { margin: 14px 0 0; }
-.ribbon__readouts { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 26px; margin-bottom: 14px; }
+.readouts { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 26px; }
+.ribbon__readouts { margin-bottom: 14px; }
 .readout { display: flex; flex-direction: column; gap: 1px; }
 .readout__value { font-size: 20px; font-weight: 600; letter-spacing: -0.02em; }
 .readout[data-emphasis="true"] .readout__value { font-size: 30px; font-weight: 700; }
+/* Direction is carried by the sign in the figure as well as by the colour. */
+.readout[data-sign="positive"] .readout__value { color: var(--status-added); }
+.readout[data-sign="negative"] .readout__value { color: var(--status-deleted); }
+.readout[data-sign="zero"] .readout__value { color: var(--ink-faint); }
 .readout__label {
   color: var(--ink-faint);
   font-size: 9.5px;
@@ -313,10 +473,36 @@ button { cursor: pointer; }
   top: 0;
   z-index: 5;
   display: grid;
-  grid-template-columns: minmax(200px, 320px) minmax(0, 1fr);
+  grid-template-columns: minmax(180px, 280px) auto minmax(0, 1fr);
   align-items: center;
-  gap: 18px;
+  gap: 14px;
   padding: 12px 0;
+}
+/*
+ * The side of the change and the unit are properties of every figure, so each
+ * is stated once. They sit together and read as one phrase: "net tokens".
+ */
+.filters__switches { display: flex; align-items: center; gap: 10px; }
+.switch {
+  display: flex;
+  border: 1px solid var(--rule-firm);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.switch__option {
+  position: relative;
+  padding: 5px 10px;
+  border: 0;
+  border-left: 1px solid var(--rule-firm);
+  background: var(--surface);
+  color: var(--ink-soft);
+  font-size: 12.5px; font-weight: 600; line-height: 1.4;
+}
+.switch__option:first-child { border-left: 0; }
+.switch__option:hover { color: var(--signal); }
+.switch__option[aria-pressed="true"] {
+  background: var(--signal);
+  color: var(--signal-ink);
 }
 /*
  * The blur lives on a pseudo-element because `backdrop-filter` on the bar itself
@@ -401,7 +587,9 @@ button { cursor: pointer; }
   min-height: 0;
   padding: 6px 9px;
   font-family: var(--font-mono);
-  white-space: nowrap;
+  /* Short labels still sit on one line, because the box is only as wide as its
+     text. Past the ceiling it wraps: nowrap here would cut the tail off. */
+  overflow-wrap: anywhere;
 }
 .tooltip::before {
   content: "";
@@ -423,43 +611,6 @@ button { cursor: pointer; }
   transition-delay: 0s;
 }
 
-/* ---- Menus ------------------------------------------------------------- */
-
-/*
- * Fixed rather than laid out, for the reason the tooltip is: the only heading
- * that opens one sits inside a scrolling tree within a panel that hides its
- * overflow. Coordinates are set on open, and any scroll closes it.
- */
-.menu {
-  position: fixed;
-  z-index: 40;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  width: 264px;
-  padding: 4px;
-  border: 1px solid var(--rule-firm);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-  box-shadow: 0 8px 24px oklch(0.18 0.025 265 / 0.18);
-}
-.menu__item {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 7px 9px;
-  border: 0; border-radius: calc(var(--radius-sm) - 2px);
-  background: transparent;
-  color: var(--ink);
-  text-align: left;
-}
-.menu__item:hover, .menu__item:focus-visible { background: var(--sunk); }
-.menu__name { display: flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; }
-/* A fixed slot, so a name does not step sideways when the mark moves to it. */
-.menu__check { display: inline-flex; width: 11px; color: var(--signal); }
-.menu__item[aria-checked="true"] .menu__name { color: var(--signal); }
-.menu__note { padding-left: 17px; color: var(--ink-faint); font-size: 11px; line-height: 1.45; }
-.menu-chevron { flex: none; opacity: 0.75; }
 
 .drill-trail {
   display: flex;
@@ -558,9 +709,10 @@ button { cursor: pointer; }
    figures under the name they describe. */
 .panel__scope {
   margin: 4px 0 0;
-  color: var(--ink-faint);
+  color: var(--signal);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 11.5px;
+  font-weight: 600;
 }
 .eyebrow {
   margin: 0 0 3px;
@@ -612,16 +764,14 @@ button { cursor: pointer; }
 .tree__column--weight { justify-content: flex-end; padding-right: 7px; }
 .tree__column:hover { color: var(--ink); }
 .tree__column[aria-pressed="true"], .tree__column[data-sorted="true"] { color: var(--ink); }
-/* The numbers heading is a menu, so it says nothing about order beyond its
-   colour: a second chevron beside the one that opens the menu reads as noise. */
-.tree__measure { display: flex; justify-content: flex-end; min-width: 0; }
 .sort-caret { flex: none; }
 .sort-caret[data-ascending="true"] { transform: rotate(180deg); }
 .sort-caret[data-placeholder="true"] { visibility: hidden; }
+.tree__scroll { --weight-column: 108px; }
 .tree__row {
   position: relative;
   display: grid;
-  grid-template-columns: 28px 16px minmax(0, 1fr) 108px;
+  grid-template-columns: 28px 16px minmax(0, 1fr) var(--weight-column);
   align-items: center;
   gap: 4px;
   min-height: 30px;
@@ -643,6 +793,79 @@ button { cursor: pointer; }
   background: color-mix(in oklab, var(--flavor-code) 20%, transparent);
   pointer-events: none;
 }
+/*
+ * Net weight, drawn from a centre axis: removed to the left, added to the
+ * right, both against the churn the filters leave in the scope. The figure
+ * states the net, and the band states what it cost, because -6,448 reads the
+ * same whether nothing happened or 33,000 tokens were traded for 39,000.
+ *
+ * It runs the width of the row rather than the width of a column, under the
+ * name and the figure, because one scale serves the whole tree and the rows at
+ * the quiet end of it have only a few pixels to say anything with. Its edges
+ * ignore the indent, so two rows at different depths stay comparable.
+ */
+.tree__axis {
+  position: absolute;
+  inset-block: 3px;
+  left: 52px;
+  right: 7px;
+  display: flex;
+  pointer-events: none;
+}
+.tree__axis::before {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  left: 50%;
+  width: 1px;
+  background: var(--rule-firm);
+}
+.tree__axis-half { position: relative; display: flex; width: 50%; }
+/*
+ * Square ends, because a rounded one crossing a digit reads as a clipped glyph
+ * rather than as the end of a bar. A change that exists keeps a 2px floor, so
+ * the quietest row still differs from a row that changed nothing, and a side
+ * that is nothing draws nothing.
+ */
+.tree__axis-half::after { content: ""; display: block; height: 100%; min-width: 2px; }
+.tree__axis-half[data-empty="true"]::after { min-width: 0; }
+.tree__axis-half--removed { justify-content: flex-end; }
+.tree__axis-half--removed::after {
+  width: calc(var(--share-removed) * 100%);
+  margin-right: 1px;
+  background: color-mix(in oklab, var(--status-deleted) 26%, transparent);
+}
+.tree__axis-half--added::after {
+  width: calc(var(--share-added) * 100%);
+  margin-left: 1px;
+  background: color-mix(in oklab, var(--status-added) 26%, transparent);
+}
+/*
+ * Each side states its figure over its own bar, from the axis outwards, so the
+ * two sit either side of one line and the eye reads them as a pair. They are
+ * muted, because the row is named and sorted by the net figure at its right
+ * edge and these two only explain it. A figure the name reaches is not drawn,
+ * and its bar stays under the name: the name is the row's identity, and two
+ * readings in the same pixels are worse than one of them missing.
+ */
+.tree__axis-figure {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--ink-faint);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.tree__axis-figure[data-crossed="true"] { visibility: hidden; }
+.tree__axis-half--removed .tree__axis-figure { right: 5px; }
+.tree__axis-half--added .tree__axis-figure { left: 5px; }
+/* The row's own content sits over the band rather than under it. */
+.tree__scroll[data-axis="true"] .tree__disclose,
+.tree__scroll[data-axis="true"] .tree__check,
+.tree__scroll[data-axis="true"] .tree__label,
+.tree__scroll[data-axis="true"] .tree__weight { position: relative; }
 .tree__count { position: relative; }
 .tree__row:hover { background: var(--sunk); }
 .tree__row[data-selected="true"] { background: var(--signal-wash); }
@@ -697,7 +920,7 @@ button { cursor: pointer; }
   display: flex; align-items: flex-start; justify-content: space-between; gap: 24px;
   padding: 18px 20px 0;
 }
-.detail__identity { min-width: 0; }
+.detail__identity { flex: 1; min-width: 0; }
 .detail__actions { display: flex; flex: none; flex-direction: column; align-items: flex-end; gap: 7px; }
 .detail__title-row { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
 .detail__head h2 {
@@ -741,7 +964,11 @@ button { cursor: pointer; }
 /* Secondary to the drill arrow: a utility beside the name, not a way through it. */
 .detail__tool--copy { color: var(--ink-faint); }
 .detail__tool--copy:hover { background: var(--sunk); color: var(--ink); }
-.detail__stats { margin: 5px 0 0; color: var(--ink-soft); font-size: 12px; }
+/* Set smaller than the scope strip: this one sits beside the share figure and
+   above the tiles, and both of those outrank it. */
+.detail__readouts { gap: 16px; margin-top: 9px; }
+.detail__readouts .readout__value { font-size: 15px; }
+.detail__readouts .readout[data-emphasis="true"] .readout__value { font-size: 19px; }
 .detail__share {
   margin: 0; flex: none;
   font-family: var(--font-mono); font-variant-numeric: tabular-nums;
@@ -772,10 +999,40 @@ button { cursor: pointer; }
 .card:hover { border-color: var(--signal); }
 .card--aggregate { background: var(--sunk); border-style: dashed; }
 .card__name {
+  min-width: 0;
   font-family: var(--font-mono); font-size: 12.5px; font-weight: 600;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.card__meta { color: var(--ink-faint); font-size: 11px; font-variant-numeric: tabular-nums; }
+/*
+ * One fact per row, each pinned to an edge: the name and its share, the weight
+ * and the file count, then the two sides of the change. Nothing here is long
+ * enough to wrap, so every tile in the grid keeps the same height.
+ */
+.card__head, .card__row { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.card__share, .card__files {
+  flex: none;
+  color: var(--ink-faint);
+  font-family: var(--font-mono); font-size: 11px; font-variant-numeric: tabular-nums;
+}
+.card__weight {
+  display: flex; align-items: baseline; gap: 5px;
+  min-width: 0;
+  font-family: var(--font-mono); font-variant-numeric: tabular-nums;
+  font-size: 13px; font-weight: 600;
+  white-space: nowrap;
+}
+/* Quieter than the figure it qualifies, and the only part a narrow tile clips. */
+.card__unit { min-width: 0; overflow: hidden; color: var(--ink-faint); font-size: 11px; font-weight: 400; }
+/* The two sides on every tile, whatever the switch selects, so a tile never
+   hides a rewrite behind a small number. */
+.card__split {
+  display: flex; gap: 9px;
+  font-family: var(--font-mono); font-size: 11.5px; font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.card__split [data-sign="positive"] { color: var(--status-added); }
+.card__split [data-sign="negative"] { color: var(--status-deleted); }
+.card__split [data-sign="zero"] { color: var(--ink-faint); }
 
 .flavor-bar {
   height: 5px; margin-top: 6px;
@@ -792,6 +1049,11 @@ button { cursor: pointer; }
 [data-flavor="data"].flavor-bar__slice { background: var(--flavor-data); }
 [data-flavor="other"].flavor-bar__slice { background: var(--flavor-other); }
 [data-flavor="generated"].flavor-bar__slice { background: var(--flavor-generated); }
+[data-status="added"].flavor-bar__slice { background: var(--status-added); }
+[data-status="modified"].flavor-bar__slice { background: var(--status-modified); }
+[data-status="deleted"].flavor-bar__slice { background: var(--status-deleted); }
+[data-status="renamed"].flavor-bar__slice { background: var(--status-renamed); }
+[data-status="unchanged"].flavor-bar__slice { background: var(--status-unchanged); }
 
 /* ---- Metrics tables ---------------------------------------------------- */
 
@@ -832,6 +1094,10 @@ button { cursor: pointer; }
 .metrics td[data-active="true"] { color: var(--ink); font-weight: 600; }
 .metrics th[aria-sort="descending"] { color: var(--ink); }
 .metrics td[data-sorted="true"] { color: var(--ink); }
+/* Colour repeats the sign the figure already carries; it never replaces it. */
+.metrics td[data-sign="positive"] { color: var(--status-added); }
+.metrics td[data-sign="negative"] { color: var(--status-deleted); }
+.metrics td[data-sign="zero"] { color: var(--ink-faint); }
 .metrics__path { width: 100%; max-width: 0; }
 .metrics__file { display: flex; align-items: center; gap: 7px; min-width: 0; }
 .metrics__file .link { min-width: 0; }
@@ -861,6 +1127,11 @@ button { cursor: pointer; }
 [data-flavor="data"].tag { --tag-color: var(--flavor-data); }
 [data-flavor="other"].tag { --tag-color: var(--flavor-other); }
 [data-flavor="generated"].tag { --tag-color: var(--flavor-generated); }
+[data-status="added"].tag { --tag-color: var(--status-added); }
+[data-status="modified"].tag { --tag-color: var(--status-modified); }
+[data-status="deleted"].tag { --tag-color: var(--status-deleted); }
+[data-status="renamed"].tag { --tag-color: var(--status-renamed); }
+[data-status="unchanged"].tag { --tag-color: var(--status-unchanged); }
 
 /* Marks a file whose lines are mostly commentary, a common shape for generated bulk. */
 .dot {
@@ -896,8 +1167,8 @@ button { cursor: pointer; }
 /* ---- Dialogs ----------------------------------------------------------- */
 
 .viewer {
-  width: min(1140px, calc(100% - 40px));
-  height: min(84vh, 880px);
+  width: min(1720px, calc(100% - 40px));
+  height: min(92vh, 1240px);
   padding: 0;
   border: 1px solid var(--rule-firm);
   border-radius: var(--radius);
@@ -937,6 +1208,21 @@ button { cursor: pointer; }
 }
 .viewer__title-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .viewer__title-row h2 { min-width: 0; }
+.viewer__actions { display: flex; flex: none; align-items: center; gap: 10px; }
+/* Shaped as the button beside it: two controls in one row, one silhouette. */
+.viewer__toggle {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 7px 13px;
+  border: 1px solid var(--rule-firm); border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink-soft);
+  font-size: 12.5px;
+  user-select: none;
+  transition: border-color 120ms ease, color 120ms ease;
+}
+.viewer__toggle:hover { border-color: var(--signal); color: var(--signal); }
+.viewer__toggle[data-on="true"] { color: var(--ink); }
+.viewer__toggle input { margin: 0; accent-color: var(--signal); }
 .viewer__body {
   height: calc(100% - 66px);
   overflow: auto;
@@ -954,6 +1240,54 @@ button { cursor: pointer; }
   border-top: 1px solid var(--rule);
   color: var(--ink-faint); font-size: 11.5px;
 }
+
+/*
+ * A compared file is drawn one row at a time: two line numbers, the marker,
+ * and the line in the language of the file. The block is as wide as its
+ * widest line, so a row's wash still covers it once the body scrolls sideways.
+ */
+.diff {
+  min-width: max-content;
+  padding: 12px 0 16px;
+  font-family: var(--font-mono); font-size: 11.5px; line-height: 1.65;
+  tab-size: 2;
+}
+.diff__line {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  min-height: 1lh;
+  background: var(--surface);
+}
+/*
+ * The gutter holds its place while the body scrolls sideways, so a long line
+ * never leaves the reader without a line number. It is one block rather than
+ * three, so no scrolling text can show between the numbers, and it takes the
+ * row's own background, which is opaque for that reason.
+ */
+.diff__gutter {
+  position: sticky; left: 0; z-index: 1;
+  display: grid;
+  grid-template-columns: var(--diff-gutter) var(--diff-gutter) 1ch;
+  column-gap: 12px;
+  padding: 0 12px 0 20px;
+  background: inherit;
+  color: var(--ink-faint);
+  user-select: none;
+}
+.diff__number { font-variant-numeric: tabular-nums; text-align: right; }
+.diff__text { white-space: pre; padding-right: 20px; }
+.diff__line[data-marker="added"] { background: color-mix(in oklab, var(--status-added) 13%, var(--surface)); }
+.diff__line[data-marker="added"] .diff__marker { color: var(--status-added); }
+.diff__line[data-marker="removed"] { background: color-mix(in oklab, var(--status-deleted) 13%, var(--surface)); }
+.diff__line[data-marker="removed"] .diff__marker { color: var(--status-deleted); }
+.diff__gap {
+  margin: 8px 0;
+  padding: 5px 20px;
+  border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule);
+  background: var(--sunk);
+  color: var(--ink-faint); font-size: 10.5px; letter-spacing: 0.06em;
+}
+.diff__gap span { position: sticky; left: 20px; display: inline-block; }
 
 .command {
   margin: 0 0 14px; padding: 13px 15px;
@@ -990,6 +1324,7 @@ button { cursor: pointer; }
 
 @media (max-width: 1100px) {
   .instrument { grid-template-columns: 1fr; gap: 14px; }
+  .instrument__title { flex-wrap: wrap; gap: 10px; }
   .instrument__facts { flex-wrap: wrap; gap: 18px; }
   .workspace { grid-template-columns: 1fr; gap: var(--gap); }
   .workspace__splitter { display: none; }
@@ -997,12 +1332,13 @@ button { cursor: pointer; }
      inline property of the workspace, which no stylesheet rule can outrank. */
   .tree, .detail { height: 460px; }
   .filters { grid-template-columns: 1fr; }
+  .filters__switches { flex-wrap: wrap; }
   .chips { justify-content: flex-start; }
 }
 
 @media (max-width: 680px) {
   .app { width: calc(100% - 24px); padding-top: 18px; }
-  .filters { position: static; gap: 10px; }
+  .filters { position: static; grid-template-columns: 1fr; gap: 10px; }
   .ribbon__readouts { gap: 20px; }
   .readout[data-emphasis="true"] .readout__value { font-size: 24px; }
   .detail__head { flex-direction: column; gap: 10px; }

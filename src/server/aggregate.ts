@@ -1,9 +1,12 @@
 import path from "node:path";
 import type {
-  DetailView, FileRow, Flavor, FlavorSlice, FolderCard, Measure, PathCrumb, RankMetric,
-  SummaryView, TreeRow, ViewRequest, ViewResponse,
+  Aspect, ChangeStatus, DetailView, FileRow, Flavor, FlavorSlice, FolderCard, Measure, PathCrumb,
+  RankMetric, StatusSlice, SummaryView, TreeRow, ViewRequest, ViewResponse, WeightField,
 } from "../shared/api.ts";
-import { FILE_KINDS, FLAVORS, MEASURES, RANK_METRICS, TREE_SORTS } from "../shared/api.ts";
+import {
+  ASPECTS, CHANGE_STATUSES, FILE_KINDS, FLAVORS, MEASURES, RANK_METRICS, TREE_SORTS,
+  defaultRankMetric, rankMetricsFor, weightField,
+} from "../shared/api.ts";
 import type { FolderNode, ScanIndex } from "../scanner/scan.ts";
 
 /**
@@ -32,46 +35,142 @@ function planFolderCards(childCount: number, maxColumns: number): { columns: num
   return { columns: maxColumns, tiles: Math.min(childCount, maxColumns * CARD_ROWS) };
 }
 
-function flavorOf(file: FileRow): Flavor {
+export function flavorOf(file: FileRow): Flavor {
   return file.generated ? "generated" : file.kind;
 }
 
 /**
- * Per-file totals for one scope, plus the flavor breakdown the bars need.
+ * The row fields one measure and one aspect resolve to.
+ *
+ * Resolved once for a request and then only indexed, so every aggregation is
+ * an index expression rather than a decision repeated per file.
+ */
+interface ActiveFields {
+  /** The number every bar, tile, and ranking is drawn from. Signed in `net`. */
+  weight: WeightField;
+  added: WeightField;
+  removed: WeightField;
+  /**
+   * The denominator every share divides by.
+   *
+   * Net is signed, so a share against it would let a folder hold more than all
+   * of its scope and would explode whenever adds and deletes nearly cancel.
+   * Churn is always positive and always at least as large as the net, so it is
+   * the honest whole.
+   */
+  baseline: WeightField;
+  churnTokens: WeightField;
+  churnLines: WeightField;
+  churnCodeLines: WeightField;
+}
+
+function resolveFields(measure: Measure, aspect: Aspect): ActiveFields {
+  return {
+    weight: weightField(measure, aspect),
+    added: weightField(measure, "added"),
+    removed: weightField(measure, "removed"),
+    baseline: weightField(measure, aspect === "net" ? "churn" : aspect),
+    churnTokens: weightField("tokens", "churn"),
+    churnLines: weightField("lines", "churn"),
+    churnCodeLines: weightField("codeLines", "churn"),
+  };
+}
+
+/**
+ * Per-file totals for one scope, plus the breakdowns the bars need.
  *
  * Every measure is carried, not just the active one, because the detail panel
- * quotes the others as supporting figures. `weight` is the active measure, and
- * it is the only number the tree, the tiles, and the ribbon are drawn from.
+ * quotes the others as supporting figures. `weight` is the active measure and
+ * aspect, and it is the only number the tree, the tiles, and the ribbon are
+ * drawn from.
  */
 interface Totals {
   weight: number;
+  added: number;
+  removed: number;
   tokens: number;
   lines: number;
   codeLines: number;
   commentLines: number;
+  churnTokens: number;
+  churnLines: number;
+  churnCodeLines: number;
+  churnCommentLines: number;
   files: number;
   flavors: Map<Flavor, number>;
+  statuses: Map<ChangeStatus, number>;
 }
 
 function emptyTotals(): Totals {
-  return { weight: 0, tokens: 0, lines: 0, codeLines: 0, commentLines: 0, files: 0, flavors: new Map() };
+  return {
+    weight: 0, added: 0, removed: 0,
+    tokens: 0, lines: 0, codeLines: 0, commentLines: 0,
+    churnTokens: 0, churnLines: 0, churnCodeLines: 0, churnCommentLines: 0,
+    files: 0, flavors: new Map(), statuses: new Map(),
+  };
 }
 
-function addFile(totals: Totals, file: FileRow, measure: Measure): void {
-  totals.weight += file[measure];
+function addFile(totals: Totals, file: FileRow, fields: ActiveFields): void {
+  const weight = file[fields.weight];
+  totals.weight += weight;
+  totals.added += file[fields.added];
+  totals.removed += file[fields.removed];
   totals.tokens += file.tokens;
   totals.lines += file.lines;
   totals.codeLines += file.codeLines;
   totals.commentLines += file.commentLines;
+  totals.churnTokens += file[fields.churnTokens];
+  totals.churnLines += file[fields.churnLines];
+  totals.churnCodeLines += file[fields.churnCodeLines];
+  totals.churnCommentLines += file.addedCommentLines + file.removedCommentLines;
   totals.files += 1;
+  // Slices are drawn from magnitude: a net of -400 is 400 of ink, and the sign
+  // is carried by the figure beside the bar rather than folded into its width.
+  const share = Math.abs(weight);
   const flavor = flavorOf(file);
-  totals.flavors.set(flavor, (totals.flavors.get(flavor) ?? 0) + file[measure]);
+  totals.flavors.set(flavor, (totals.flavors.get(flavor) ?? 0) + share);
+  totals.statuses.set(file.status, (totals.statuses.get(file.status) ?? 0) + share);
 }
 
 function flavorSlices(totals: Totals): FlavorSlice[] {
   return FLAVORS
     .filter((flavor) => (totals.flavors.get(flavor) ?? 0) > 0)
     .map((flavor) => ({ flavor, weight: totals.flavors.get(flavor)! }));
+}
+
+function statusSlices(totals: Totals, isDiff: boolean): StatusSlice[] {
+  if (!isDiff) return [];
+  return CHANGE_STATUSES
+    .filter((status) => (totals.statuses.get(status) ?? 0) > 0)
+    .map((status) => ({ status, weight: totals.statuses.get(status)! }));
+}
+
+/** 0-1 magnitude of `part` against a whole that is never negative. */
+function share(part: number, whole: number): number {
+  return whole > 0 ? Math.min(1, Math.abs(part) / whole) : 0;
+}
+
+/** Heaviest first, where "heavy" is magnitude, because net weight is signed. */
+export function byMagnitude(left: number, right: number): number {
+  return Math.abs(right) - Math.abs(left);
+}
+
+/** Every numeric `FileRow` field a sorted column can read. */
+type ColumnField = WeightField | "commentLines" | "functions" | "branches";
+
+/**
+ * The row field one sorted column reads.
+ *
+ * The aspect columns carry the active measure with them, which is what makes
+ * "Added" and "Net" mean the same unit as the heading of the tree beside them.
+ */
+function columnField(metric: RankMetric, measure: Measure): ColumnField {
+  switch (metric) {
+    case "added": case "removed": case "churn": case "net": case "after":
+      return weightField(measure, metric);
+    default:
+      return metric;
+  }
 }
 
 /**
@@ -155,8 +254,9 @@ interface Aggregation {
   direct: Map<string, Totals>;
 }
 
-function aggregate(index: ScanIndex, request: ViewRequest, exclusions: ExclusionState): Aggregation {
-  const measure = request.measure;
+function aggregate(
+  index: ScanIndex, request: ViewRequest, exclusions: ExclusionState, fields: ActiveFields,
+): Aggregation {
   const categoryVisible = computeCategoryVisibility(index, request);
   const excludedDirectFiles = new Set(request.excludedDirectFiles);
 
@@ -181,7 +281,7 @@ function aggregate(index: ScanIndex, request: ViewRequest, exclusions: Exclusion
     const folder = index.folders[position]!;
     const directTotals = emptyTotals();
     for (const fileIndex of folder.directFileIndices) {
-      if (included[fileIndex]) addFile(directTotals, index.files[fileIndex]!, measure);
+      if (included[fileIndex]) addFile(directTotals, index.files[fileIndex]!, fields);
     }
     direct.set(folder.path, directTotals);
 
@@ -192,7 +292,7 @@ function aggregate(index: ScanIndex, request: ViewRequest, exclusions: Exclusion
     for (const fileIndex of folder.directFileIndices) {
       if (categoryVisible[fileIndex]) {
         visibleBelow += 1;
-        visibleDirectWeight += index.files[fileIndex]![measure];
+        visibleDirectWeight += Math.abs(index.files[fileIndex]![fields.weight]);
       }
     }
     let visibleSubtreeWeight = visibleDirectWeight;
@@ -221,13 +321,22 @@ function aggregate(index: ScanIndex, request: ViewRequest, exclusions: Exclusion
 
 function mergeTotals(target: Totals, source: Totals): void {
   target.weight += source.weight;
+  target.added += source.added;
+  target.removed += source.removed;
   target.tokens += source.tokens;
   target.lines += source.lines;
   target.codeLines += source.codeLines;
   target.commentLines += source.commentLines;
+  target.churnTokens += source.churnTokens;
+  target.churnLines += source.churnLines;
+  target.churnCodeLines += source.churnCodeLines;
+  target.churnCommentLines += source.churnCommentLines;
   target.files += source.files;
   for (const [flavor, weight] of source.flavors) {
     target.flavors.set(flavor, (target.flavors.get(flavor) ?? 0) + weight);
+  }
+  for (const [status, weight] of source.statuses) {
+    target.statuses.set(status, (target.statuses.get(status) ?? 0) + weight);
   }
 }
 
@@ -239,10 +348,10 @@ function mergeTotals(target: Totals, source: Totals): void {
  * the filtered total would grow the denominator too, and a tile holding none
  * of the newly enabled kind would visibly shrink.
  */
-function unfilteredWeight(index: ScanIndex, folderPath: string, measure: Measure): number {
+function unfilteredWeight(index: ScanIndex, folderPath: string, field: WeightField): number {
   const folder = index.folderByPath.get(folderPath);
   if (!folder) return 0;
-  const prefix = index.weightPrefix[measure];
+  const prefix = index.weightPrefix[field];
   return prefix[folder.end]! - prefix[folder.start]!;
 }
 
@@ -253,8 +362,8 @@ function unfilteredWeight(index: ScanIndex, folderPath: string, measure: Measure
  * visibility switch changes and the tile bars, the folder share, and the
  * summary all divide by the same number.
  */
-function projectBaseline(index: ScanIndex, measure: Measure): number {
-  return unfilteredWeight(index, "", measure);
+function projectBaseline(index: ScanIndex, field: WeightField): number {
+  return unfilteredWeight(index, "", field);
 }
 
 function buildTree(
@@ -264,6 +373,8 @@ function buildTree(
   exclusions: ExclusionState,
   scopeRoot: FolderNode,
   scopeBaseline: number,
+  /** Churn the filters leave in the scope: the whole the two halves divide. */
+  visibleChurn: number,
 ): TreeRow[] {
   const expanded = new Set(request.expanded);
   const queryActive = request.query.trim().length > 0;
@@ -286,14 +397,14 @@ function buildTree(
       folder: child,
       name: child.name,
       weight: (aggregation.subtree.get(child.path) ?? emptyTotals()).weight,
-      sortWeight: aggregation.categorySubtreeWeight.get(child.path) ?? 0,
+      sortWeight: Math.abs(aggregation.categorySubtreeWeight.get(child.path) ?? 0),
     }));
     if (hasVisibleDirectFiles) {
       children.push({
         rowKind: "files",
         name: DIRECT_FILES_LABEL,
         weight: directTotals.weight,
-        sortWeight: aggregation.categoryDirectWeight.get(folder.path) ?? 0,
+        sortWeight: Math.abs(aggregation.categoryDirectWeight.get(folder.path) ?? 0),
       });
     }
     children.sort((left, right) => request.treeSort === "weight"
@@ -306,7 +417,11 @@ function buildTree(
       depth,
       rowKind: "folder",
       weight: totals.weight,
-      shareOfScope: scopeBaseline > 0 ? Math.min(1, totals.weight / scopeBaseline) : 0,
+      added: totals.added,
+      removed: totals.removed,
+      shareOfScope: share(totals.weight, scopeBaseline),
+      shareAdded: share(totals.added, visibleChurn),
+      shareRemoved: share(totals.removed, visibleChurn),
       hasChildren: children.length > 0,
       expanded: isExpanded,
       included: !exclusions.excluded.has(folder.path),
@@ -329,7 +444,11 @@ function buildTree(
         depth: depth + 1,
         rowKind: child.rowKind,
         weight: child.weight,
-        shareOfScope: scopeBaseline > 0 ? Math.min(1, child.weight / scopeBaseline) : 0,
+        added: directTotals.added,
+        removed: directTotals.removed,
+        shareOfScope: share(child.weight, scopeBaseline),
+        shareAdded: share(directTotals.added, visibleChurn),
+        shareRemoved: share(directTotals.removed, visibleChurn),
         hasChildren: false,
         expanded: false,
         included: !folderExcluded && !excludedDirectFiles.has(folder.path),
@@ -350,15 +469,19 @@ function buildFolderCard(
   totals: Totals,
   baseline: number,
   scopeBaseline: number,
+  isDiff: boolean,
 ): FolderCard {
   return {
     path: folderPath,
     name,
     weight: totals.weight,
+    added: totals.added,
+    removed: totals.removed,
     files: totals.files,
-    shareOfProject: baseline > 0 ? totals.weight / baseline : 0,
-    shareOfScope: scopeBaseline > 0 ? Math.min(1, totals.weight / scopeBaseline) : 0,
+    shareOfProject: share(totals.weight, baseline),
+    shareOfScope: share(totals.weight, scopeBaseline),
     flavors: flavorSlices(totals),
+    statuses: statusSlices(totals, isDiff),
   };
 }
 
@@ -373,9 +496,11 @@ function buildDetail(
   index: ScanIndex,
   request: ViewRequest,
   aggregation: Aggregation,
+  fields: ActiveFields,
   baseline: number,
   scopeBaseline: number,
 ): DetailView {
+  const isDiff = index.meta.diff !== null;
   const directFilesOnly = request.selected.rowKind === "files";
   const folder = index.folderByPath.get(request.selected.path) ?? index.folderByPath.get("")!;
   const totals = (directFilesOnly ? aggregation.direct : aggregation.subtree).get(folder.path) ?? emptyTotals();
@@ -386,27 +511,27 @@ function buildDetail(
     .map((childPath) => ({ node: index.folderByPath.get(childPath), totals: aggregation.subtree.get(childPath) }))
     .filter((entry): entry is { node: FolderNode; totals: Totals } => entry.node !== undefined && entry.totals !== undefined)
     .filter((entry) => entry.totals.files > 0)
-    .sort((left, right) => right.totals.weight - left.totals.weight);
+    .sort((left, right) => byMagnitude(left.totals.weight, right.totals.weight));
 
   const plan = planFolderCards(children.length, request.cardColumns);
   if (plan.tiles < children.length) {
     const shown = plan.tiles - 1;
     for (const entry of children.slice(0, shown)) {
-      cards.push(buildFolderCard(entry.node.name, entry.node.path, entry.totals, baseline, scopeBaseline));
+      cards.push(buildFolderCard(entry.node.name, entry.node.path, entry.totals, baseline, scopeBaseline, isDiff));
     }
     const rest = emptyTotals();
     for (const entry of children.slice(shown)) mergeTotals(rest, entry.totals);
-    cards.push(buildFolderCard(`${children.length - shown} more folders`, null, rest, baseline, scopeBaseline));
+    cards.push(buildFolderCard(`${children.length - shown} more folders`, null, rest, baseline, scopeBaseline, isDiff));
   } else {
     for (const entry of children) {
-      cards.push(buildFolderCard(entry.node.name, entry.node.path, entry.totals, baseline, scopeBaseline));
+      cards.push(buildFolderCard(entry.node.name, entry.node.path, entry.totals, baseline, scopeBaseline, isDiff));
     }
   }
 
   const directFiles = folder.directFileIndices
     .filter((fileIndex) => aggregation.included[fileIndex] === 1)
     .map((fileIndex) => index.files[fileIndex]!)
-    .sort(byMetric(request.rank.metric, request.measure));
+    .sort(byMetric(request.rank.metric, request.measure, fields));
 
   // The heading already names its own subject, so the trail stops one step
   // short of it: at the folder's parent, or at the folder itself for a `.`.
@@ -426,13 +551,19 @@ function buildDetail(
     title: directFilesOnly ? DIRECT_FILES_LABEL : folder.name,
     trail,
     weight: totals.weight,
+    added: totals.added,
+    removed: totals.removed,
     files: totals.files,
     tokens: totals.tokens,
     lines: totals.lines,
     codeLines: totals.codeLines,
     commentLines: totals.commentLines,
-    shareOfProject: baseline > 0 ? totals.weight / baseline : 0,
-    shareOfScope: scopeBaseline > 0 ? Math.min(1, totals.weight / scopeBaseline) : 0,
+    churnTokens: totals.churnTokens,
+    churnLines: totals.churnLines,
+    churnCodeLines: totals.churnCodeLines,
+    churnCommentLines: totals.churnCommentLines,
+    shareOfProject: share(totals.weight, baseline),
+    shareOfScope: share(totals.weight, scopeBaseline),
     cards,
     cardColumns,
     directFiles,
@@ -445,10 +576,13 @@ function buildDetail(
  * Both file tables use it, so a folder's own files and the ranking beneath
  * them can never disagree about what one sorted column means.
  */
-function byMetric(metric: RankMetric, measure: Measure): (left: FileRow, right: FileRow) => number {
+function byMetric(
+  metric: RankMetric, measure: Measure, fields: ActiveFields,
+): (left: FileRow, right: FileRow) => number {
+  const sorted = columnField(metric, measure);
   return (left, right) =>
-    right[metric] - left[metric]
-    || right[measure] - left[measure]
+    byMagnitude(left[sorted], right[sorted])
+    || byMagnitude(left[fields.weight], right[fields.weight])
     || left.path.localeCompare(right.path);
 }
 
@@ -461,14 +595,18 @@ function byMetric(metric: RankMetric, measure: Measure): (left: FileRow, right: 
  * descendants are contiguous in the path-sorted array, the subtree is a range
  * rather than a scan of the project.
  */
-function rankFiles(index: ScanIndex, request: ViewRequest, aggregation: Aggregation): { rows: FileRow[]; total: number } {
+function rankFiles(
+  index: ScanIndex, request: ViewRequest, aggregation: Aggregation, fields: ActiveFields,
+): { rows: FileRow[]; total: number } {
   const folder = index.folderByPath.get(request.selected.path) ?? index.folderByPath.get("")!;
   const directFilesOnly = request.selected.rowKind === "files";
   const matches: FileRow[] = [];
   const consider = (position: number): void => {
     if (aggregation.included[position] !== 1) return;
     const file = index.files[position]!;
-    if (file[request.measure] < request.rank.minWeight) return;
+    // A floor on the magnitude: in net, a file at -900 is a large change, and
+    // comparing it signed would drop every deletion.
+    if (Math.abs(file[fields.weight]) < request.rank.minWeight) return;
     matches.push(file);
   };
   if (directFilesOnly) {
@@ -476,7 +614,7 @@ function rankFiles(index: ScanIndex, request: ViewRequest, aggregation: Aggregat
   } else {
     for (let position = folder.start; position < folder.end; position += 1) consider(position);
   }
-  matches.sort(byMetric(request.rank.metric, request.measure));
+  matches.sort(byMetric(request.rank.metric, request.measure, fields));
   return { rows: matches.slice(0, Math.max(0, request.rank.limit)), total: matches.length };
 }
 
@@ -496,30 +634,37 @@ function buildSummary(
   scopeRoot: FolderNode,
   scopeBaseline: number,
 ): SummaryView {
+  const isDiff = index.meta.diff !== null;
   const scopeTotals = aggregation.subtree.get(scopeRoot.path) ?? emptyTotals();
   const ribbon: FolderCard[] = [];
   const children = scopeRoot.childPaths
     .map((childPath) => ({ node: index.folderByPath.get(childPath), totals: aggregation.subtree.get(childPath) }))
     .filter((entry): entry is { node: FolderNode; totals: Totals } => entry.node !== undefined && entry.totals !== undefined)
-    .filter((entry) => entry.totals.weight > 0)
-    .sort((left, right) => right.totals.weight - left.totals.weight);
+    .filter((entry) => entry.totals.weight !== 0)
+    .sort((left, right) => byMagnitude(left.totals.weight, right.totals.weight));
   for (const entry of children) {
-    ribbon.push(buildFolderCard(entry.node.name, entry.node.path, entry.totals, baseline, scopeBaseline));
+    ribbon.push(buildFolderCard(entry.node.name, entry.node.path, entry.totals, baseline, scopeBaseline, isDiff));
   }
   const scopeDirect = aggregation.direct.get(scopeRoot.path) ?? emptyTotals();
-  if (scopeDirect.weight > 0) {
-    ribbon.push(buildFolderCard(DIRECT_FILES_LABEL, null, scopeDirect, baseline, scopeBaseline));
+  if (scopeDirect.weight !== 0) {
+    ribbon.push(buildFolderCard(DIRECT_FILES_LABEL, null, scopeDirect, baseline, scopeBaseline, isDiff));
   }
   return {
     projectWeight: baseline,
     scopePath: scopeRoot.path,
     scopeWeight: scopeBaseline,
     selectedWeight: scopeTotals.weight,
+    selectedAdded: scopeTotals.added,
+    selectedRemoved: scopeTotals.removed,
     selectedFiles: scopeTotals.files,
     selectedTokens: scopeTotals.tokens,
     selectedLines: scopeTotals.lines,
     selectedCodeLines: scopeTotals.codeLines,
     selectedCommentLines: scopeTotals.commentLines,
+    selectedChurnTokens: scopeTotals.churnTokens,
+    selectedChurnLines: scopeTotals.churnLines,
+    selectedChurnCodeLines: scopeTotals.churnCodeLines,
+    selectedChurnCommentLines: scopeTotals.churnCommentLines,
     ribbon,
   };
 }
@@ -543,20 +688,38 @@ export function buildView(index: ScanIndex, request: ViewRequest): ViewResponse 
   const effectiveRequest: ViewRequest = selectionInsideScope
     ? request
     : { ...request, selected: { rowKind: "folder", path: scopeRoot.path } };
+  // A scan has one content per file, so only the after-image aspect means
+  // anything there. Clamping here is what keeps a pasted link from asking a
+  // scan for churn and getting a page of zeroes.
+  const isDiff = index.meta.diff !== null;
+  const aspect: Aspect = isDiff ? request.aspect : "after";
+  const rankMetric = rankMetricsFor(isDiff).includes(request.rank.metric)
+    ? request.rank.metric
+    : defaultRankMetric(isDiff);
+  const fields = resolveFields(request.measure, aspect);
+  const modeRequest: ViewRequest = { ...effectiveRequest, aspect, rank: { ...effectiveRequest.rank, metric: rankMetric } };
   const exclusions = computeExclusions(index, request);
-  const aggregation = aggregate(index, request, exclusions);
-  const baseline = projectBaseline(index, request.measure);
-  const scopeBaseline = unfilteredWeight(index, scopeRoot.path, request.measure);
-  const ranked = rankFiles(index, effectiveRequest, aggregation);
+  const aggregation = aggregate(index, request, exclusions, fields);
+  const baseline = projectBaseline(index, fields.baseline);
+  const scopeBaseline = unfilteredWeight(index, scopeRoot.path, fields.baseline);
+  // One scale for every band, so a row's length means the same wherever it sits
+  // in the tree. It is the churn the filters leave rather than the unfiltered
+  // whole, because a code-only view of a large repository holds a small part of
+  // the project's churn and would draw every band at under a pixel.
+  const scopeTotals = aggregation.subtree.get(scopeRoot.path) ?? emptyTotals();
+  const visibleChurn = scopeTotals.added + scopeTotals.removed;
+  const ranked = rankFiles(index, modeRequest, aggregation, fields);
   return {
     meta: index.meta,
     measure: request.measure,
+    aspect,
+    rankMetric,
     summary: buildSummary(index, aggregation, baseline, scopeRoot, scopeBaseline),
-    tree: buildTree(index, effectiveRequest, aggregation, exclusions, scopeRoot, scopeBaseline),
-    detail: buildDetail(index, effectiveRequest, aggregation, baseline, scopeBaseline),
+    tree: buildTree(index, modeRequest, aggregation, exclusions, scopeRoot, scopeBaseline, visibleChurn),
+    detail: buildDetail(index, modeRequest, aggregation, fields, baseline, scopeBaseline),
     ranked: ranked.rows,
     rankedTotal: ranked.total,
-    rankScope: rankScopeLabel(index, effectiveRequest),
+    rankScope: rankScopeLabel(index, modeRequest),
     expandableFolderPaths: index.folders
       .filter((folder) => (
         folder.path === scopeRoot.path || scopePrefix === "" || folder.path.startsWith(scopePrefix)
@@ -575,9 +738,11 @@ export function parseViewRequest(body: unknown): ViewRequest {
   const metric = RANK_METRICS.find((candidate) => candidate === rank["metric"]) ?? "tokens";
   const treeSort = TREE_SORTS.find((candidate) => candidate === raw["treeSort"]) ?? "name";
   const measure = MEASURES.find((candidate) => candidate === raw["measure"]) ?? "tokens";
+  const aspect = ASPECTS.find((candidate) => candidate === raw["aspect"]) ?? "net";
   return {
     kinds: FILE_KINDS.filter((kind) => stringArray(raw["kinds"]).includes(kind)),
     measure,
+    aspect,
     showGenerated: raw["showGenerated"] === true,
     query: typeof raw["query"] === "string" ? raw["query"] : "",
     excludedFolders: stringArray(raw["excludedFolders"]),

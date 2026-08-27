@@ -1,7 +1,7 @@
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
-import type { FileRow, Measure, ScanMeta } from "../shared/api.ts";
-import { MEASURES } from "../shared/api.ts";
+import type { FileRow, ScanMeta, WeightField } from "../shared/api.ts";
+import { WEIGHT_FIELD_NAMES } from "../shared/api.ts";
 import { classifyFile, isGenerated, refineKindByContent } from "./classify.ts";
 import { measureFile } from "./measure.ts";
 import { StructureAnalyzer } from "./structure.ts";
@@ -31,12 +31,12 @@ export interface ScanIndex {
   /** Sorted by path. */
   files: FileRow[];
   /**
-   * Running totals over `files` per measure, where `prefix[measure][n]` is the
-   * sum of the first `n` files. Because a folder's descendants are contiguous,
-   * its unfiltered weight in any measure is one subtraction, independent of any
-   * active filter.
+   * Running totals over `files` per weight field, where `prefix[field][n]` is
+   * the sum of the first `n` files. Because a folder's descendants are
+   * contiguous, its unfiltered weight in any measure and aspect is one
+   * subtraction, independent of any active filter.
    */
-  weightPrefix: Record<Measure, Float64Array>;
+  weightPrefix: Record<WeightField, Float64Array>;
   /** Sorted by path, so a parent always precedes its children. */
   folders: FolderNode[];
   folderByPath: Map<string, FolderNode>;
@@ -62,6 +62,24 @@ export interface ScanOptions {
 
 export const DEFAULT_MAX_FILE_BYTES = 2 * 1024 * 1024;
 
+/**
+ * The change-related half of a row that no comparison touched.
+ *
+ * A scan is the degenerate diff, so its rows carry the same fields with the
+ * only values that are true of an unchanged file. Spelled out rather than
+ * generated, so a search for `netCodeLines` finds this too.
+ */
+export const UNCHANGED_FILE_FIELDS = {
+  status: "unchanged",
+  previousPath: null,
+  addedTokens: 0, removedTokens: 0, churnTokens: 0, netTokens: 0,
+  addedLines: 0, removedLines: 0, churnLines: 0, netLines: 0,
+  addedCodeLines: 0, removedCodeLines: 0, churnCodeLines: 0, netCodeLines: 0,
+  addedCommentLines: 0, removedCommentLines: 0,
+  addedPhysicalLines: 0, removedPhysicalLines: 0,
+  beforeFunctions: 0, beforeClasses: 0, beforeBranches: 0,
+} as const satisfies Partial<FileRow>;
+
 /** First index whose value is >= `target`. */
 function lowerBound(values: readonly string[], target: string): number {
   let low = 0;
@@ -74,7 +92,7 @@ function lowerBound(values: readonly string[], target: string): number {
   return low;
 }
 
-async function mapWithConcurrency<In, Out>(
+export async function mapWithConcurrency<In, Out>(
   items: readonly In[],
   limit: number,
   worker: (item: In, index: number) => Promise<Out>,
@@ -137,6 +155,7 @@ export async function scanSourceTree(options: ScanOptions): Promise<ScanIndex> {
         name,
         kind: refineKindByContent(classifyFile(relativePath), relativePath, { grammar, ...structure }),
         generated: isGenerated(relativePath),
+        ...UNCHANGED_FILE_FIELDS,
         tokens: countTokens(text),
         lines: lineMetrics.lines,
         codeLines: lineMetrics.codeLines,
@@ -169,8 +188,8 @@ export async function scanSourceTree(options: ScanOptions): Promise<ScanIndex> {
     folderCount: folders.length,
     scannedAt: new Date().toISOString(),
     durationMs: Date.now() - startedAt,
-    gitTracked,
-    respectsGitignore,
+    fileSource: gitTracked ? "git-index" : respectsGitignore ? "walk-gitignore" : "walk-all",
+    diff: null,
     skippedLargeFiles,
     languages,
   };
@@ -185,21 +204,21 @@ export async function scanSourceTree(options: ScanOptions): Promise<ScanIndex> {
   };
 }
 
-/** One running-total array per measure, so any measure costs the same to query. */
-function buildWeightPrefixes(files: readonly FileRow[]): Record<Measure, Float64Array> {
-  const prefixes = {} as Record<Measure, Float64Array>;
-  for (const measure of MEASURES) {
+/** One running-total array per weight field, so any of them costs the same to query. */
+export function buildWeightPrefixes(files: readonly FileRow[]): Record<WeightField, Float64Array> {
+  const prefixes = {} as Record<WeightField, Float64Array>;
+  for (const field of WEIGHT_FIELD_NAMES) {
     const running = new Float64Array(files.length + 1);
     for (const [position, file] of files.entries()) {
-      running[position + 1] = running[position]! + file[measure];
+      running[position + 1] = running[position]! + file[field];
     }
-    prefixes[measure] = running;
+    prefixes[field] = running;
   }
   return prefixes;
 }
 
 /** Derive the folder hierarchy, including folders that only contain other folders. */
-function buildFolders(files: readonly FileRow[], rootName: string): FolderNode[] {
+export function buildFolders(files: readonly FileRow[], rootName: string): FolderNode[] {
   const folderPaths = new Set<string>([""]);
   for (const file of files) {
     let parent = path.posix.dirname(file.path);

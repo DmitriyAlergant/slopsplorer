@@ -27,15 +27,21 @@ The data flows one way, and every aggregation happens on the server.
 
 ```
 src/scanner/     walk -> classify -> tokenize + measure -> ScanIndex
+                 git diff -> align lines -> tokenize + measure -> ScanIndex
 src/server/      ScanIndex + ViewRequest -> buildView -> ViewResponse
+                 ScanIndex + ReportOptions -> buildReport -> text on stdout
 src/web/         ViewRequest state -> POST /api/view -> render
 src/shared/      the wire contract both sides import
 ```
+
+A tree and a comparison are two producers of one `ScanIndex`, and nothing downstream asks which one made it.
 
 Two design docs hold the detail, and they are the technical memory of this repository:
 
 - [docs/architecture.md](docs/architecture.md) - how the parts fit together, the scan, the wire contract, the routes, the client.
 - [docs/classification.md](docs/classification.md) - which files enter a scan, flavors, grammar selection, structure counts, lines, tokens.
+- [docs/diff-mode.md](docs/diff-mode.md) - the second producer of an index: the command line, the line diff, churn and net, signed weight.
+- [docs/report.md](docs/report.md) - the second consumer of an index: `--report`, the sections, the one rule that decides how deep the walk goes.
 
 `README.md` is the user-facing page, and `skill/SKILL.md` is the agent skill that ships inside the package.
 Both describe behavior to someone outside the code, so a change in what a number means has to reach them too.
@@ -49,14 +55,17 @@ Each is explained where it belongs; the list exists so nobody breaks one by acci
 
 - `src/shared/api.ts` is the contract and the only file both builds import. Change it and both sides change together.
 - `src/scanner/measure.ts` is the single place that decides whether a file gets tree-sitter comment spans or the marker table, so the scanner and the corpus test cannot drift apart.
-- `ScanIndex.files` is sorted by path, which is what makes a subtree total a slice. `tests/scan.test.ts` pins it.
+- `ScanIndex.files` is sorted by path, which is what makes a subtree total a slice. `tests/scan.test.ts` pins it, and `tests/diff-scan.test.ts` pins it for the other producer.
+- `acceptSourcePaths` in `src/scanner/walk.ts` is the single acceptance rule, so a scan and a diff cannot disagree about what a source file is.
 - The server aggregates. The browser never receives a file it does not display.
 - `lines === codeLines + commentLines`, non-blank lines only, buckets exclusive. Comment detection may only move a line between the two buckets, never change `lines`, never touch `tokens`.
-- Every `Measure` name is a numeric `FileRow` field, validated by `parseViewRequest` before it reaches an index expression.
-- Every `RankMetric` is a column both file tables draw, and every numeric column they draw is a `RankMetric`. Sorting is the only way to pick one, so a metric without a column could never be reached.
-- On the wire the measured quantity is `weight`, never `tokens`, and `ViewResponse` echoes the measure back.
+- A `Measure` and an `Aspect` resolve to a numeric `FileRow` field through `weightField`, the one table that holds every such name whole. Both are validated by `parseViewRequest` before either reaches an index expression.
+- Every `RankMetric` is a column both file tables draw in the mode it belongs to, and every numeric column they draw is a `RankMetric`. Sorting is the only way to pick one, so a metric without a column could never be reached. `buildView` clamps a metric the open index cannot draw and echoes what it used.
+- On the wire the measured quantity is `weight`, never `tokens`, and `ViewResponse` echoes the measure, the aspect, and the sorted column back.
+- `ScanMeta.diff` is the only thing that says which mode the page is in. A scan forces the aspect to `after`, because a scanned file has one content.
+- Churn is `added + removed` and net is `added - removed`, for every measure. Net is signed, so every share is drawn against churn, and every ordering and threshold uses magnitude.
 - In `tests/comment-corpus.test.ts` a split that differs from `cloc` carries a written reason and a split that matches does not, so neither drift passes silently.
-- `GET /api/source` serves a path only if the current scan holds it, and refuses a resolved real path outside the scan root.
+- `GET /api/source` serves a path only if the current scan holds it, and refuses a resolved real path outside the scan root. Inside a comparison it returns the file as aligned lines, from the same alignment the file's figures came from, whole rather than as hunks, because the page decides how much of the unchanged text to draw.
 
 ## Agentic rules
 
@@ -140,6 +149,9 @@ Treat an unpinned install as running unreviewed code: check the manifest before 
 
 Every user-facing change adds one file under `newsfragments/`, named `<issue-or-commit>.<type>.md`, holding one concise sentence for users.
 Types are `feature`, `bugfix`, `doc`, and `misc`.
+The name becomes a commit link in the changelog, so it must be a real short hash.
+Extend a hash that is all digits by one character, because Towncrier reads an all-digit name as a number and drops its leading zero.
+Two fragments of one type from one commit are `<commit>.<type>.md` and `<commit>.<type>.1.md`.
 Do not edit `CHANGELOG.md` for unreleased work: Towncrier owns it, and the tagged workflow compiles the GitHub release notes from the same fragments.
 A fix to a feature that has not shipped yet needs no fragment of its own.
 
