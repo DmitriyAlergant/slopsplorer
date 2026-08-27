@@ -2,7 +2,7 @@ import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import type { FileRow, ScanMeta, WeightField } from "../shared/api.ts";
 import { WEIGHT_FIELD_NAMES } from "../shared/api.ts";
-import { classifyFile, isGenerated, refineKindByContent } from "./classify.ts";
+import { classifyFile, findLocaleLevels, hasGeneratedHeader, isGenerated, refineKindByContent } from "./classify.ts";
 import { measureFile } from "./measure.ts";
 import { StructureAnalyzer } from "./structure.ts";
 import { tokenCounter, type TokenizerName } from "./tokenize.ts";
@@ -123,6 +123,7 @@ export async function scanSourceTree(options: ScanOptions): Promise<ScanIndex> {
     exclude: options.exclude,
   });
 
+  const localeLevels = findLocaleLevels(relativePaths);
   const countTokens = tokenCounter(options.tokenizer);
   const analyzer = new StructureAnalyzer();
   let skippedLargeFiles = 0;
@@ -153,8 +154,8 @@ export async function scanSourceTree(options: ScanOptions): Promise<ScanIndex> {
       const row: FileRow = {
         path: relativePath,
         name,
-        kind: refineKindByContent(classifyFile(relativePath), relativePath, { grammar, ...structure }),
-        generated: isGenerated(relativePath),
+        kind: refineKindByContent(classifyFile(relativePath, localeLevels), relativePath, { grammar, ...structure }),
+        generated: isGenerated(relativePath) || hasGeneratedHeader(text),
         ...UNCHANGED_FILE_FIELDS,
         tokens: countTokens(text),
         lines: lineMetrics.lines,

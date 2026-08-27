@@ -54,23 +54,47 @@ A translation tree holds the code that reads the catalogues beside the catalogue
 Measured on ten public repositories, a directory rule that outranked format filed a shell's whole language engine, three separate i18n implementations, and a release script as translation catalogues.
 
 Two exceptions run the other way, and both are folders that state the role of everything under them.
-A language folder inside a translation tree, such as `conf/locale/nl/` or `Translation/lang/en/`, holds one language's copy and nothing else.
+A locale folder holds one language's copy of something, whatever format that is.
 A fixture folder holds a payload, so a `.txt` or a `.md` in it is data rather than prose: two `.txt` fixtures under neovim's `test/functional/fixtures/` are 13% of that repository, and reporting them as documentation says something false about the whole tree.
+
+## Locale levels
+
+A locale name says very little on its own.
+`en` and `id` are folder names anything could use, and against the whole of ISO 639-1 so are `lg` and `ga`, which is how Home Assistant's LG brand file and an Airflow compose file both read as translations.
+What settles it is what the name sits beside.
+
+`findLocaleLevels()` reads the listing once and answers, for every folder, whether that folder holds one entry per language.
+Either of two kinds of evidence is enough.
+
+- The folder is named for translation: `i18n`, `intl`, `lang`, `locale`, `locales`, `translation`, `translations`.
+  A framework that ships one language only still ships a catalogue, so this half needs no plurality.
+- Its entries say so themselves: at least two of them are language codes, at least 90 percent of them are, and every one of them is at least shaped like a locale.
+
+The homogeneity in the second test is what makes it safe, and both halves of it were measured.
+vscode keeps 107 shell completions in one folder, three of them named `tr`, `nl`, and `sr`.
+hugo names comparison functions `Lt.md` and `Ne.md` beside `Conditional.md`.
+A folder that is really a level of locales holds nothing else.
+
+A name that carries a region or a script, such as `zh-cn`, `pt_BR`, or `sr_Latn`, needs no level at all, wherever it sits on the path.
+Nothing writes `zh-cn` unless it means Chinese as written in China.
+The region is checked against a real list for the same reason the language is: `no_log`, `no_ip`, and `hi_kumo` are an Ansible flag and two Home Assistant integrations, not locales.
+
+Both producers of an index build the levels from the same view of the tree.
+A scan uses its own listing.
+A comparison sees only the files a change touched, so `listTargetFiles()` in `src/scanner/diffScan.ts` lists the side the comparison ends at in full, and the two producers cannot disagree about a file they both hold.
 
 ## Path rules, in order
 
 `classifyFile()` in `src/scanner/classify.ts` applies these tests in this order and returns the first match.
 
 1. `.po` or `.pot`: `i18n`.
-2. A `.json`, `.yaml`, or `.yml` file whose name is a language code, with an optional region, such as `de-DE.json` or `pt_BR.json`: `i18n`.
-   The language codes are an explicit list.
-3. A filename that names itself a test whatever its format, through `isTestFileName()`: `test_*`, `spec_*`, `*_test.*`, `*_spec.*`, `*.test.*`, `*.spec.*`: `test`.
-4. A file whose own folder is named for a language code and which sits inside a folder named `i18n`, `intl`, `lang`, `locale`, `locales`, `translation`, or `translations`: `i18n`.
-5. `requirements.txt`: `data`.
-6. The data extensions `.csv`, `.json`, `.jsonc`, `.toml`, `.tsv`, `.xml`, `.yaml`, `.yml`: `i18n` inside one of those translation folders, and `data` otherwise.
-7. The prose extensions `.adoc`, `.md`, `.mdx`, `.rst`, `.txt`: `data` inside a folder named `data`, `fixture`, `fixtures`, `testdata`, `sample`, `samples`, `snapshot`, `snapshots`, `__snapshots__`, `golden`, or `goldens`, and `text` otherwise.
-8. A code extension: `test` if the filename follows a test-suffix convention through `isTestSourceName()`, or if a folder on the path is a test directory, and `code` otherwise.
-9. Everything else: `other`.
+2. A filename that names itself a test whatever its format, through `isTestFileName()`: `test_*`, `spec_*`, `*_test.*`, `*_spec.*`, `*.test.*`, `*.spec.*`: `test`.
+3. One language's copy of something, through `isLocaleCopy()`: a name carrying a region or a script anywhere on the path, or a bare language name whose own folder is a locale level: `i18n`.
+4. `requirements.txt`: `data`.
+5. The data extensions `.csv`, `.json`, `.jsonc`, `.toml`, `.tsv`, `.xml`, `.yaml`, `.yml`: `i18n` inside a folder named for translation, and `data` otherwise.
+6. The prose extensions `.adoc`, `.md`, `.mdx`, `.rst`, `.txt`: `data` inside a folder named `data`, `fixture`, `fixtures`, `testdata`, `sample`, `samples`, `snapshot`, `snapshots`, `__snapshots__`, `golden`, or `goldens`, and `text` otherwise.
+7. A code extension: `test` if the filename follows a test-suffix convention through `isTestSourceName()`, or if a folder on the path is a test directory, and `code` otherwise.
+8. Everything else: `other`.
 
 ### The two test-filename rules
 
@@ -123,7 +147,13 @@ A file with no grammar has no literal measurement, so this rule never applies to
 `isGenerated()` decides from the path alone, without reading the file.
 It marks a folder named `__generated__`, `coverage`, `dist`, `generated`, or `gen`; the known lock files; and the suffixes that build tools use, among them `.g.dart`, `.pb.go`, `_pb2.py`, `.min.js`, `.bundle.js`, `.map`, and `.lock`.
 
-It also reads the marker that a build tool writes into the stem, in whatever language it emits: `vimfn.gen.lua`, `CallInstruction.Generated.cs`, `serializer.autogen.cs`, and `zz_generated.deepcopy.go`.
+`hasGeneratedHeader()` reads what the file says about itself, because the path is silent for a whole class of generated code.
+An SDK client emitted from a service specification sits in ordinary `src/` folders under ordinary names, and only its header says what it is: that is 11 percent of Azure's JavaScript SDK.
+The marker has to sit inside a comment in the first eight lines.
+The comment is what makes it safe, and it was measured: unanchored, `@generated` also matches TypeORM's `@Generated()` column decorator and a Ruby `@generated` instance variable.
+`rendered` was measured and left out, because across 21 repositories it only ever matched prose about a component being rendered by something else.
+
+`isGenerated()` also reads the marker that a build tool writes into the stem, in whatever language it emits: `vimfn.gen.lua`, `CallInstruction.Generated.cs`, `serializer.autogen.cs`, and `zz_generated.deepcopy.go`.
 `gen` needs the dot before it, so that `hugo_gen.md`, which documents the `gen` command, and `codegen.py`, which is the generator, stay unflagged.
 
 ## Grammar selection

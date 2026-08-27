@@ -1,109 +1,120 @@
 import { afterAll, describe, expect, it } from "vitest";
-import { classifyFile, isGenerated, isSourceFile, refineKindByContent, shebangInterpreter } from "../src/scanner/classify.ts";
+import { classifyFile, findLocaleLevels, hasGeneratedHeader, isGenerated, isSourceFile, refineKindByContent, shebangInterpreter } from "../src/scanner/classify.ts";
 import { measureFile } from "../src/scanner/measure.ts";
 import { StructureAnalyzer } from "../src/scanner/structure.ts";
 
+/**
+ * Classify one path against the tree it sits in.
+ *
+ * A locale name means little on its own, so classification reads the listing
+ * to see what a folder holds. A test that does not care passes the one path,
+ * which is a tree of one file.
+ */
+function classify(relativePath: string, tree: readonly string[] = [relativePath]): string {
+  return classifyFile(relativePath, findLocaleLevels(tree));
+}
+
 describe("file kind classification", () => {
   it("puts ordinary source, prose, and structured data in separate buckets so the visibility switches mean something", () => {
-    expect(classifyFile("src/service.py")).toBe("code");
-    expect(classifyFile("docs/design.md")).toBe("text");
-    expect(classifyFile("config/models.yaml")).toBe("data");
+    expect(classify("src/service.py")).toBe("code");
+    expect(classify("docs/design.md")).toBe("text");
+    expect(classify("config/models.yaml")).toBe("data");
   });
 
   it("recognises every common test-naming convention, not just one ecosystem's", () => {
-    expect(classifyFile("tests/test_service.py")).toBe("test");
-    expect(classifyFile("src/service.test.ts")).toBe("test");
-    expect(classifyFile("src/service_test.go")).toBe("test");
-    expect(classifyFile("spec/thing_spec.rb")).toBe("test");
+    expect(classify("tests/test_service.py")).toBe("test");
+    expect(classify("src/service.test.ts")).toBe("test");
+    expect(classify("src/service_test.go")).toBe("test");
+    expect(classify("spec/thing_spec.rb")).toBe("test");
   });
 
   it("reads the camel-case suffix the JVM and .NET name a test with", () => {
     // okhttp and PowerShell: `*Test.kt` and `*Tests.cs` are how a whole
     // ecosystem names a test, and neither ends in a separator.
-    expect(classifyFile("okhttp/src/jvmTest/kotlin/okhttp3/CallTest.kt")).toBe("test");
-    expect(classifyFile("src/HttpUrlTests.cs")).toBe("test");
-    expect(classifyFile("src/main/kotlin/RouterSpec.kt")).toBe("test");
-    expect(classifyFile("okhttp/src/jvmTest/kotlin/okhttp3/JSSETest.kt")).toBe("test");
+    expect(classify("okhttp/src/jvmTest/kotlin/okhttp3/CallTest.kt")).toBe("test");
+    expect(classify("src/HttpUrlTests.cs")).toBe("test");
+    expect(classify("src/main/kotlin/RouterSpec.kt")).toBe("test");
+    expect(classify("okhttp/src/jvmTest/kotlin/okhttp3/JSSETest.kt")).toBe("test");
   });
 
   it("reads the separated suffix in the forms other ecosystems write it", () => {
-    expect(classifyFile("tools/packaging/releaseTests/sbom.tests.ps1")).toBe("test");
-    expect(classifyFile("packages-private/dts-test/defineComponent.test-d.tsx")).toBe("test");
-    expect(classifyFile("crates/core/glob-spec.rs")).toBe("test");
+    expect(classify("tools/packaging/releaseTests/sbom.tests.ps1")).toBe("test");
+    expect(classify("packages-private/dts-test/defineComponent.test-d.tsx")).toBe("test");
+    expect(classify("crates/core/glob-spec.rs")).toBe("test");
   });
 
   it("does not read a suffix that only looks like one, which would hide real source", () => {
     // Measured on PowerShell and vue: the camel rule needs the capital letter,
     // and the separated rule needs the separator. Without both, the whole
     // engine/ tree of a shell and every `latest.ts` reads as a test.
-    expect(classifyFile("src/System.Management.Automation/engine/SpecialVariables.cs")).toBe("code");
-    expect(classifyFile("src/System.Management.Automation/engine/Modules/ModuleSpecification.cs")).toBe("code");
-    expect(classifyFile("commands/management/TestConnectionCommand.cs")).toBe("code");
-    expect(classifyFile("packages/runtime-core/src/latest.ts")).toBe("code");
+    expect(classify("src/System.Management.Automation/engine/SpecialVariables.cs")).toBe("code");
+    expect(classify("src/System.Management.Automation/engine/Modules/ModuleSpecification.cs")).toBe("code");
+    expect(classify("commands/management/TestConnectionCommand.cs")).toBe("code");
+    expect(classify("packages/runtime-core/src/latest.ts")).toBe("code");
   });
 
   it("keeps the broad suffix away from formats where it describes tests instead of being one", () => {
     // Every one of these was called test code by the suffix rule before it was
     // limited to source: CI configuration, prose about testing, and a
     // deployment specification are none of them test code.
-    expect(classifyFile(".github/workflows/tests.yml")).toBe("data");
-    expect(classifyFile(".vsts-ci/sshremoting-tests.yml")).toBe("data");
-    expect(classifyFile("docs/internals/contributing/writing-code/unit-tests.txt")).toBe("text");
-    expect(classifyFile("docs/testing-guidelines/WritingPesterTests.md")).toBe("text");
-    expect(classifyFile(".pipelines/EV2Specs/ServiceGroupRoot/RolloutSpec.json")).toBe("data");
+    expect(classify(".github/workflows/tests.yml")).toBe("data");
+    expect(classify(".vsts-ci/sshremoting-tests.yml")).toBe("data");
+    expect(classify("docs/internals/contributing/writing-code/unit-tests.txt")).toBe("text");
+    expect(classify("docs/testing-guidelines/WritingPesterTests.md")).toBe("text");
+    expect(classify(".pipelines/EV2Specs/ServiceGroupRoot/RolloutSpec.json")).toBe("data");
   });
 
   it("recognises the Gradle and Kotlin Multiplatform test source sets", () => {
     // okhttp keeps a third of its weight under `jvmTest`, and none of these
     // names is the word `test` on its own.
-    expect(classifyFile("okhttp/src/jvmTest/kotlin/okhttp3/internal/http2/Hpack.kt")).toBe("test");
-    expect(classifyFile("okhttp/src/commonTest/kotlin/okhttp3/Helpers.kt")).toBe("test");
-    expect(classifyFile("android-test/src/androidTest/java/okhttp/Fixtures.kt")).toBe("test");
-    expect(classifyFile("lib/src/testFixtures/kotlin/Support.kt")).toBe("test");
+    expect(classify("okhttp/src/jvmTest/kotlin/okhttp3/internal/http2/Hpack.kt")).toBe("test");
+    expect(classify("okhttp/src/commonTest/kotlin/okhttp3/Helpers.kt")).toBe("test");
+    expect(classify("android-test/src/androidTest/java/okhttp/Fixtures.kt")).toBe("test");
+    expect(classify("lib/src/testFixtures/kotlin/Support.kt")).toBe("test");
   });
 
   it("does not accept a directory that merely ends in the word, which would swallow ordinary source", () => {
     // Why the directory list is curated rather than a suffix pattern.
-    expect(classifyFile("superset/db_engine_specs/bigquery.py")).toBe("code");
-    expect(classifyFile("superset-frontend/plugins/plugin-chart-paired-t-test/src/transformProps.ts")).toBe("code");
-    expect(classifyFile("activesupport/lib/active_support/testing/assertions.rb")).toBe("code");
+    expect(classify("superset/db_engine_specs/bigquery.py")).toBe("code");
+    expect(classify("superset-frontend/plugins/plugin-chart-paired-t-test/src/transformProps.ts")).toBe("code");
+    expect(classify("activesupport/lib/active_support/testing/assertions.rb")).toBe("code");
   });
 
   it("counts unremarkably named source under a test directory as test code", () => {
-    expect(classifyFile("tests/utils/websocket_client.py")).toBe("test");
-    expect(classifyFile("tests/conftest.py")).toBe("test");
-    expect(classifyFile("e2e/helpers.ts")).toBe("test");
+    expect(classify("tests/utils/websocket_client.py")).toBe("test");
+    expect(classify("tests/conftest.py")).toBe("test");
+    expect(classify("e2e/helpers.ts")).toBe("test");
   });
 
   it("lets a fixture keep the flavor of its own format, because a test directory is only a location", () => {
     // Sitting in tests/ is a weaker signal than the extension: a test tree holds
     // fixtures, corpora, and sample documents that are not test code, and calling
     // a 12k-token HTML blob "Tests" hides what the weight actually is.
-    expect(classifyFile("tests/fixtures/events.json")).toBe("data");
-    expect(classifyFile("__tests__/fixtures/users.yaml")).toBe("data");
-    expect(classifyFile("frontend/tests/paste/msword_clipboard.html")).toBe("other");
-    expect(classifyFile("tests/README.md")).toBe("text");
+    expect(classify("tests/fixtures/events.json")).toBe("data");
+    expect(classify("__tests__/fixtures/users.yaml")).toBe("data");
+    expect(classify("frontend/tests/paste/msword_clipboard.html")).toBe("other");
+    expect(classify("tests/README.md")).toBe("text");
   });
 
   it("reads a prose extension inside a fixture folder as the payload it is", () => {
     // Two `.txt` fixtures are 13% of neovim, and calling them documentation
     // says something false about the whole tree.
-    expect(classifyFile("test/functional/fixtures/bigfile.txt")).toBe("data");
-    expect(classifyFile("hugolib/testdata/what-is-markdown.md")).toBe("data");
-    expect(classifyFile("tests/gis_tests/data/rasters/raster.numpy.txt")).toBe("data");
-    expect(classifyFile("docs/design.md")).toBe("text");
+    expect(classify("test/functional/fixtures/bigfile.txt")).toBe("data");
+    expect(classify("hugolib/testdata/what-is-markdown.md")).toBe("data");
+    expect(classify("tests/gis_tests/data/rasters/raster.numpy.txt")).toBe("data");
+    expect(classify("docs/design.md")).toBe("text");
   });
 
   it("keeps a test-shaped filename ahead of its extension, wherever it sits", () => {
-    expect(classifyFile("fixtures/test_payloads.json")).toBe("test");
-    expect(classifyFile("data/events_test.yaml")).toBe("test");
+    expect(classify("fixtures/test_payloads.json")).toBe("test");
+    expect(classify("data/events_test.yaml")).toBe("test");
   });
 
   it("treats a real language code as a translation catalogue", () => {
-    expect(classifyFile("translations/de-DE.json")).toBe("i18n");
-    expect(classifyFile("src/locales/en.yaml")).toBe("i18n");
-    expect(classifyFile("assets/pt_BR.json")).toBe("i18n");
-    expect(classifyFile("locale/messages.po")).toBe("i18n");
+    expect(classify("translations/de-DE.json")).toBe("i18n");
+    expect(classify("src/locales/en.yaml")).toBe("i18n");
+    expect(classify("assets/pt_BR.json")).toBe("i18n");
+    expect(classify("locale/messages.po")).toBe("i18n");
   });
 
   it("leaves the machinery of translation as the code it is, rather than as a catalogue", () => {
@@ -111,47 +122,102 @@ describe("file kind classification", () => {
     // catalogues. Measured on PowerShell, hugo, Laravel, django, and superset:
     // the directory rule alone filed a shell's whole language engine, three
     // i18n implementations, and a release script under the i18n switch.
-    expect(classifyFile("src/System.Management.Automation/engine/lang/parserutils.cs")).toBe("code");
-    expect(classifyFile("langs/i18n/i18n.go")).toBe("code");
-    expect(classifyFile("src/Illuminate/Translation/Translator.php")).toBe("code");
-    expect(classifyFile("scripts/translations/backfill_po.py")).toBe("code");
-    expect(classifyFile("tests/i18n/tests.py")).toBe("test");
-    expect(classifyFile("docs/topics/i18n/translation.txt")).toBe("text");
-    expect(classifyFile("docs/content/en/functions/lang/Translate.md")).toBe("text");
+    expect(classify("src/System.Management.Automation/engine/lang/parserutils.cs")).toBe("code");
+    expect(classify("langs/i18n/i18n.go")).toBe("code");
+    expect(classify("src/Illuminate/Translation/Translator.php")).toBe("code");
+    expect(classify("scripts/translations/backfill_po.py")).toBe("code");
+    expect(classify("tests/i18n/tests.py")).toBe("test");
+    expect(classify("docs/topics/i18n/translation.txt")).toBe("text");
+    expect(classify("docs/content/en/functions/lang/Translate.md")).toBe("text");
   });
 
   it("still reads a translation directory as what tells a catalogue from ordinary configuration", () => {
-    expect(classifyFile("docs/i18n/en/code.json")).toBe("i18n");
-    expect(classifyFile("frontend/src/locales/fr.yaml")).toBe("i18n");
-    expect(classifyFile("config/api.json")).toBe("data");
+    expect(classify("docs/i18n/en/code.json")).toBe("i18n");
+    expect(classify("frontend/src/locales/fr.yaml")).toBe("i18n");
+    expect(classify("config/api.json")).toBe("data");
+    // Both measured against the full ISO 639-1 list: `lg` is Luganda and `ga`
+    // is Irish, and neither file is a translation of anything.
+    expect(classify("homeassistant/brands/lg.json", ["homeassistant/brands/lg.json", "homeassistant/brands/sony.json"])).toBe("data");
+    expect(classify("scripts/ci/docker-compose/ga.yml")).toBe("data");
   });
 
   it("reads a whole language folder of a translation tree as catalogue, whatever format it holds", () => {
-    expect(classifyFile("django/conf/locale/nl/formats.py")).toBe("i18n");
-    expect(classifyFile("django/conf/locale/sr_Latn/formats.py")).toBe("i18n");
-    expect(classifyFile("src/Illuminate/Translation/lang/en/validation.php")).toBe("i18n");
+    expect(classify("django/conf/locale/nl/formats.py")).toBe("i18n");
+    expect(classify("django/conf/locale/sr_Latn/formats.py")).toBe("i18n");
+    expect(classify("src/Illuminate/Translation/lang/en/validation.php")).toBe("i18n");
     // Both halves are needed: a language folder outside a translation tree is
     // any two-letter folder, and a translation tree also holds its own source.
-    expect(classifyFile("src/id/resolver.ts")).toBe("code");
-    expect(classifyFile("langs/i18n/i18n.go")).toBe("code");
+    expect(classify("src/id/resolver.ts")).toBe("code");
+    expect(classify("langs/i18n/i18n.go")).toBe("code");
+  });
+
+  it("takes a region or a script as locale enough on its own, wherever it sits on the path", () => {
+    // A documentation site keeps `content/zh-cn/` beside `content/en/`, with no
+    // folder named i18n anywhere above them.
+    expect(classify("content/zh-cn/docs/concepts/overview.md")).toBe("i18n");
+    expect(classify("content/pt-br/docs/setup/_index.md")).toBe("i18n");
+    expect(classify(".pipelines/store/PDP/en-US/PDP.xml")).toBe("i18n");
+  });
+
+  it("reads a bare language name as a locale only when it sits in a level of languages", () => {
+    // A documentation site keeps content/en beside content/ja and content/pl,
+    // with no folder named i18n anywhere above them.
+    const site = [
+      "content/en/docs/setup.md", "content/ja/docs/setup.md",
+      "content/pl/docs/setup.md", "content/ko/docs/setup.md",
+    ];
+    for (const page of site) expect({ page, kind: classify(page, site) }).toEqual({ page, kind: "i18n" });
+    expect(classify("content/en/docs/setup.md")).toBe("text");
+  });
+
+  it("reads a level of language-named files too, whatever format they are written in", () => {
+    const catalogue = ["skills/translations/de.md", "skills/translations/el.md", "skills/translations/fr.md"];
+    expect(classify("skills/translations/de.md", catalogue)).toBe("i18n");
+    const errors = ["data/error-locale/el-GR.txt", "data/error-locale/hu-HU.txt"];
+    expect(classify("data/error-locale/el-GR.txt", errors)).toBe("i18n");
+  });
+
+  it("wants the level to be all locales, not merely to contain a few", () => {
+    // Both measured: vscode keeps 107 shell completions in one folder, three
+    // named `tr`, `nl`, and `sr`; hugo names comparison functions `Lt.md` and
+    // `Ne.md` beside `Conditional.md`.
+    const completions = ["u/tr.ts", "u/nl.ts", "u/sr.ts", "u/cat.ts", "u/chmod.ts", "u/brew.ts", "u/apt.ts"];
+    expect(classify("u/tr.ts", completions)).toBe("code");
+    const functions = ["compare/Lt.md", "compare/Ne.md", "compare/Conditional.md", "compare/Default.md"];
+    expect(classify("compare/Lt.md", functions)).toBe("text");
+  });
+
+  it("still takes a folder named for translation as a level, however few languages it holds", () => {
+    // A framework that ships one language only still ships a catalogue.
+    expect(classify("activesupport/lib/active_support/locale/en.rb")).toBe("i18n");
+    expect(classify("src/locales/en.yaml")).toBe("i18n");
+  });
+
+  it("checks the region against a real list, because a language code plus a word is a common folder name", () => {
+    // Measured: `no` and `hi` are languages, so a rule that took any short
+    // suffix read all of these as locales. They are Ansible's no-log flag,
+    // Home Assistant's No-IP and Hitachi Kumo integrations.
+    expect(classify("test/integration/targets/no_log/tasks/main.yml")).toBe("data");
+    expect(classify("homeassistant/components/no_ip/config_flow.py")).toBe("code");
+    expect(classify("homeassistant/components/hi_kumo/sensor.py")).toBe("code");
   });
 
   it("does not mistake short config filenames for language codes, which would hide config behind the i18n switch", () => {
     // Regression: matching any two-or-three letter stem misfiled these as i18n.
-    expect(classifyFile("config/api.json")).toBe("data");
-    expect(classifyFile("config/dev.yaml")).toBe("data");
-    expect(classifyFile("src/db.yaml")).toBe("data");
+    expect(classify("config/api.json")).toBe("data");
+    expect(classify("config/dev.yaml")).toBe("data");
+    expect(classify("src/db.yaml")).toBe("data");
   });
 
   it("classifies Python dependency manifests as configuration rather than prose", () => {
-    expect(classifyFile("requirements.txt")).toBe("data");
-    expect(classifyFile("deploy/requirements.txt")).toBe("data");
+    expect(classify("requirements.txt")).toBe("data");
+    expect(classify("deploy/requirements.txt")).toBe("data");
     expect(isGenerated("requirements.txt")).toBe(false);
   });
 
   it("falls back to `other` for extensions that are neither code, prose, nor data", () => {
-    expect(classifyFile("scripts/query.sql")).toBe("code");
-    expect(classifyFile("Cargo.lock")).toBe("other");
+    expect(classify("scripts/query.sql")).toBe("code");
+    expect(classify("Cargo.lock")).toBe("other");
   });
 });
 
@@ -186,6 +252,35 @@ describe("generated-output detection", () => {
     expect(isGenerated("src/service.py")).toBe(false);
     expect(isGenerated("src/scanner/classify.ts")).toBe(false);
     expect(isGenerated("docs/design.md")).toBe(false);
+  });
+});
+
+describe("generated header", () => {
+  it("reads the marker a generator writes, in the phrasings real generators use", () => {
+    // The path is silent for a generated SDK client: it sits in an ordinary
+    // src/ folder under an ordinary name, and only the header says what it is.
+    expect(hasGeneratedHeader(" * Code generated by Microsoft (R) AutoRest Code Generator.\n")).toBe(true);
+    expect(hasGeneratedHeader('// Code generated by "stringer -type state"; DO NOT EDIT.\n')).toBe(true);
+    expect(hasGeneratedHeader("// AUTOGENERATED BY @DESIGN-ENGINEERING\n")).toBe(true);
+    expect(hasGeneratedHeader("// AUTO-GENERATED by scripts/generate-emoji-data.mjs - DO NOT EDIT\n")).toBe(true);
+    expect(hasGeneratedHeader("# Automatically generated by gen_requirements_all.py, do not edit\n")).toBe(true);
+    expect(hasGeneratedHeader("/* @generated */\n")).toBe(true);
+  });
+
+  it("finds the marker under a licence banner, and not past the head of the file", () => {
+    const banner = "/*---\n * Copyright (c) Microsoft Corporation.\n * Licensed under the MIT License.\n *---*/\n\n";
+    expect(hasGeneratedHeader(`${banner}// this file is automatically generated. Do not edit it.\n`)).toBe(true);
+    const buried = `${"// a line of preamble\n".repeat(12)}// Code generated by tool\n`;
+    expect(hasGeneratedHeader(buried)).toBe(false);
+  });
+
+  it("only reads the marker inside a comment, so ordinary code that says the word is left alone", () => {
+    // Both measured on real repositories: TypeORM's column decorator and a Ruby
+    // instance variable are not generated files.
+    expect(hasGeneratedHeader("@Generated()\ncolumn: number;\n")).toBe(false);
+    expect(hasGeneratedHeader("def initialize\n  @generated = true\nend\n")).toBe(false);
+    expect(hasGeneratedHeader("// Compact button, rendered by NewSessionActionViewItem\n")).toBe(false);
+    expect(hasGeneratedHeader("export function generate() {}\n")).toBe(false);
   });
 });
 
@@ -279,7 +374,7 @@ describe("literal measurement against real grammars", () => {
   /** Classify a file end to end, from its path and its parsed content. */
   async function classify(name: string, text: string): Promise<string> {
     const { grammar, structure } = await measureFile(analyzer, name, text);
-    return refineKindByContent(classifyFile(name), name, { grammar, ...structure });
+    return refineKindByContent(classifyFile(name, findLocaleLevels([name])), name, { grammar, ...structure });
   }
 
   it("re-files a real translation catalogue and leaves ordinary code alone", async () => {

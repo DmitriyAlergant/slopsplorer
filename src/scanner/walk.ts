@@ -99,6 +99,24 @@ async function listFilesystemFiles(
   return found;
 }
 
+/**
+ * The source files one revision holds, without touching the working tree.
+ *
+ * A comparison measures only the files a change touched, and that is not
+ * enough to judge the shape of a folder. This gives the second producer the
+ * same view of the tree that a scan gets from its own listing.
+ */
+export async function listRevisionSourceFiles(
+  root: string, rev: string, exclude: readonly string[],
+): Promise<string[]> {
+  const { stdout } = await execFileAsync(
+    "git",
+    ["ls-tree", "-r", "-z", "--name-only", rev, "--", "."],
+    { cwd: root, maxBuffer: 256 * 1024 * 1024, encoding: "utf8" },
+  );
+  return acceptSourcePaths(stdout.split("\0").filter(Boolean), exclude);
+}
+
 export interface FileListing {
   relativePaths: string[];
   /** The listing came from the Git index rather than a filesystem walk. */
