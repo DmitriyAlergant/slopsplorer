@@ -1,4 +1,4 @@
-import type { Aspect, ChangeStatus, ComparisonRequest, DiffMeta, Measure } from "../shared/api.ts";
+import type { Aspect, ChangeStatus, ComparisonRequest, Measure } from "../shared/api.ts";
 
 const integer = new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 });
 
@@ -198,17 +198,6 @@ export function comparisonLabel(request: ComparisonRequest): string {
     case "mergeBase":
       return `${shortRevision(request.base)} -> ${shortRevision(request.target)}, from the merge base`;
   }
-}
-
-/** What a comparison found, as the instrument bar summarises it. */
-export function changeSummary(diff: DiffMeta): string {
-  const parts = [
-    { files: diff.filesAdded, word: "added" },
-    { files: diff.filesModified, word: "modified" },
-    { files: diff.filesDeleted, word: "deleted" },
-    { files: diff.filesRenamed, word: "renamed" },
-  ].filter((part) => part.files > 0).map((part) => `${count(part.files)} ${part.word}`);
-  return parts.length === 0 ? "no changed files" : parts.join(", ");
 }
 
 const CHANGE_STATUS_LABELS: Record<ChangeStatus, string> = {

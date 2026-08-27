@@ -1,0 +1,1 @@
+The comparison in the diff header is now one chip for each side: each chip picks its own revision and measures at once, either side accepts a commit typed by hand, the arrow between them swaps the two sides, the "From" panel carries the merge-base switch and the chip says so when it is on, and a whole commit hash is abbreviated where it is drawn.

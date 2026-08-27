@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { aspectFigure, changeSummary, comparisonLabel, shortRevision } from "../src/web/format.ts";
-import type { DiffMeta } from "../src/shared/api.ts";
+import { aspectFigure, comparisonLabel, shortRevision } from "../src/web/format.ts";
 
 const FULL_SHA = "87d1e8b76cece130474a7fcc6093528f3c20cd4c";
 
@@ -35,36 +34,6 @@ describe("comparisonLabel", () => {
       .toBe("origin/main -> 87d1e8b76c");
     expect(comparisonLabel({ kind: "mergeBase", base: "origin/main", target: "dev" }))
       .toBe("origin/main -> dev, from the merge base");
-  });
-});
-
-function diffMeta(counts: Partial<DiffMeta>): DiffMeta {
-  return {
-    spec: "--diff",
-    request: { kind: "workingTree" },
-    base: "HEAD",
-    target: "working tree",
-    filesAdded: 0,
-    filesModified: 0,
-    filesDeleted: 0,
-    filesRenamed: 0,
-    cappedFiles: 0,
-    ...counts,
-  };
-}
-
-describe("changeSummary", () => {
-  it("names every non-empty part of the change", () => {
-    expect(changeSummary(diffMeta({ filesAdded: 2, filesModified: 1200, filesDeleted: 3, filesRenamed: 1 })))
-      .toBe("2 added, 1,200 modified, 3 deleted, 1 renamed");
-  });
-
-  it("drops a part nothing fell into", () => {
-    expect(changeSummary(diffMeta({ filesModified: 4 }))).toBe("4 modified");
-  });
-
-  it("says so when a comparison found nothing", () => {
-    expect(changeSummary(diffMeta({}))).toBe("no changed files");
   });
 });
 

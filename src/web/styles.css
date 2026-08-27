@@ -247,9 +247,10 @@ button { cursor: pointer; }
   border: 0;
   border-radius: 4px;
   background: transparent;
-  color: var(--ink-faint);
+  color: var(--ink-soft);
   font-family: var(--font-mono);
-  font-size: 13px;
+  font-size: 14px;
+  font-weight: 700;
 }
 .picker__swap:hover:not(:disabled):not([aria-disabled="true"]) { background: var(--sunk); color: var(--signal); }
 .picker__swap:disabled { opacity: 0.6; cursor: progress; }
@@ -586,7 +587,9 @@ button { cursor: pointer; }
   min-height: 0;
   padding: 6px 9px;
   font-family: var(--font-mono);
-  white-space: nowrap;
+  /* Short labels still sit on one line, because the box is only as wide as its
+     text. Past the ceiling it wraps: nowrap here would cut the tail off. */
+  overflow-wrap: anywhere;
 }
 .tooltip::before {
   content: "";
