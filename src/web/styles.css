@@ -736,11 +736,11 @@ button { cursor: pointer; }
 /* ---- Source tree ------------------------------------------------------- */
 
 /*
- * `overscroll-behavior` is what keeps the sticky heading below still. Past
- * either end of the list a rubber-band scroll drags the whole box, heading
- * included, and it also hands the leftover scroll to the page behind it.
+ * Scroll chains to the page. The panel is tall and covers most of the window,
+ * so a box that holds the wheel once it reaches its own end, or that never had
+ * anything to scroll, would leave the pointer standing on dead page.
  */
-.tree__scroll { flex: 1 1 auto; min-height: 0; overflow: auto; overscroll-behavior: none; padding: 6px; }
+.tree__scroll { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 6px; }
 /*
  * The headings share the row grid and scroll with the list, so a heading always
  * stands over the column it orders however wide the panel gets.
@@ -1079,7 +1079,8 @@ button { cursor: pointer; }
 
 /* ---- Metrics tables ---------------------------------------------------- */
 
-.table-scroll { max-height: 480px; overflow: auto; overscroll-behavior: none; border-top: 1px solid var(--rule); }
+/* Chains to the page past its own ends, for the reason `.tree__scroll` gives. */
+.table-scroll { max-height: 480px; overflow: auto; border-top: 1px solid var(--rule); }
 .metrics { width: 100%; border-collapse: collapse; font-size: 12px; }
 .metrics th {
   position: sticky; top: 0; z-index: 1;
@@ -1197,6 +1198,7 @@ button { cursor: pointer; }
   background: var(--surface);
   color: var(--ink);
   overflow: hidden;
+  flex-direction: column;
 }
 /*
  * A dialog is absolutely positioned with both block insets pinned to 0 by the
@@ -1208,17 +1210,17 @@ button { cursor: pointer; }
   width: min(660px, calc(100% - 40px));
   height: fit-content;
   max-height: 84vh;
-  flex-direction: column;
 }
 /*
  * Only the open dialog gets a display value. Setting one unconditionally
  * overrides the user agent's `dialog:not([open]) { display: none }` and leaves
  * the closed dialog rendered inline at the foot of the page.
  */
-.viewer--narrow[open] { display: flex; }
-.viewer--narrow .viewer__body { height: auto; flex: 0 1 auto; }
+.viewer[open] { display: flex; }
+.viewer--narrow .viewer__body { flex: 0 1 auto; }
 .viewer::backdrop { background: oklch(0.15 0.02 265 / 0.55); backdrop-filter: blur(3px); }
 .viewer__head {
+  flex: none;
   display: flex; align-items: flex-start; justify-content: space-between; gap: 18px;
   padding: 16px 20px;
   border-bottom: 1px solid var(--rule);
@@ -1246,11 +1248,11 @@ button { cursor: pointer; }
 .viewer__toggle[data-on="true"] { color: var(--ink); }
 .viewer__toggle input { margin: 0; accent-color: var(--signal); }
 .viewer__body {
-  height: calc(100% - 66px);
+  flex: 1 1 auto; min-height: 0;
   overflow: auto;
   overscroll-behavior: contain;
 }
-.viewer__body--prose { height: auto; padding: 20px; }
+.viewer__body--prose { flex: 0 1 auto; padding: 20px; }
 .viewer__body--prose p { margin: 0 0 14px; color: var(--ink-soft); font-size: 13px; }
 .viewer__code {
   margin: 0; padding: 18px 20px;
@@ -1270,10 +1272,14 @@ button { cursor: pointer; }
  */
 .diff {
   min-width: max-content;
-  padding: 12px 0 16px;
   font-family: var(--font-mono); font-size: 11.5px; line-height: 1.65;
   tab-size: 2;
 }
+/* A fold that opens or closes the file sits flush; only a line gets breathing room. */
+.diff > .diff__line:first-child { margin-top: 12px; }
+.diff > .diff__line:last-child { margin-bottom: 16px; }
+.diff > .diff__gap:first-child { margin-top: 0; border-top: 0; }
+.diff > .diff__gap:last-child { margin-bottom: 0; border-bottom: 0; }
 .diff__line {
   display: grid;
   grid-template-columns: auto 1fr;
