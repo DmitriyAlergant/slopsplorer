@@ -149,6 +149,9 @@ Treat an unpinned install as running unreviewed code: check the manifest before 
 
 Every user-facing change adds one file under `newsfragments/`, named `<issue-or-commit>.<type>.md`, holding one concise sentence for users.
 Types are `feature`, `bugfix`, `doc`, and `misc`.
+The name becomes a commit link in the changelog, so it must be a real short hash.
+Extend a hash that is all digits by one character, because Towncrier reads an all-digit name as a number and drops its leading zero.
+Two fragments of one type from one commit are `<commit>.<type>.md` and `<commit>.<type>.1.md`.
 Do not edit `CHANGELOG.md` for unreleased work: Towncrier owns it, and the tagged workflow compiles the GitHub release notes from the same fragments.
 A fix to a feature that has not shipped yet needs no fragment of its own.
 

@@ -4,6 +4,37 @@ All notable user-facing changes to Slopsplorer are recorded here.
 
 <!-- towncrier release notes start -->
 
+## [0.4.0](https://github.com/DmitriyAlergant/slopsplorer/releases/tag/v0.4.0) - 2026-08-26
+
+### Features
+
+- The headline readouts and the proportion bar now sit below the source tree and the folder panel, so the page reads downstream from the filters that drive it, and a folder's file table no longer repeats its heading in a caption above. ([0257653a](https://github.com/DmitriyAlergant/slopsplorer/commit/0257653a))
+- The unit and the side of a change are now switches at the top of the page - Tokens, Lines, or LOC beside Net, Added, Removed, Churn, and After - and every numeric column of both file tables still sorts on click and picks the same thing, so the old measure switch and the "rank by" list are gone. ([0257653a](https://github.com/DmitriyAlergant/slopsplorer/commit/0257653a))
+- The heaviest-files list can now be curtailed by dragging the boundary under it, remembered across visits like the workspace height. ([73a2695](https://github.com/DmitriyAlergant/slopsplorer/commit/73a2695))
+- The default tokenizer is now `o200k_base`; pass `--tokenizer cl100k_base` for the older encoding. ([8b1cec9](https://github.com/DmitriyAlergant/slopsplorer/commit/8b1cec9))
+- The preview of a compared file now draws the diff in the language of the file, with a line number on each side and a switch that hides the unchanged lines. ([b198b0a](https://github.com/DmitriyAlergant/slopsplorer/commit/b198b0a))
+- Source files that are almost entirely string literals, such as a hand-maintained translation catalogue written as a `.ts` module, are now counted as Data & Config or as i18n rather than as code, without misfiling shell scripts, icon components, or files holding one large embedded template. ([b35bd95](https://github.com/DmitriyAlergant/slopsplorer/commit/b35bd95))
+- Net mode states the added and removed figures on each source tree row, over the two halves of the band, and drops a figure that a long name would cross. ([881c9e8](https://github.com/DmitriyAlergant/slopsplorer/commit/881c9e8))
+- Added a Measure switch that expresses every total, bar, and ranking in tokens, lines, or LOC, orthogonally to the file-kind and scope filters. ([c6062fb](https://github.com/DmitriyAlergant/slopsplorer/commit/c6062fb))
+- The folder panel now states every figure at once in one fixed strip - net, added, removed, churn, after, comment share, and file count in a comparison, and each measure in a scan - and every folder tile carries its weight, its file count, its share, and both sides of the change in the same shape whichever switch is selected. ([24d2f0a](https://github.com/DmitriyAlergant/slopsplorer/commit/24d2f0a))
+- `--report` prints a text report of a tree or a change to stdout and exits: code and tests walked to a threshold share of their section, the other flavors one line each, steered by `--unit`, `--aspect`, and `--threshold`. ([416389e](https://github.com/DmitriyAlergant/slopsplorer/commit/416389e))
+- Diff mode: point Slopsplorer at a comparison instead of a tree with `--diff`, `--staged`, or any revision range, and read where the weight of a change sits by churn or by signed net. ([14e19de](https://github.com/DmitriyAlergant/slopsplorer/commit/14e19de))
+- The comparison in the diff header is now one chip for each side: each chip picks its own revision and measures at once, either side accepts a commit typed by hand, the arrow between them swaps the two sides, the "From" panel carries the merge-base switch and the chip says so when it is on, and a whole commit hash is abbreviated where it is drawn. ([e8270bf](https://github.com/DmitriyAlergant/slopsplorer/commit/e8270bf))
+- Comment detection now covers formats with no tree-sitter grammar, reading block comments across lines for CSS, HTML, XML, SVG, Vue, Svelte, Lua, Terraform, INI, Kotlin, Swift, Scala, Dart, `Dockerfile`, `Makefile`, and more, and the whole shell family (`.bash`, `.ksh`, `.bats`, `.fish`, and `#!` scripts) is now measured. ([ef51006](https://github.com/DmitriyAlergant/slopsplorer/commit/ef51006))
+- Drilling into a folder now re-roots the whole page: the headline readouts and the proportion bar describe the drilled folder, with a new "of project" readout keeping the global figure in view, and selecting a `.` row now shows that folder's own files as their own subject instead of repeating the folder's panel. ([952382f](https://github.com/DmitriyAlergant/slopsplorer/commit/952382f))
+- The source tree and folder panel can now be resized in height together by dragging the boundary below them, and scrolling a table or the tree past either end no longer rubber-bands its sticky column headings. ([fb2e0b1](https://github.com/DmitriyAlergant/slopsplorer/commit/fb2e0b1))
+
+### Bug Fixes
+
+- A test folder no longer overrides a file's own format: fixtures, corpora, and sample documents under `tests/` are now counted as Data, Docs, or Other, and the Tests flavor is reserved for source files in a test folder plus anything named by a test convention. ([b35bd95](https://github.com/DmitriyAlergant/slopsplorer/commit/b35bd95))
+
+### Other Changes
+
+- The `--help` text and the bundled agent skill are rewritten to be shorter and drier. ([c4b4083](https://github.com/DmitriyAlergant/slopsplorer/commit/c4b4083))
+- The share readout in the folder panel now uses the page's own tooltip instead of the browser's, so its hint is styled and appears without a delay. ([fa54cf1](https://github.com/DmitriyAlergant/slopsplorer/commit/fa54cf1))
+- The favicon and the app icons are now a pig snout. ([f8fb970](https://github.com/DmitriyAlergant/slopsplorer/commit/f8fb970))
+
+
 ## [0.3.0](https://github.com/DmitriyAlergant/slopsplorer/releases/tag/v0.3.0) - 2026-08-26
 
 ### Features
