@@ -6,6 +6,8 @@ import path from "node:path";
 import { StringDecoder } from "node:string_decoder";
 import { fileURLToPath } from "node:url";
 import type { ViteDevServer } from "vite";
+import { diffOneFile, scanDiff } from "../scanner/diffScan.ts";
+import type { DiffScanOptions } from "../scanner/diffScan.ts";
 import { scanSourceTree } from "../scanner/scan.ts";
 import type { ScanIndex, ScanOptions } from "../scanner/scan.ts";
 import type { OpenRootRequest, SkillInstallResponse, SourceResponse } from "../shared/api.ts";
@@ -51,11 +53,22 @@ class BadRequestError extends Error {}
 /** A valid request that cannot run until the active scan finishes. */
 class ConflictError extends Error {}
 
+/**
+ * What produces the index, and what a rescan therefore repeats.
+ *
+ * Opening a folder always installs a scan producer, because a directory is not
+ * a comparison and quietly keeping the old one would leave the page reporting
+ * churn for a tree nobody compared.
+ */
+export type IndexProducer =
+  | { kind: "scan"; options: ScanOptions }
+  | { kind: "diff"; options: DiffScanOptions };
+
 export interface SlopsplorerServerOptions {
   /** The index the server starts with, so the CLI can report the scan before listening. */
   index: ScanIndex;
   /** Reused verbatim by `POST /api/rescan`, so a rescan sees the same scope. */
-  scanOptions: ScanOptions;
+  producer: IndexProducer;
   host: string;
   port: number;
   /** Serve the client through Vite in middleware mode instead of `dist/web`. */
@@ -202,21 +215,23 @@ export function createSlopsplorerServer(options: SlopsplorerServerOptions): Slop
   const staticRoot = path.join(packageRoot, "dist", "web");
   const skillInstall = buildSkillInstall(packageRoot);
 
-  let scanState = { index: options.index, options: options.scanOptions };
+  let scanState = { index: options.index, producer: options.producer };
   let scanInFlight: { root: string; promise: Promise<ScanIndex> } | null = null;
   let vite: ViteDevServer | null = null;
 
   /** Replace the complete state only after a scan succeeds. */
-  function runScan(nextOptions: ScanOptions): Promise<ScanIndex> {
+  function runScan(producer: IndexProducer): Promise<ScanIndex> {
+    const root = producer.options.root;
     if (scanInFlight) {
-      if (scanInFlight.root === nextOptions.root) return scanInFlight.promise;
+      if (scanInFlight.root === root) return scanInFlight.promise;
       throw new ConflictError(`already scanning ${scanInFlight.root}`);
     }
-    const running = scanSourceTree(nextOptions).then((next) => {
-      scanState = { index: next, options: nextOptions };
+    const measuring = producer.kind === "diff" ? scanDiff(producer.options) : scanSourceTree(producer.options);
+    const running = measuring.then((next) => {
+      scanState = { index: next, producer };
       return next;
     });
-    const activeScan = { root: nextOptions.root, promise: running };
+    const activeScan = { root, promise: running };
     scanInFlight = activeScan;
     const release = (): void => {
       if (scanInFlight === activeScan) scanInFlight = null;
@@ -227,7 +242,7 @@ export function createSlopsplorerServer(options: SlopsplorerServerOptions): Slop
 
   /** Coalesce concurrent rescans of the active root. */
   function rescan(): Promise<ScanIndex> {
-    return runScan(scanState.options);
+    return runScan(scanState.producer);
   }
 
   async function parseOpenRootRequest(body: unknown): Promise<OpenRootRequest> {
@@ -263,7 +278,24 @@ export function createSlopsplorerServer(options: SlopsplorerServerOptions): Slop
     }
     const row = state.index.files[fileIndex]!;
 
-    const scanRoot = path.resolve(state.options.root);
+    // Inside a diff, a file has two contents, so showing either one alone
+    // would be a claim the page cannot support. The unified diff is what a
+    // reader expects and is less code than rendering our own hunks.
+    if (state.producer.kind === "diff") {
+      const content = await diffOneFile(state.producer.options, row);
+      const payload: SourceResponse = {
+        path: row.path,
+        content,
+        mode: "diff",
+        truncated: false,
+        totalBytes: Buffer.byteLength(content),
+        language: row.language,
+      };
+      sendJson(response, 200, payload);
+      return;
+    }
+
+    const scanRoot = path.resolve(state.producer.options.root);
     const absolutePath = path.resolve(scanRoot, requestedPath);
     let realFilePath: string;
     let realScanRoot: string;
@@ -290,6 +322,7 @@ export function createSlopsplorerServer(options: SlopsplorerServerOptions): Slop
     const payload: SourceResponse = {
       path: row.path,
       content,
+      mode: "source",
       truncated,
       totalBytes: buffer.byteLength,
       language: row.language,
@@ -323,8 +356,18 @@ export function createSlopsplorerServer(options: SlopsplorerServerOptions): Slop
           return;
         }
         const openRequest = await parseOpenRootRequest(await readJsonBody(request));
-        const nextOptions = { ...scanState.options, root: openRequest.root };
-        const opened = await runScan(nextOptions);
+        const previous = scanState.producer;
+        const scanOptions: ScanOptions = previous.kind === "scan"
+          ? { ...previous.options, root: openRequest.root }
+          : {
+            root: openRequest.root,
+            tokenizer: previous.options.tokenizer,
+            allFiles: false,
+            exclude: previous.options.exclude,
+            maxFileBytes: previous.options.maxFileBytes,
+            concurrency: previous.options.concurrency,
+          };
+        const opened = await runScan({ kind: "scan", options: scanOptions });
         sendJson(response, 200, buildView(opened, openRequest.view));
         return;
       }

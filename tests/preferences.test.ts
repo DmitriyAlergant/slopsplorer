@@ -25,9 +25,9 @@ class MemoryStorage implements PreferenceStorage {
 }
 
 describe("view preferences", () => {
-  it("persists only flavor selection, sorting, and the primary measure", () => {
+  it("persists only flavor selection, sorting, and the primary measure and aspect", () => {
     const storage = new MemoryStorage();
-    const request = readRequest("?tree=weight&measure=codeLines&rank=functions&kinds=other%2Ccode&gen=1&path=src&q=worker");
+    const request = readRequest("?tree=weight&measure=codeLines&aspect=net&rank=functions&kinds=other%2Ccode&gen=1&path=src&q=worker");
     writePreferences(storage, request);
 
     expect(readPreferences(storage)).toEqual({
@@ -35,8 +35,17 @@ describe("view preferences", () => {
       showGenerated: true,
       treeSort: "weight",
       measure: "codeLines",
+      aspect: "net",
       rankMetric: "functions",
     });
+  });
+
+  it("discards a payload from before the aspect existed, rather than half-reading it", () => {
+    const storage = new MemoryStorage();
+    storage.value = JSON.stringify({
+      kinds: ["code"], showGenerated: false, treeSort: "name", measure: "tokens", rankMetric: "tokens",
+    });
+    expect(readPreferences(storage)).toBeNull();
   });
 
   it("ignores malformed stored data", () => {
@@ -45,7 +54,7 @@ describe("view preferences", () => {
     expect(readPreferences(storage)).toBeNull();
 
     storage.value = JSON.stringify({
-      kinds: "code", showGenerated: true, treeSort: "weight", measure: "tokens", rankMetric: "tokens",
+      kinds: "code", showGenerated: true, treeSort: "weight", measure: "tokens", aspect: "churn", rankMetric: "tokens",
     });
     expect(readPreferences(storage)).toBeNull();
   });
@@ -53,7 +62,7 @@ describe("view preferences", () => {
   it("discards a stored payload naming a measure this build does not know", () => {
     const storage = new MemoryStorage();
     storage.value = JSON.stringify({
-      kinds: ["code"], showGenerated: false, treeSort: "name", measure: "bytes", rankMetric: "tokens",
+      kinds: ["code"], showGenerated: false, treeSort: "name", measure: "bytes", aspect: "churn", rankMetric: "tokens",
     });
     expect(readPreferences(storage)).toBeNull();
   });

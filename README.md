@@ -18,6 +18,31 @@ cd vibe-coded-repo
 slopsplorer .
 ```
 
+## Diff mode
+
+The same map, pointed at a change instead of a tree. Where does the weight of this branch sit, and how much of it must a reviewer read?
+
+```bash
+slopsplorer --diff             # HEAD against the working tree, untracked files included
+slopsplorer --staged           # HEAD against the index
+slopsplorer main...HEAD        # what a pull request would show
+slopsplorer HEAD~5             # what the last five commits touched
+slopsplorer v1.4 v1.5          # any two revisions
+```
+
+A positional is a folder when one exists at that path, and a revision otherwise, so a branch named like a directory needs no escape syntax. Use `-C <dir>` to name a repository elsewhere.
+
+The numbers heading then picks a side of the change as well as a unit:
+
+| Aspect | Means |
+| --- | --- |
+| **Churn** | added + removed. The volume of the change, never negative. |
+| **Net** | added - removed. What the change leaves behind, signed. |
+| **Added** / **Removed** | one side on its own. |
+| **After** | the whole file as the change leaves it. |
+
+In net, every row draws from a centre axis, removed to the left and added to the right, because a rewrite at `+500 / -480` and an addition of `+20` have nearly the same net and are not the same change. Renames are followed rather than counted twice, and a file preview shows the unified diff.
+
 ![Slopsplorer reading its own repository: flavor filters above a source tree and a folder panel, then the headline readouts, the mass ribbon, and the heaviest-files table.](https://raw.githubusercontent.com/DmitriyAlergant/slopsplorer/main/docs/screenshot.png)
 
 *Slopsplorer reading its own source tree.*
@@ -45,7 +70,7 @@ The page reads downwards. What you choose at the top decides every number below 
 - **A folder panel** beside it, showing how the selected folder divides among its children as cards, then listing its own files. Each card's bar is scaled to the folder rather than to the project.
 - **Headline readouts**, then **a mass ribbon**: the current scope as one bar, split by the folders directly inside it and shaded darkest-first by rank. Clicking a segment selects that folder in the panel above.
 - **A heaviest-files table** for the current selection, sorted by any column, with a minimum threshold in the active measure. A dot marks a file whose lines are mostly commentary, a common shape for generated bulk.
-- **Read-only source previews**, capped at 512 KiB.
+- **Read-only source previews**, capped at 512 KiB. Inside a comparison, the unified diff instead.
 
 ## What it counts
 

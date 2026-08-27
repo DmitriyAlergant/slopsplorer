@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import type { DetailView, Measure, RankMetric } from "../../shared/api.ts";
-import { count, measureAbbreviation, measureName, percent } from "../format.ts";
+import type { Aspect, DetailView, Measure, RankMetric } from "../../shared/api.ts";
+import { count, measureAbbreviation, measureName, percent, signed, weightCount, weightName } from "../format.ts";
 import { CopyPathButton } from "./CopyPathButton.tsx";
 import { FileTable } from "./FileTable.tsx";
 import { FlavorBar } from "./FlavorBar.tsx";
@@ -10,6 +10,9 @@ interface Props {
   detail: DetailView | null;
   /** The measure the figures are in, taken from the response rather than the pending request. */
   measure: Measure;
+  /** The side of the change the figures describe. */
+  aspect: Aspect;
+  isDiff: boolean;
   /** Sorted column of the file table, shared with the ranking panel below. */
   sort: RankMetric;
   onSortChange: (metric: RankMetric) => void;
@@ -32,7 +35,7 @@ const CARD_PADDING = 40;
 const MAX_COLUMNS = 6;
 
 /** The selected folder: its weight, how its children divide it, and its own files. */
-export function FolderDetail({ detail, measure, sort, onSortChange, path, onSelectFolder, directFilesOnly, canDrill, onDrill, onOpenSource, onCapacityChange }: Props): React.JSX.Element {
+export function FolderDetail({ detail, measure, aspect, isDiff, sort, onSortChange, path, onSelectFolder, directFilesOnly, canDrill, onDrill, onOpenSource, onCapacityChange }: Props): React.JSX.Element {
   const panelRef = useRef<HTMLElement>(null);
   const [columns, setColumns] = useState(3);
 
@@ -57,15 +60,27 @@ export function FolderDetail({ detail, measure, sort, onSortChange, path, onSele
 
   if (!detail) return <section ref={panelRef} className="panel detail" aria-label="Folder detail" />;
 
-  const commentShare = detail.lines > 0 ? detail.commentLines / detail.lines : 0;
+  // Inside a diff every supporting figure describes the change too, so the
+  // comment share is the comment share of the churn rather than of the result.
+  const commentBase = isDiff ? detail.churnLines : detail.lines;
+  const commentPart = isDiff ? detail.churnCommentLines : detail.commentLines;
+  const commentShare = commentBase > 0 ? commentPart / commentBase : 0;
   // Tokens are the cross-reference when they are not the headline themselves,
   // so the line always states the weight in two units.
-  const stats = [
-    `${count(detail.weight)} ${measureName(measure)}`,
-    `${count(detail.files)} files`,
-    measure === "tokens" ? `${count(detail.lines)} lines` : `${count(detail.tokens)} tokens`,
-    `${percent(commentShare)} comment`,
-  ];
+  const stats = isDiff
+    ? [
+      `${weightCount(detail.weight, aspect)} ${weightName(measure, aspect, isDiff)}`,
+      `+${count(detail.added)} / -${count(detail.removed)}`,
+      `${count(detail.files)} files`,
+      measure === "tokens" ? `${count(detail.churnLines)} lines churned` : `${count(detail.churnTokens)} tokens churned`,
+      `${percent(commentShare)} comment`,
+    ]
+    : [
+      `${count(detail.weight)} ${measureName(measure)}`,
+      `${count(detail.files)} files`,
+      measure === "tokens" ? `${count(detail.lines)} lines` : `${count(detail.tokens)} tokens`,
+      `${percent(commentShare)} comment`,
+    ];
 
   return (
     <section ref={panelRef} className="panel detail" aria-label="Folder detail">
@@ -114,7 +129,11 @@ export function FolderDetail({ detail, measure, sort, onSortChange, path, onSele
         <div className="detail__actions">
           <p className="detail__share" {...tooltipHandlers}>
             {percent(detail.shareOfScope)}
-            <Tooltip>Share of the current scope, measured before any filter</Tooltip>
+            <Tooltip>
+              {aspect === "net"
+                ? "Share of the current scope's churn, measured before any filter. Net is signed, so churn is the whole it is drawn against."
+                : "Share of the current scope, measured before any filter"}
+            </Tooltip>
           </p>
         </div>
       </header>
@@ -126,10 +145,23 @@ export function FolderDetail({ detail, measure, sort, onSortChange, path, onSele
               <>
                 <span className="card__name">{card.name}</span>
                 <span className="card__meta">
-                  {count(card.weight)} {measureAbbreviation(measure)} · {count(card.files)} files ·{" "}
+                  {weightCount(card.weight, aspect)} {measureAbbreviation(measure)} · {count(card.files)} files ·{" "}
                   {percent(card.shareOfScope)} of current scope
                 </span>
-                <FlavorBar slices={card.flavors} measure={measure} scale={card.shareOfScope} />
+                {isDiff && aspect === "net" ? (
+                  <span className="card__split">
+                    <span data-sign="positive">+{count(card.added)}</span>
+                    <span data-sign="negative">-{count(card.removed)}</span>
+                  </span>
+                ) : null}
+                <FlavorBar
+                  slices={card.flavors}
+                  statuses={card.statuses}
+                  measure={measure}
+                  aspect={aspect}
+                  isDiff={isDiff}
+                  scale={card.shareOfScope}
+                />
               </>
             );
             return card.path === null ? (
@@ -148,6 +180,8 @@ export function FolderDetail({ detail, measure, sort, onSortChange, path, onSele
       <FileTable
         files={detail.directFiles}
         measure={measure}
+        aspect={aspect}
+        isDiff={isDiff}
         sort={sort}
         onSortChange={onSortChange}
         displayRoot={path}

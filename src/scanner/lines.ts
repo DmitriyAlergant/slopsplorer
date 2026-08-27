@@ -9,6 +9,15 @@ export interface CommentRange {
   endColumn: number;
 }
 
+/**
+ * Which bucket one physical line falls in.
+ *
+ * The diff needs a verdict for each line, not just the totals, because it sums
+ * a file's buckets over the lines a comparison touched. The totals are a
+ * reduction over this array, so one pass produces both and they cannot disagree.
+ */
+export type LineBucket = "blank" | "code" | "comment";
+
 export interface LineMetrics {
   /** Lines with content: code plus comment. Blank lines are excluded. */
   lines: number;
@@ -156,7 +165,7 @@ export function splitLines(text: string): string[] {
  * statement with a trailing explanation still counts as code. This matches the
  * convention `cloc` uses and keeps the three counts mutually exclusive.
  */
-export function measureLines(text: string, commentRanges: readonly CommentRange[]): LineMetrics {
+export function classifyLines(text: string, commentRanges: readonly CommentRange[]): LineBucket[] {
   const lines = splitLines(text);
   // Int32Array cannot hold Number.MAX_SAFE_INTEGER, so the largest int32 is
   // the "no comment starts on this line yet" sentinel.
@@ -186,16 +195,14 @@ export function measureLines(text: string, commentRanges: readonly CommentRange[
     }
   }
 
-  let blankLines = 0;
-  let commentLines = 0;
-  let codeLines = 0;
+  const buckets: LineBucket[] = [];
   for (const [row, line] of lines.entries()) {
     if (line.trim() === "") {
-      blankLines += 1;
+      buckets.push("blank");
       continue;
     }
     if (fullyCommented[row] === 1) {
-      commentLines += 1;
+      buckets.push("comment");
       continue;
     }
     const end = spanEnd[row]!;
@@ -203,14 +210,31 @@ export function measureLines(text: string, commentRanges: readonly CommentRange[
       const before = line.slice(0, spanStart[row]!);
       const after = line.slice(end);
       if (before.trim() === "" && after.trim() === "") {
-        commentLines += 1;
+        buckets.push("comment");
         continue;
       }
     }
-    codeLines += 1;
+    buckets.push("code");
   }
+  return buckets;
+}
 
+/** Reduce a per-line verdict into the four totals the page reports. */
+export function totalsFromBuckets(buckets: readonly LineBucket[]): LineMetrics {
+  let blankLines = 0;
+  let commentLines = 0;
+  let codeLines = 0;
+  for (const bucket of buckets) {
+    if (bucket === "blank") blankLines += 1;
+    else if (bucket === "comment") commentLines += 1;
+    else codeLines += 1;
+  }
   return { lines: commentLines + codeLines, codeLines, commentLines, blankLines };
+}
+
+/** {@link classifyLines}, reduced to totals. */
+export function measureLines(text: string, commentRanges: readonly CommentRange[]): LineMetrics {
+  return totalsFromBuckets(classifyLines(text, commentRanges));
 }
 
 /** What one line contributed, and the block comment left open at its end. */
@@ -280,28 +304,30 @@ function scanLine(line: string, syntax: CommentSyntax, entryBlock: BlockDelimite
  * `Makefile`, and `.env` have no extension to key on, and because a `#!` line
  * is the last resort for a name that says nothing.
  */
-export function measureLinesByMarkers(text: string, fileName: string): LineMetrics {
+export function classifyLinesByMarkers(text: string, fileName: string): LineBucket[] {
   const syntax = commentSyntaxFor(fileName, text);
   const lines = splitLines(text);
-  let blankLines = 0;
-  let commentLines = 0;
-  let codeLines = 0;
+  const buckets: LineBucket[] = [];
   let openBlock: BlockDelimiter | null = null;
   for (const line of lines) {
     // Checked before the scan so a padding line inside a block comment counts
     // as blank, exactly as it does on the grammar path.
     if (line.trim() === "") {
-      blankLines += 1;
+      buckets.push("blank");
       continue;
     }
     if (syntax === null) {
-      codeLines += 1;
+      buckets.push("code");
       continue;
     }
     const scan = scanLine(line, syntax, openBlock);
     openBlock = scan.openBlock;
-    if (scan.hasCode) codeLines += 1;
-    else commentLines += 1;
+    buckets.push(scan.hasCode ? "code" : "comment");
   }
-  return { lines: commentLines + codeLines, codeLines, commentLines, blankLines };
+  return buckets;
+}
+
+/** {@link classifyLinesByMarkers}, reduced to totals. */
+export function measureLinesByMarkers(text: string, fileName: string): LineMetrics {
+  return totalsFromBuckets(classifyLinesByMarkers(text, fileName));
 }

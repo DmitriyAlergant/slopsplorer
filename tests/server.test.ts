@@ -66,7 +66,7 @@ beforeAll(async () => {
     concurrency: 2,
   };
   const index = await scanSourceTree(scanOptions);
-  server = createSlopsplorerServer({ index, scanOptions, host: "127.0.0.1", port: 0 });
+  server = createSlopsplorerServer({ index, producer: { kind: "scan", options: scanOptions }, host: "127.0.0.1", port: 0 });
   serverUrl = (await server.listen()).url;
 }, SCAN_TIMEOUT_MS);
 
@@ -128,7 +128,7 @@ describe("development server shutdown", () => {
     const index = await scanSourceTree(scanOptions);
     const developmentServer = createSlopsplorerServer({
       index,
-      scanOptions,
+      producer: { kind: "scan", options: scanOptions },
       host: "127.0.0.1",
       port: 0,
       dev: true,

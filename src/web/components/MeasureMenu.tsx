@@ -1,13 +1,17 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import type { Measure } from "../../shared/api.ts";
-import { MEASURES } from "../../shared/api.ts";
-import { measureHeading } from "../format.ts";
+import type { Aspect, Measure } from "../../shared/api.ts";
+import { ASPECTS, MEASURES } from "../../shared/api.ts";
+import { aspectDescription, aspectHeading, measureHeading, weightHeading } from "../format.ts";
 
 interface Props {
   measure: Measure;
+  aspect: Aspect;
+  /** Whether the index is a diff, which is the only thing an aspect can describe. */
+  isDiff: boolean;
   /** Whether the tree is currently ordered by this column. */
   sorted: boolean;
   onChange: (measure: Measure) => void;
+  onAspectChange: (aspect: Aspect) => void;
 }
 
 const MEASURE_DESCRIPTIONS: Record<Measure, string> = {
@@ -52,7 +56,7 @@ function MenuChevron(): React.JSX.Element {
  * tooltip is: this heading sits inside a scrolling tree within a panel that
  * hides its overflow, and a laid-out menu would be clipped by both.
  */
-export function MeasureMenu({ measure, sorted, onChange }: Props): React.JSX.Element {
+export function MeasureMenu({ measure, aspect, isDiff, sorted, onChange, onAspectChange }: Props): React.JSX.Element {
   const [open, setOpen] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -115,15 +119,15 @@ export function MeasureMenu({ measure, sorted, onChange }: Props): React.JSX.Ele
         aria-expanded={open}
         data-sorted={sorted}
         aria-label={
-          `${sorted ? "Tree ordered by " : ""}${measureHeading(measure).toLowerCase()}. `
-          + "Choose the measure and order the tree by it"
+          `${sorted ? "Tree ordered by " : ""}${weightHeading(measure, aspect, isDiff).toLowerCase()}. `
+          + `Choose the measure${isDiff ? " and the side of the change" : ""} and order the tree by it`
         }
         onClick={() => setOpen((previous) => !previous)}
       >
         {/* Ahead of the label, where the sort caret used to sit: the label keeps
             the right edge it shares with the numbers running below it. */}
         <MenuChevron />
-        {measureHeading(measure)}
+        {weightHeading(measure, aspect, isDiff)}
       </button>
 
       {open ? (
@@ -131,13 +135,14 @@ export function MeasureMenu({ measure, sorted, onChange }: Props): React.JSX.Ele
           ref={menuRef}
           className="menu"
           role="menu"
-          aria-label="Primary measure"
+          aria-label={isDiff ? "Primary measure and aspect" : "Primary measure"}
           onKeyDown={(event) => {
             if (event.key === "Escape") close(true);
             else if (event.key === "ArrowDown") { event.preventDefault(); moveFocus(1); }
             else if (event.key === "ArrowUp") { event.preventDefault(); moveFocus(-1); }
           }}
         >
+          {isDiff ? <p className="menu__group">Unit</p> : null}
           {MEASURES.map((candidate) => (
             <button
               key={candidate}
@@ -157,6 +162,33 @@ export function MeasureMenu({ measure, sorted, onChange }: Props): React.JSX.Ele
               <span className="menu__note">{MEASURE_DESCRIPTIONS[candidate]}</span>
             </button>
           ))}
+
+          {/* One panel and one owner. A separate aspect switch would give the
+              page two widgets that each claim to decide what it counts. */}
+          {isDiff ? (
+            <>
+              <p className="menu__group">Side of the change</p>
+              {ASPECTS.map((candidate) => (
+                <button
+                  key={candidate}
+                  type="button"
+                  className="menu__item"
+                  role="menuitemradio"
+                  aria-checked={candidate === aspect}
+                  onClick={() => {
+                    onAspectChange(candidate);
+                    close(true);
+                  }}
+                >
+                  <span className="menu__name">
+                    <span className="menu__check">{candidate === aspect ? <CheckMark /> : null}</span>
+                    {aspectHeading(candidate)}
+                  </span>
+                  <span className="menu__note">{aspectDescription(candidate)}</span>
+                </button>
+              ))}
+            </>
+          ) : null}
         </div>
       ) : null}
     </div>

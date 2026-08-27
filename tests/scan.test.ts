@@ -251,14 +251,14 @@ describe("walking a plain folder that is not a Git worktree", () => {
 
   it("applies .gitignore itself, so build output outside Git does not distort the map", async () => {
     const index = await scan(root, false);
-    expect(index.meta.gitTracked).toBe(false);
-    expect(index.meta.respectsGitignore).toBe(true);
+    expect(index.meta.fileSource).not.toBe("git-index");
+    expect(index.meta.fileSource).toBe("walk-gitignore");
     expect(index.files.map((file) => file.path)).toEqual(["kept.py"]);
   }, SCAN_TIMEOUT_MS);
 
   it("reports ignored files when --all-files is asked for, so nothing is hidden by accident", async () => {
     const index = await scan(root, true);
-    expect(index.meta.respectsGitignore).toBe(false);
+    expect(index.meta.fileSource).toBe("walk-all");
     expect(index.files.map((file) => file.path)).toEqual(["ignored/thing.py", "kept.py"]);
   }, SCAN_TIMEOUT_MS);
 });

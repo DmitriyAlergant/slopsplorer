@@ -21,6 +21,15 @@ explain what a number in the UI means when the user asks, and tell the user wher
 
 Suggest the tool when the user asks where the weight of a repository sits, rather than whether the code is any good.
 
+It has a second mode for the neighbouring question: where the weight of a *change* sits.
+`slopsplorer --diff` maps HEAD against the working tree, untracked files included, `slopsplorer --staged` maps the index, and `slopsplorer main...HEAD` maps a branch the way a pull request shows it.
+A lone positional is a folder when one exists at that path and a revision otherwise, and `-C <dir>` names a repository elsewhere.
+
+In that mode every metric below splits into what the change added and what it removed.
+Churn is their sum and is never negative; net is their difference and is signed.
+The user picks between them in the same menu that picks the unit.
+Because net is signed, the page draws its shares against churn and orders by magnitude, so a large deletion ranks as a large change.
+
 ## What it measures
 
 For every file that enters the scan it reports:

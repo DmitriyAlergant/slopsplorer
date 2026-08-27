@@ -1,5 +1,5 @@
-import type { FileKind, RankMetric, ViewRequest } from "../shared/api.ts";
-import { FILE_KINDS, MEASURES, RANK_METRICS, TREE_SORTS } from "../shared/api.ts";
+import type { FileKind, ViewRequest } from "../shared/api.ts";
+import { ASPECTS, FILE_KINDS, MEASURES, RANK_METRICS, TREE_SORTS } from "../shared/api.ts";
 import type { ViewPreferences } from "./preferences.ts";
 
 /** Matches the server's own ceiling on how many ranked rows it will return. */
@@ -41,11 +41,13 @@ export function readRequest(search: string, stored: ViewPreferences | null = nul
   const metric = RANK_METRICS.find((candidate) => candidate === params.get("rank"));
   const treeSort = TREE_SORTS.find((candidate) => candidate === params.get("tree"));
   const measure = MEASURES.find((candidate) => candidate === params.get("measure"));
+  const aspect = ASPECTS.find((candidate) => candidate === params.get("aspect"));
   return {
     kinds: rawKinds !== null
       ? rawKinds.split(",").filter(isFileKind)
       : !embeddedPreferences && stored !== null ? stored.kinds : [...FILE_KINDS],
     measure: measure ?? (!embeddedPreferences && stored !== null ? stored.measure : "tokens"),
+    aspect: aspect ?? (!embeddedPreferences && stored !== null ? stored.aspect : "churn"),
     showGenerated: params.has("gen")
       ? params.get("gen") === "1"
       : !embeddedPreferences && stored !== null ? stored.showGenerated : false,
@@ -79,7 +81,8 @@ export function writeRequest(request: ViewRequest): string {
   const params = new URLSearchParams();
   const preferencesDifferFromDefaults =
     request.kinds.length !== FILE_KINDS.length || request.showGenerated
-    || request.treeSort !== "name" || request.measure !== "tokens" || request.rank.metric !== "tokens";
+    || request.treeSort !== "name" || request.measure !== "tokens" || request.aspect !== "churn"
+    || request.rank.metric !== "tokens";
   if (preferencesDifferFromDefaults) params.set("prefs", "1");
   if (request.selected.path) params.set("path", request.selected.path);
   if (request.drillPath) params.set("drill", request.drillPath);
@@ -93,6 +96,7 @@ export function writeRequest(request: ViewRequest): string {
   for (const folder of request.excludedDirectFiles) params.append("xf", folder);
   if (request.treeSort !== "name") params.set("tree", request.treeSort);
   if (request.measure !== "tokens") params.set("measure", request.measure);
+  if (request.aspect !== "churn") params.set("aspect", request.aspect);
   if (request.rank.metric !== "tokens") params.set("rank", request.rank.metric);
   if (request.rank.minWeight > 0) params.set("min", String(request.rank.minWeight));
   return params.toString();

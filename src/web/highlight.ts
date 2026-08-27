@@ -3,6 +3,7 @@ import bash from "highlight.js/lib/languages/bash";
 import cpp from "highlight.js/lib/languages/cpp";
 import csharp from "highlight.js/lib/languages/csharp";
 import css from "highlight.js/lib/languages/css";
+import diff from "highlight.js/lib/languages/diff";
 import go from "highlight.js/lib/languages/go";
 import ini from "highlight.js/lib/languages/ini";
 import java from "highlight.js/lib/languages/java";
@@ -21,7 +22,7 @@ import yaml from "highlight.js/lib/languages/yaml";
 
 /** Only the grammars the scanner can surface are registered, to keep the bundle small. */
 for (const [name, language] of Object.entries({
-  bash, cpp, csharp, css, go, ini, java, javascript, json, markdown, php,
+  bash, cpp, csharp, css, diff, go, ini, java, javascript, json, markdown, php,
   python, ruby, rust, scss, sql, typescript, xml, yaml,
 })) {
   hljs.registerLanguage(name, language);
@@ -50,4 +51,15 @@ export function highlightSource(path: string, source: string): string {
     return hljs.highlight(source, { language: "plaintext" }).value;
   }
   return hljs.highlight(source, { language, ignoreIllegals: true }).value;
+}
+
+/**
+ * Render a unified diff, which is what a file inside a comparison is.
+ *
+ * The hunk syntax is the subject here rather than the file's own language: a
+ * diff of a TypeScript file that lost its leading `+` and `-` markers would be
+ * unreadable however well its keywords were coloured.
+ */
+export function highlightDiff(patch: string): string {
+  return hljs.highlight(patch, { language: "diff" }).value;
 }

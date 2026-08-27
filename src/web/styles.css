@@ -34,6 +34,17 @@
   --flavor-other: oklch(0.68 0.02 265);
   --flavor-generated: oklch(0.60 0.13 12);
 
+  /*
+   * Change colours. Nothing on the page depends on hue alone: added sits right
+   * of the centre axis and carries a "+", removed sits left and carries a "-",
+   * and around one man in twelve cannot separate red from green.
+   */
+  --status-added: oklch(0.57 0.13 152);
+  --status-modified: oklch(0.60 0.11 240);
+  --status-deleted: oklch(0.58 0.15 22);
+  --status-renamed: oklch(0.58 0.13 305);
+  --status-unchanged: oklch(0.68 0.02 265);
+
   --font-mono: ui-monospace, "SF Mono", SFMono-Regular, "JetBrains Mono", Menlo, Consolas, monospace;
   --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 
@@ -66,6 +77,11 @@
     --flavor-data: oklch(0.76 0.11 82);
     --flavor-other: oklch(0.60 0.02 265);
     --flavor-generated: oklch(0.70 0.13 12);
+    --status-added: oklch(0.72 0.14 152);
+    --status-modified: oklch(0.72 0.11 240);
+    --status-deleted: oklch(0.70 0.15 22);
+    --status-renamed: oklch(0.70 0.13 305);
+    --status-unchanged: oklch(0.60 0.02 265);
   }
 }
 
@@ -185,6 +201,9 @@ button { cursor: pointer; }
   text-transform: uppercase;
 }
 .fact dd { margin: 2px 0 0; font-size: 12px; color: var(--ink-soft); }
+.fact--wide dd { display: flex; align-items: center; gap: 6px; }
+.fact__rev { font-family: var(--font-mono); color: var(--ink); }
+.fact__arrow { color: var(--ink-faint); }
 .instrument__actions { display: flex; gap: 8px; }
 .instrument__note {
   grid-column: 1 / -1;
@@ -459,6 +478,14 @@ button { cursor: pointer; }
 .menu__check { display: inline-flex; width: 11px; color: var(--signal); }
 .menu__item[aria-checked="true"] .menu__name { color: var(--signal); }
 .menu__note { padding-left: 17px; color: var(--ink-faint); font-size: 11px; line-height: 1.45; }
+/* Two groups, one owner: the unit above, the side of the change below. */
+.menu__group {
+  margin: 6px 0 1px;
+  padding: 0 9px;
+  color: var(--ink-faint);
+  font-size: 9.5px; font-weight: 600; letter-spacing: 0.11em; text-transform: uppercase;
+}
+.menu__group:first-child { margin-top: 1px; }
 .menu-chevron { flex: none; opacity: 0.75; }
 
 .drill-trail {
@@ -618,10 +645,13 @@ button { cursor: pointer; }
 .sort-caret { flex: none; }
 .sort-caret[data-ascending="true"] { transform: rotate(180deg); }
 .sort-caret[data-placeholder="true"] { visibility: hidden; }
+/* Two halves and a signed figure need more room than one bar and a count. */
+.tree__scroll { --weight-column: 108px; }
+.tree__scroll[data-axis="true"] { --weight-column: 152px; }
 .tree__row {
   position: relative;
   display: grid;
-  grid-template-columns: 28px 16px minmax(0, 1fr) 108px;
+  grid-template-columns: 28px 16px minmax(0, 1fr) var(--weight-column);
   align-items: center;
   gap: 4px;
   min-height: 30px;
@@ -642,6 +672,39 @@ button { cursor: pointer; }
   border-radius: 2px;
   background: color-mix(in oklab, var(--flavor-code) 20%, transparent);
   pointer-events: none;
+}
+/*
+ * Net weight, drawn from a centre axis: removed to the left, added to the
+ * right, both against the churn of the scope. One signed bar would make a
+ * rewrite at +500/-480 look like an addition of 20.
+ */
+.tree__axis {
+  position: absolute;
+  inset-block: 4px;
+  inset-inline: 0;
+  display: flex;
+  pointer-events: none;
+}
+.tree__axis::before {
+  content: "";
+  position: absolute;
+  inset-block: -2px;
+  left: 50%;
+  width: 1px;
+  background: var(--rule-firm);
+}
+.tree__axis-half { display: flex; width: 50%; }
+.tree__axis-half::after { content: ""; display: block; height: 100%; }
+.tree__axis-half--removed { justify-content: flex-end; }
+.tree__axis-half--removed::after {
+  width: calc(var(--share-removed) * 100%);
+  border-radius: 2px 0 0 2px;
+  background: color-mix(in oklab, var(--status-deleted) 26%, transparent);
+}
+.tree__axis-half--added::after {
+  width: calc(var(--share-added) * 100%);
+  border-radius: 0 2px 2px 0;
+  background: color-mix(in oklab, var(--status-added) 26%, transparent);
 }
 .tree__count { position: relative; }
 .tree__row:hover { background: var(--sunk); }
@@ -776,6 +839,10 @@ button { cursor: pointer; }
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .card__meta { color: var(--ink-faint); font-size: 11px; font-variant-numeric: tabular-nums; }
+/* The two halves of a net figure, so a tile never hides a rewrite behind a small number. */
+.card__split { display: flex; gap: 8px; font-size: 11px; font-variant-numeric: tabular-nums; }
+.card__split [data-sign="positive"] { color: var(--status-added); }
+.card__split [data-sign="negative"] { color: var(--status-deleted); }
 
 .flavor-bar {
   height: 5px; margin-top: 6px;
@@ -792,6 +859,11 @@ button { cursor: pointer; }
 [data-flavor="data"].flavor-bar__slice { background: var(--flavor-data); }
 [data-flavor="other"].flavor-bar__slice { background: var(--flavor-other); }
 [data-flavor="generated"].flavor-bar__slice { background: var(--flavor-generated); }
+[data-status="added"].flavor-bar__slice { background: var(--status-added); }
+[data-status="modified"].flavor-bar__slice { background: var(--status-modified); }
+[data-status="deleted"].flavor-bar__slice { background: var(--status-deleted); }
+[data-status="renamed"].flavor-bar__slice { background: var(--status-renamed); }
+[data-status="unchanged"].flavor-bar__slice { background: var(--status-unchanged); }
 
 /* ---- Metrics tables ---------------------------------------------------- */
 
@@ -832,6 +904,10 @@ button { cursor: pointer; }
 .metrics td[data-active="true"] { color: var(--ink); font-weight: 600; }
 .metrics th[aria-sort="descending"] { color: var(--ink); }
 .metrics td[data-sorted="true"] { color: var(--ink); }
+/* Colour repeats the sign the figure already carries; it never replaces it. */
+.metrics td[data-sign="positive"] { color: var(--status-added); }
+.metrics td[data-sign="negative"] { color: var(--status-deleted); }
+.metrics td[data-sign="zero"] { color: var(--ink-faint); }
 .metrics__path { width: 100%; max-width: 0; }
 .metrics__file { display: flex; align-items: center; gap: 7px; min-width: 0; }
 .metrics__file .link { min-width: 0; }
@@ -861,6 +937,11 @@ button { cursor: pointer; }
 [data-flavor="data"].tag { --tag-color: var(--flavor-data); }
 [data-flavor="other"].tag { --tag-color: var(--flavor-other); }
 [data-flavor="generated"].tag { --tag-color: var(--flavor-generated); }
+[data-status="added"].tag { --tag-color: var(--status-added); }
+[data-status="modified"].tag { --tag-color: var(--status-modified); }
+[data-status="deleted"].tag { --tag-color: var(--status-deleted); }
+[data-status="renamed"].tag { --tag-color: var(--status-renamed); }
+[data-status="unchanged"].tag { --tag-color: var(--status-unchanged); }
 
 /* Marks a file whose lines are mostly commentary, a common shape for generated bulk. */
 .dot {

@@ -1,10 +1,11 @@
-import type { FileKind, Measure, RankMetric, TreeSort, ViewRequest } from "../shared/api.ts";
-import { FILE_KINDS, MEASURES, RANK_METRICS, TREE_SORTS } from "../shared/api.ts";
+import type { Aspect, FileKind, Measure, RankMetric, TreeSort, ViewRequest } from "../shared/api.ts";
+import { ASPECTS, FILE_KINDS, MEASURES, RANK_METRICS, TREE_SORTS } from "../shared/api.ts";
 
-// v3 carries the sorted file-table column, which is now how the measure itself
-// is chosen. Older payloads are discarded rather than half-read: v2 names no
-// column, and v1 names a tree sort this build no longer knows.
-const STORAGE_KEY = "slopsplorer.view-preferences.v3";
+// v4 carries the diff aspect, which decides what a figure means as much as the
+// measure does. Older payloads are discarded rather than half-read, which is
+// what versioning the key is for: an optional field with a default would let a
+// stored preference and a rendered heading disagree about the same number.
+const STORAGE_KEY = "slopsplorer.view-preferences.v4";
 const TREE_PANEL_STORAGE_KEY = "slopsplorer.tree-panel-ratio.v1";
 const WORKSPACE_HEIGHT_STORAGE_KEY = "slopsplorer.workspace-height.v1";
 const RANKING_HEIGHT_STORAGE_KEY = "slopsplorer.ranking-height.v1";
@@ -27,6 +28,8 @@ export interface ViewPreferences {
   showGenerated: boolean;
   treeSort: TreeSort;
   measure: Measure;
+  /** Side of a change the measure describes. Only a diff can act on it. */
+  aspect: Aspect;
   /** Sorted column of both file tables, and the ranking's order. */
   rankMetric: RankMetric;
 }
@@ -116,9 +119,11 @@ export function readPreferences(storage: PreferenceStorage): ViewPreferences | n
     if (treeSort === undefined) return null;
     const measure = MEASURES.find((candidate_) => candidate_ === candidate["measure"]);
     if (measure === undefined) return null;
+    const aspect = ASPECTS.find((candidate_) => candidate_ === candidate["aspect"]);
+    if (aspect === undefined) return null;
     const rankMetric = RANK_METRICS.find((candidate_) => candidate_ === candidate["rankMetric"]);
     if (rankMetric === undefined) return null;
-    return { kinds, showGenerated: candidate["showGenerated"], treeSort, measure, rankMetric };
+    return { kinds, showGenerated: candidate["showGenerated"], treeSort, measure, aspect, rankMetric };
   } catch {
     return null;
   }
@@ -131,6 +136,7 @@ export function writePreferences(storage: PreferenceStorage, request: ViewReques
     showGenerated: request.showGenerated,
     treeSort: request.treeSort,
     measure: request.measure,
+    aspect: request.aspect,
     rankMetric: request.rank.metric,
   };
   try {

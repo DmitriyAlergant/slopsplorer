@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { ScanMeta } from "../../shared/api.ts";
+import type { FileSource, ScanMeta } from "../../shared/api.ts";
 import { count, since } from "../format.ts";
 import { Tooltip, tooltipHandlers } from "./Tooltip.tsx";
 
@@ -11,6 +11,14 @@ interface Props {
   onOpen: (root: string) => void;
   onInstallSkill: () => void;
 }
+
+/** Where a file list came from, named in the reader's terms rather than ours. */
+const FILE_SOURCE_LABELS: Readonly<Record<FileSource, string>> = {
+  "git-index": "git index",
+  "walk-gitignore": "walk + gitignore",
+  "walk-all": "walk, all files",
+  "git-diff": "git diff",
+};
 
 /** The fixed readout strip: what was scanned, how, and how long ago. */
 export function InstrumentBar({ meta, rescanning, opening, onRescan, onOpen, onInstallSkill }: Props): React.JSX.Element {
@@ -86,10 +94,27 @@ export function InstrumentBar({ meta, rescanning, opening, onRescan, onOpen, onI
           <dt>Tokenizer</dt>
           <dd>{meta?.tokenizer ?? "-"}</dd>
         </div>
-        <div className="fact">
-          <dt>Source</dt>
-          <dd>{meta ? (meta.gitTracked ? "git index" : meta.respectsGitignore ? "walk + gitignore" : "walk, all files") : "-"}</dd>
-        </div>
+        {/* The comparison replaces the file-list source in a diff: which two
+            things were measured matters far more than how they were listed. */}
+        {meta?.diff ? (
+          <div className="fact fact--wide">
+            <dt>Comparing</dt>
+            <dd {...tooltipHandlers}>
+              <span className="fact__rev">{meta.diff.base}</span>
+              <span className="fact__arrow" aria-hidden="true">-&gt;</span>
+              <span className="fact__rev">{meta.diff.target}</span>
+              <Tooltip compact>
+                {`${meta.diff.filesAdded} added, ${meta.diff.filesModified} modified, `
+                  + `${meta.diff.filesDeleted} deleted, ${meta.diff.filesRenamed} renamed`}
+              </Tooltip>
+            </dd>
+          </div>
+        ) : (
+          <div className="fact">
+            <dt>Source</dt>
+            <dd>{meta ? FILE_SOURCE_LABELS[meta.fileSource] : "-"}</dd>
+          </div>
+        )}
         <div className="fact">
           <dt>Grammars</dt>
           <dd>{meta && meta.languages.length > 0 ? meta.languages.length : "-"}</dd>
@@ -102,7 +127,7 @@ export function InstrumentBar({ meta, rescanning, opening, onRescan, onOpen, onI
 
       <div className="instrument__actions">
         <button type="button" className="button" onClick={onRescan} disabled={scanning}>
-          {rescanning ? "Rescanning" : "Rescan"}
+          {rescanning ? (meta?.diff ? "Comparing" : "Rescanning") : (meta?.diff ? "Recompare" : "Rescan")}
         </button>
         <button type="button" className="button" onClick={onInstallSkill}>
           Install agent skill
@@ -112,6 +137,11 @@ export function InstrumentBar({ meta, rescanning, opening, onRescan, onOpen, onI
       {meta && meta.skippedLargeFiles > 0 ? (
         <p className="instrument__note">
           {count(meta.skippedLargeFiles)} file{meta.skippedLargeFiles === 1 ? "" : "s"} skipped for exceeding the per-file size ceiling.
+        </p>
+      ) : null}
+      {meta?.diff && meta.diff.cappedFiles > 0 ? (
+        <p className="instrument__note">
+          {count(meta.diff.cappedFiles)} file{meta.diff.cappedFiles === 1 ? "" : "s"} changed too widely to align line by line, counted as fully replaced.
         </p>
       ) : null}
     </header>

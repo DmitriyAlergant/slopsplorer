@@ -4,10 +4,15 @@ import { readFileSync, statSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { parseArgs } from "node:util";
+import { scanDiff, type DiffScanOptions } from "./scanner/diffScan.ts";
+import {
+  GitError, isRevision, parseRevisionArgument, repositoryRoot, resolveComparison,
+  type Comparison, type ComparisonRequest,
+} from "./scanner/gitdiff.ts";
 import { DEFAULT_MAX_FILE_BYTES, scanSourceTree } from "./scanner/scan.ts";
 import type { ScanIndex, ScanOptions, ScanProgress } from "./scanner/scan.ts";
 import { DEFAULT_TOKENIZER, isTokenizerName, TOKENIZERS } from "./scanner/tokenize.ts";
-import { createSlopsplorerServer, resolvePackageRoot } from "./server/server.ts";
+import { createSlopsplorerServer, resolvePackageRoot, type IndexProducer } from "./server/server.ts";
 
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_PORT = 8765;
@@ -15,25 +20,64 @@ const DEFAULT_PORT = 8765;
 /** Reading is IO-bound, so oversubscribing the core count is deliberate. */
 const DEFAULT_CONCURRENCY = Math.max(4, os.availableParallelism());
 
+/** Erase the whole progress line, so a shorter update cannot leave a tail behind. */
+const CLEAR_LINE = "\u001B[2K";
+
 const USAGE = `slopsplorer - local, token-weighted source tree explorer.
 
-Usage: slopsplorer [root] [options]
+Scan mode answers how much of a repository an agent must read. Diff mode answers
+the neighbouring question: how much of a change a reviewer must read, and where
+it sits. Both draw the same map.
 
-  root                    Directory to scan. Defaults to the current directory.
+USAGE
+  slopsplorer [<dir>] [options]           Map a source tree. Default: this folder.
+  slopsplorer --diff [options]            Map HEAD against the working tree,
+                                          untracked files included.
+  slopsplorer --staged [options]          Map HEAD against the index.
+  slopsplorer <rev> [options]             Map <rev> against the working tree.
+  slopsplorer <revA> <revB> [options]     Map <revA> against <revB>.
+  slopsplorer <revA>..<revB> [options]    The same, written as a range.
+  slopsplorer <revA>...<revB> [options]   Map the merge base of A and B against B.
 
-Options:
+  A lone positional is a directory when the filesystem holds one at that path,
+  and a revision otherwise. A branch named like a folder therefore needs no
+  escape syntax.
+
+OPTIONS
+  -C <dir>                Run as if started in <dir>. This is how diff mode names
+                          its repository, because the positional slot holds the
+                          revisions.
   --host <address>        Interface to bind. Default ${DEFAULT_HOST}.
   --port <number>         Port to bind. Use 0 for any free port. Default ${DEFAULT_PORT}.
   --dev                   Serve the client through Vite with hot reload on the same port.
-  --all-files             Ignore Git and .gitignore. Built-in directory exclusions still apply.
+  --all-files             Ignore Git and .gitignore. Built-in directory exclusions
+                          still apply. Scan mode only: a diff runs no walk to widen.
   --exclude <dir>         Skip a directory name anywhere in the tree. Repeatable.
+                          Applies to both modes.
   --tokenizer <name>      One of ${TOKENIZERS.join(", ")}. Default ${DEFAULT_TOKENIZER}.
   --max-file-bytes <n>    Skip files larger than this. Default ${DEFAULT_MAX_FILE_BYTES} bytes.
-  --concurrency <n>       Number of files to read in parallel. Default ${DEFAULT_CONCURRENCY} on this machine.
-  --open                  Open the URL in the default browser when the scan finishes. This is the default outside --dev.
+                          In diff mode either side over the ceiling skips the file.
+  --concurrency <n>       Files measured in parallel. Default ${DEFAULT_CONCURRENCY} on this machine.
+  --open                  Open the URL in the default browser when the scan finishes.
+                          This is the default outside --dev.
   --no-open               Do not open a browser.
   -h, --help              Show this help.
   --version               Show the version.
+
+IN THE PAGE
+  The numbers heading of the source tree picks the unit: tokens, lines, or LOC.
+  In diff mode it also picks the side - what the change added, what it removed,
+  their sum (churn), their difference (net, signed), or the whole after-image.
+
+EXAMPLES
+  slopsplorer                       Map the current folder.
+  slopsplorer ../other-project      Map a folder elsewhere.
+  slopsplorer --diff                Where does my uncommitted work sit?
+  slopsplorer --staged              The same for what is staged.
+  slopsplorer main...HEAD           Where this branch sits, as a pull request shows it.
+  slopsplorer HEAD~5                What the last five commits touched.
+  slopsplorer -C ~/src/app v1.4 v1.5
+                                    Compare two tags of a repository elsewhere.
 `;
 
 function fail(message: string): never {
@@ -73,11 +117,16 @@ function formatCount(value: number): string {
   return value.toLocaleString("en-US");
 }
 
+/** Signed, because a net figure that lost its sign states the opposite of the truth. */
+function formatSigned(value: number): string {
+  return `${value < 0 ? "-" : "+"}${formatCount(Math.abs(value))}`;
+}
+
 function formatDuration(milliseconds: number): string {
   return milliseconds < 1000 ? `${milliseconds} ms` : `${(milliseconds / 1000).toFixed(1)} s`;
 }
 
-function createProgressReporter(): ((progress: ScanProgress) => void) | undefined {
+function createProgressReporter(label: string): ((progress: ScanProgress) => void) | undefined {
   if (process.stderr.isTTY !== true) return undefined;
 
   const minimumVisibleMs = 200;
@@ -107,7 +156,7 @@ function createProgressReporter(): ((progress: ScanProgress) => void) | undefine
     const bar = `${"=".repeat(filledWidth)}${" ".repeat(barWidth - filledWidth)}`;
     const percent = Math.floor(ratio * 100).toString().padStart(3);
     process.stderr.write(
-      `\r\u001B[2K  scanning  [${bar}] ${percent}%  ${formatCount(completedFiles)}/${formatCount(totalFiles)} files`,
+      `\r${CLEAR_LINE}  ${label}  [${bar}] ${percent}%  ${formatCount(completedFiles)}/${formatCount(totalFiles)} files`,
     );
     visible = true;
     lastUpdateAt = now;
@@ -115,25 +164,105 @@ function createProgressReporter(): ((progress: ScanProgress) => void) | undefine
   };
 }
 
-function printScanSummary(index: ScanIndex, options: ScanOptions): void {
-  const totalTokens = index.files.reduce((sum, file) => sum + file.tokens, 0);
-  const source = index.meta.gitTracked
-    ? "git ls-files"
-    : index.meta.respectsGitignore
-      ? "filesystem walk, .gitignore applied"
-      : "filesystem walk, all files";
-  const skipped = index.meta.skippedLargeFiles > 0
-    ? `, ${formatCount(index.meta.skippedLargeFiles)} skipped over ${formatCount(options.maxFileBytes)} bytes`
+type FileSourceName = ScanIndex["meta"]["fileSource"];
+
+const FILE_SOURCE_LABELS: Readonly<Record<FileSourceName, string>> = {
+  "git-index": "git ls-files",
+  "walk-gitignore": "filesystem walk, .gitignore applied",
+  "walk-all": "filesystem walk, all files",
+  "git-diff": "git diff",
+};
+
+function printSummary(index: ScanIndex, maxFileBytes: number): void {
+  const { meta } = index;
+  const skipped = meta.skippedLargeFiles > 0
+    ? `, ${formatCount(meta.skippedLargeFiles)} skipped over ${formatCount(maxFileBytes)} bytes`
     : "";
-  const lines = [
-    `root       ${path.resolve(options.root)}`,
-    `files      ${formatCount(index.meta.fileCount)}${skipped}`,
-    `folders    ${formatCount(index.meta.folderCount)}`,
-    `tokens     ${formatCount(totalTokens)} (${index.meta.tokenizer})`,
-    `scan       ${formatDuration(index.meta.durationMs)} via ${source}`,
-    `grammars   ${index.meta.languages.length > 0 ? index.meta.languages.join(", ") : "none"}`,
-  ];
+  const lines: string[] = [`root       ${path.resolve(meta.rootPath)}`];
+  const sum = (pick: (file: ScanIndex["files"][number]) => number): number =>
+    index.files.reduce((total, file) => total + pick(file), 0);
+
+  if (meta.diff) {
+    const addedLines = sum((file) => file.addedLines);
+    const removedLines = sum((file) => file.removedLines);
+    const addedTokens = sum((file) => file.addedTokens);
+    const removedTokens = sum((file) => file.removedTokens);
+    const counts = [
+      `${formatCount(meta.diff.filesAdded)} added`,
+      `${formatCount(meta.diff.filesModified)} modified`,
+      `${formatCount(meta.diff.filesDeleted)} deleted`,
+      `${formatCount(meta.diff.filesRenamed)} renamed`,
+    ];
+    lines.push(
+      `compare    ${meta.diff.base} -> ${meta.diff.target}`,
+      `files      ${formatCount(meta.fileCount)} changed (${counts.join(", ")})${skipped}`,
+      `lines      ${formatCount(addedLines + removedLines)} churn (+${formatCount(addedLines)} / -${formatCount(removedLines)}), net ${formatSigned(addedLines - removedLines)}`,
+      `tokens     ${formatCount(addedTokens + removedTokens)} churn (+${formatCount(addedTokens)} / -${formatCount(removedTokens)}), net ${formatSigned(addedTokens - removedTokens)} (${meta.tokenizer})`,
+    );
+    if (meta.diff.cappedFiles > 0) {
+      lines.push(`capped     ${formatCount(meta.diff.cappedFiles)} files changed too widely to align, counted as replaced`);
+    }
+  } else {
+    lines.push(
+      `files      ${formatCount(meta.fileCount)}${skipped}`,
+      `folders    ${formatCount(meta.folderCount)}`,
+      `tokens     ${formatCount(sum((file) => file.tokens))} (${meta.tokenizer})`,
+    );
+  }
+
+  lines.push(
+    `scan       ${formatDuration(meta.durationMs)} via ${FILE_SOURCE_LABELS[meta.fileSource]}`,
+    `grammars   ${meta.languages.length > 0 ? meta.languages.join(", ") : "none"}`,
+  );
   process.stderr.write(`${lines.map((line) => `  ${line}`).join("\n")}\n`);
+}
+
+/** Whether the filesystem holds a directory at this path. */
+function isDirectory(candidate: string): boolean {
+  return statSync(candidate, { throwIfNoEntry: false })?.isDirectory() === true;
+}
+
+/**
+ * Decide what the positional arguments asked for.
+ *
+ * `null` means a plain scan, so the caller never has to test the same
+ * conditions a second time.
+ */
+async function readComparisonRequest(
+  directory: string, positionals: readonly string[], wantsWorkingTree: boolean, wantsStaged: boolean,
+): Promise<ComparisonRequest | null> {
+  if (wantsWorkingTree && wantsStaged) fail("--diff and --staged name two different comparisons");
+  if (wantsWorkingTree || wantsStaged) {
+    if (positionals.length > 0) {
+      fail(`${wantsStaged ? "--staged" : "--diff"} already names the comparison, so "${positionals[0]}" has nowhere to go`);
+    }
+    return wantsStaged ? { kind: "staged" } : { kind: "workingTree" };
+  }
+
+  if (positionals.length === 0) return null;
+  if (positionals.length > 2) fail(`expected at most two revisions, got ${positionals.length}`);
+
+  const verify = async (candidate: string): Promise<void> => {
+    if (!(await isRevision(directory, candidate))) fail(`not a revision in this repository: ${candidate}`);
+  };
+
+  if (positionals.length === 2) {
+    const [base, target] = positionals as [string, string];
+    await verify(base);
+    await verify(target);
+    return { kind: "revisionPair", base, target };
+  }
+
+  const only = positionals[0]!;
+  if (isDirectory(path.resolve(directory, only))) return null;
+  const range = parseRevisionArgument(only);
+  if (range !== null) {
+    await verify(range.base);
+    await verify(range.target);
+    return range;
+  }
+  if (await isRevision(directory, only)) return { kind: "revisionToWorkingTree", rev: only };
+  fail(`no such directory, and not a revision in this repository: ${only}`);
 }
 
 async function main(): Promise<void> {
@@ -143,9 +272,12 @@ async function main(): Promise<void> {
       args: process.argv.slice(2),
       allowPositionals: true,
       options: {
+        C: { type: "string", short: "C" },
         host: { type: "string" },
         port: { type: "string" },
         dev: { type: "boolean" },
+        diff: { type: "boolean" },
+        staged: { type: "boolean" },
         "all-files": { type: "boolean" },
         exclude: { type: "string", multiple: true },
         tokenizer: { type: "string" },
@@ -171,40 +303,74 @@ async function main(): Promise<void> {
     process.stdout.write(`${readPackageVersion()}\n`);
     return;
   }
-  if (positionals.length > 1) fail(`expected at most one root directory, got ${positionals.length}`);
 
-  const root = path.resolve(positionals[0] ?? ".");
-  const rootInfo = statSync(root, { throwIfNoEntry: false });
-  if (rootInfo === undefined) fail(`no such directory: ${root}`);
-  if (!rootInfo.isDirectory()) fail(`not a directory: ${root}`);
+  const workingDirectory = path.resolve(values.C ?? ".");
+  if (!isDirectory(workingDirectory)) fail(`no such directory: ${workingDirectory}`);
 
   const tokenizer = values.tokenizer ?? DEFAULT_TOKENIZER;
   if (!isTokenizerName(tokenizer)) {
     fail(`unknown tokenizer "${tokenizer}". Known tokenizers: ${TOKENIZERS.join(", ")}`);
   }
 
-  const onProgress = createProgressReporter();
-  const scanOptions: ScanOptions = {
-    root,
-    tokenizer,
-    allFiles: values["all-files"] === true,
-    exclude: values.exclude ?? [],
-    maxFileBytes: values["max-file-bytes"] === undefined
-      ? DEFAULT_MAX_FILE_BYTES
-      : parseIntegerOption("max-file-bytes", values["max-file-bytes"], 1, Number.MAX_SAFE_INTEGER),
-    concurrency: values.concurrency === undefined
-      ? DEFAULT_CONCURRENCY
-      : parseIntegerOption("concurrency", values.concurrency, 1, 1024),
-    ...(onProgress ? { onProgress } : {}),
-  };
+  const comparisonRequest = await readComparisonRequest(
+    workingDirectory, positionals, values.diff === true, values.staged === true,
+  );
+  if (comparisonRequest !== null && values["all-files"] === true) {
+    fail("--all-files widens a filesystem walk, and a diff runs none");
+  }
+
+  const maxFileBytes = values["max-file-bytes"] === undefined
+    ? DEFAULT_MAX_FILE_BYTES
+    : parseIntegerOption("max-file-bytes", values["max-file-bytes"], 1, Number.MAX_SAFE_INTEGER);
+  const concurrency = values.concurrency === undefined
+    ? DEFAULT_CONCURRENCY
+    : parseIntegerOption("concurrency", values.concurrency, 1, 1024);
+  const exclude = values.exclude ?? [];
+
+  let producer: IndexProducer;
+  if (comparisonRequest === null) {
+    const root = path.resolve(workingDirectory, positionals[0] ?? ".");
+    if (!isDirectory(root)) fail(`no such directory: ${root}`);
+    const onProgress = createProgressReporter("scanning");
+    producer = {
+      kind: "scan",
+      options: {
+        root, tokenizer, allFiles: values["all-files"] === true, exclude, maxFileBytes, concurrency,
+        ...(onProgress ? { onProgress } : {}),
+      } satisfies ScanOptions,
+    };
+  } else {
+    let comparison: Comparison;
+    let root: string;
+    try {
+      root = await repositoryRoot(workingDirectory);
+      comparison = await resolveComparison(workingDirectory, comparisonRequest);
+    } catch (cause) {
+      fail(cause instanceof GitError ? cause.message : String(cause));
+    }
+    const onProgress = createProgressReporter("comparing");
+    producer = {
+      kind: "diff",
+      options: {
+        root, comparison, tokenizer, exclude, maxFileBytes, concurrency,
+        ...(onProgress ? { onProgress } : {}),
+      } satisfies DiffScanOptions,
+    };
+  }
 
   const host = values.host ?? DEFAULT_HOST;
   const port = values.port === undefined ? DEFAULT_PORT : parseIntegerOption("port", values.port, 0, 65535);
 
-  const index = await scanSourceTree(scanOptions);
-  printScanSummary(index, scanOptions);
+  let index: ScanIndex;
+  try {
+    index = producer.kind === "diff" ? await scanDiff(producer.options) : await scanSourceTree(producer.options);
+  } catch (cause) {
+    if (cause instanceof GitError) fail(cause.message);
+    throw cause;
+  }
+  printSummary(index, maxFileBytes);
 
-  const server = createSlopsplorerServer({ index, scanOptions, host, port, dev: values.dev === true });
+  const server = createSlopsplorerServer({ index, producer, host, port, dev: values.dev === true });
   const address = await server.listen();
   process.stderr.write(`\n  slopsplorer ready on ${address.url}\n\n`);
 

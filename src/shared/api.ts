@@ -20,22 +20,84 @@ export type TreeSort = "name" | "weight";
 export const TREE_SORTS: readonly TreeSort[] = ["name", "weight"];
 
 /**
+ * What a comparison did to one file.
+ *
+ * `unchanged` exists because a scan is the degenerate diff: every file is
+ * present and nothing moved, so one status field describes both producers.
+ */
+export type ChangeStatus = "added" | "modified" | "deleted" | "renamed" | "unchanged";
+
+export const CHANGE_STATUSES: readonly ChangeStatus[] = [
+  "added", "modified", "deleted", "renamed", "unchanged",
+];
+
+/**
  * The quantity every total, bar, and ranking is expressed in.
  *
  * This is orthogonal to the filters: it changes the unit, never which files are
- * counted. Each name is also a numeric `FileRow` field, so a measure is applied
- * by indexing a row rather than by a switch statement.
+ * counted. A measure names a numeric `FileRow` field once it is paired with an
+ * aspect, so applying one is an index expression rather than a switch.
  */
 export type Measure = "tokens" | "lines" | "codeLines";
 
 export const MEASURES: readonly Measure[] = ["tokens", "lines", "codeLines"];
 
 /**
+ * Which side of a change the measure describes.
+ *
+ * A scanned file has one content, so only `after` means anything. A changed
+ * file has two, and every measure splits into what the change added and what
+ * it removed. Churn is their sum and is never negative; net is their
+ * difference and is signed.
+ */
+export type Aspect = "added" | "removed" | "churn" | "net" | "after";
+
+/** Ordered as the menu and the diff columns present them: the headline pair first. */
+export const ASPECTS: readonly Aspect[] = ["churn", "net", "added", "removed", "after"];
+
+/**
+ * A numeric `FileRow` field a weight can be read from.
+ *
+ * Every name appears whole here and whole in `FileRow`, so one search finds
+ * both. `weightField` is the only way to reach one, and it never assembles a
+ * name from fragments.
+ */
+export type WeightField =
+  | "tokens" | "lines" | "codeLines"
+  | "addedTokens" | "removedTokens" | "churnTokens" | "netTokens"
+  | "addedLines" | "removedLines" | "churnLines" | "netLines"
+  | "addedCodeLines" | "removedCodeLines" | "churnCodeLines" | "netCodeLines";
+
+const WEIGHT_FIELDS: Readonly<Record<Measure, Readonly<Record<Aspect, WeightField>>>> = {
+  tokens: {
+    added: "addedTokens", removed: "removedTokens", churn: "churnTokens", net: "netTokens", after: "tokens",
+  },
+  lines: {
+    added: "addedLines", removed: "removedLines", churn: "churnLines", net: "netLines", after: "lines",
+  },
+  codeLines: {
+    added: "addedCodeLines", removed: "removedCodeLines", churn: "churnCodeLines", net: "netCodeLines", after: "codeLines",
+  },
+};
+
+/** The `FileRow` field one measure and one aspect resolve to. */
+export function weightField(measure: Measure, aspect: Aspect): WeightField {
+  return WEIGHT_FIELDS[measure][aspect];
+}
+
+/** Every weight field, so the scanner can build one prefix sum for each. */
+export const WEIGHT_FIELD_NAMES: readonly WeightField[] =
+  MEASURES.flatMap((measure) => ASPECTS.map((aspect) => weightField(measure, aspect)));
+
+/**
  * A sortable column of the file tables.
  *
- * Every metric here is a column both tables draw, and every numeric column
- * they draw is a metric here. Sorting is the only way to choose one, so a
- * metric without a column would be unreachable.
+ * Every metric here is a column both tables draw in the mode it belongs to,
+ * and every numeric column they draw is a metric here. Sorting is the only way
+ * to choose one, so a metric without a column would be unreachable.
+ *
+ * The aspect names are the diff-mode columns: their unit is the active measure,
+ * so sorting one chooses the aspect the way sorting `tokens` chooses a measure.
  */
 export type RankMetric =
   | "tokens"
@@ -43,18 +105,46 @@ export type RankMetric =
   | "codeLines"
   | "commentLines"
   | "functions"
-  | "branches";
+  | "branches"
+  | Aspect;
 
-export const RANK_METRICS: readonly RankMetric[] = [
+/** Columns a scan draws. Every one is a plain numeric field of `FileRow`. */
+export const SCAN_RANK_METRICS: readonly RankMetric[] = [
   "tokens", "lines", "codeLines", "commentLines", "functions", "branches",
 ];
 
-/** One measured file. Paths are POSIX-style and relative to the scan root. */
+/** Columns a diff draws. The five aspect columns are all in the active measure. */
+export const DIFF_RANK_METRICS: readonly RankMetric[] = [...ASPECTS, "functions", "branches"];
+
+export const RANK_METRICS: readonly RankMetric[] = [...SCAN_RANK_METRICS, ...ASPECTS];
+
+/** Which columns a table draws, decided by the producer of the index. */
+export function rankMetricsFor(isDiff: boolean): readonly RankMetric[] {
+  return isDiff ? DIFF_RANK_METRICS : SCAN_RANK_METRICS;
+}
+
+/** The aspect a diff column names, or `null` for a plain field column. */
+export function aspectOfMetric(metric: RankMetric): Aspect | null {
+  return ASPECTS.find((aspect) => aspect === metric) ?? null;
+}
+
+/**
+ * One measured file. Paths are POSIX-style and relative to the scan root.
+ *
+ * A scan fills the after-image fields and leaves every diff field at zero,
+ * which is exactly true of a file nothing changed. The fields are required
+ * rather than optional so that `row[field]` is always a number and no reader
+ * has to guard an index expression.
+ */
 export interface FileRow {
   path: string;
   name: string;
   kind: FileKind;
   generated: boolean;
+  /** What the comparison did to this file. `unchanged` in a scan. */
+  status: ChangeStatus;
+  /** Where a renamed file came from, or `null`. */
+  previousPath: string | null;
   tokens: number;
   /** Lines with content: code plus comment, excluding blank lines. */
   lines: number;
@@ -63,9 +153,31 @@ export interface FileRow {
   /** Non-blank lines whose entire content is comment. */
   commentLines: number;
   blankLines: number;
+  addedTokens: number;
+  removedTokens: number;
+  churnTokens: number;
+  netTokens: number;
+  addedLines: number;
+  removedLines: number;
+  churnLines: number;
+  netLines: number;
+  addedCodeLines: number;
+  removedCodeLines: number;
+  churnCodeLines: number;
+  netCodeLines: number;
+  addedCommentLines: number;
+  removedCommentLines: number;
+  /** Physical lines the change touched, blank ones included. Matches `git diff --numstat`. */
+  addedPhysicalLines: number;
+  removedPhysicalLines: number;
+  /** After-image structure counts. A whole-file fact, so it never splits by aspect. */
   functions: number;
   classes: number;
   branches: number;
+  /** Before-image structure counts, so a row can state what the change did to them. */
+  beforeFunctions: number;
+  beforeClasses: number;
+  beforeBranches: number;
   /** tree-sitter grammar used for structure metrics, or null when unparsed. */
   language: string | null;
 }
@@ -78,10 +190,18 @@ export interface TreeRow {
   depth: number;
   /** `files` is the pseudo-row grouping files sitting directly in a folder. */
   rowKind: "folder" | "files";
-  /** Subtree total in the active measure. */
+  /** Subtree total in the active measure and aspect. Signed when the aspect is `net`. */
   weight: number;
-  /** 0-1 share of the active drill scope's unfiltered weight. */
+  /** Subtree total of what the change added, in the active measure. */
+  added: number;
+  /** Subtree total of what the change removed, in the active measure. Never negative. */
+  removed: number;
+  /** 0-1 share of the active drill scope's unfiltered weight. Magnitude only. */
   shareOfScope: number;
+  /** 0-1 share the added half of a centre-axis bar fills. */
+  shareAdded: number;
+  /** 0-1 share the removed half of a centre-axis bar fills. */
+  shareRemoved: number;
   hasChildren: boolean;
   expanded: boolean;
   included: boolean;
@@ -95,17 +215,28 @@ export interface FolderCard {
   /** null marks the aggregate tile, which is not navigable. */
   path: string | null;
   name: string;
-  /** Folder total in the active measure. */
+  /** Folder total in the active measure and aspect. */
   weight: number;
+  added: number;
+  removed: number;
   files: number;
   shareOfProject: number;
-  /** 0-1 share of the active drill scope's unfiltered weight. */
+  /** 0-1 share of the active drill scope's unfiltered weight. Magnitude only. */
   shareOfScope: number;
+  shareAdded: number;
+  shareRemoved: number;
   flavors: FlavorSlice[];
+  /** How the change divides, for a diff. Empty for a scan. */
+  statuses: StatusSlice[];
 }
 
 export interface FlavorSlice {
   flavor: Flavor;
+  weight: number;
+}
+
+export interface StatusSlice {
+  status: ChangeStatus;
   weight: number;
 }
 
@@ -125,15 +256,21 @@ export interface DetailView {
    * take a path apart to know where a segment leads.
    */
   trail: PathCrumb[];
-  /** Folder total in the active measure. */
+  /** Folder total in the active measure and aspect. */
   weight: number;
+  added: number;
+  removed: number;
   files: number;
   tokens: number;
   lines: number;
   codeLines: number;
   commentLines: number;
+  churnTokens: number;
+  churnLines: number;
+  churnCodeLines: number;
+  churnCommentLines: number;
   shareOfProject: number;
-  /** 0-1 share of the active drill scope's unfiltered weight. */
+  /** 0-1 share of the active drill scope's unfiltered weight. Magnitude only. */
   shareOfScope: number;
   cards: FolderCard[];
   /** Fixed column capacity measured from the panel width. */
@@ -155,13 +292,38 @@ export interface SummaryView {
   scopeWeight: number;
   /** Drill-scope weight under the active visibility and inclusion switches. */
   selectedWeight: number;
+  selectedAdded: number;
+  selectedRemoved: number;
   selectedFiles: number;
   selectedTokens: number;
   selectedLines: number;
   selectedCodeLines: number;
   selectedCommentLines: number;
+  selectedChurnTokens: number;
+  selectedChurnLines: number;
+  selectedChurnCodeLines: number;
+  selectedChurnCommentLines: number;
   /** Top-level segments of the drill scope's proportion ribbon. */
   ribbon: FolderCard[];
+}
+
+/** Where a scan's file list came from. A diff never runs a walk. */
+export type FileSource = "git-index" | "walk-gitignore" | "walk-all" | "git-diff";
+
+/** What a diff compared, resolved once and echoed on every response. */
+export interface DiffMeta {
+  /** How the comparison was named on the command line. */
+  spec: string;
+  /** Human label for the before side, such as a short commit or "HEAD". */
+  base: string;
+  /** Human label for the after side, such as "working tree" or a short commit. */
+  target: string;
+  filesAdded: number;
+  filesModified: number;
+  filesDeleted: number;
+  filesRenamed: number;
+  /** Files whose line diff hit the size cap and therefore count as fully replaced. */
+  cappedFiles: number;
 }
 
 export interface ScanMeta {
@@ -173,10 +335,10 @@ export interface ScanMeta {
   /** ISO-8601 timestamp of the scan that produced the current index. */
   scannedAt: string;
   durationMs: number;
-  /** Whether the file list came from `git ls-files`. */
-  gitTracked: boolean;
-  /** Whether `.gitignore` rules were applied to the file list. */
-  respectsGitignore: boolean;
+  /** Where the file list came from. */
+  fileSource: FileSource;
+  /** What was compared, or `null` when the index is a plain scan. */
+  diff: DiffMeta | null;
   /** Files skipped for exceeding the per-file byte ceiling. */
   skippedLargeFiles: number;
   /** Grammars that produced structure metrics in this scan. */
@@ -188,6 +350,8 @@ export interface ViewRequest {
   kinds: FileKind[];
   /** Unit every aggregation is expressed in. Independent of every filter. */
   measure: Measure;
+  /** Side of the change the unit describes. Ignored unless the index is a diff. */
+  aspect: Aspect;
   showGenerated: boolean;
   query: string;
   excludedFolders: string[];
@@ -200,7 +364,8 @@ export interface ViewRequest {
   /**
    * The sorted column of both file tables, and the ranking's order.
    *
-   * `minWeight` is a floor in the active measure, not always in tokens.
+   * `minWeight` is a floor on the magnitude in the active measure and aspect,
+   * not always in tokens.
    */
   rank: { metric: RankMetric; minWeight: number; limit: number };
   /**
@@ -216,12 +381,16 @@ export interface ViewRequest {
 export interface ViewResponse {
   meta: ScanMeta;
   /**
-   * The measure these figures are in.
+   * The measure and aspect these figures are in.
    *
    * Echoed rather than assumed, so a label never disagrees with the numbers
-   * beside it while a newer request is still in flight.
+   * beside it while a newer request is still in flight, and so a client cannot
+   * draw a churn heading over a scan the server measured whole.
    */
   measure: Measure;
+  aspect: Aspect;
+  /** The sorted column the server actually applied, after clamping to the mode. */
+  rankMetric: RankMetric;
   summary: SummaryView;
   tree: TreeRow[];
   detail: DetailView;
@@ -243,7 +412,14 @@ export interface OpenRootRequest {
 
 export interface SourceResponse {
   path: string;
+  /**
+   * File content, or the unified diff of the file when the index is a diff.
+   *
+   * A diff has two contents, so showing either one alone would be a claim the
+   * page cannot support. `mode` says which one this is.
+   */
   content: string;
+  mode: "source" | "diff";
   truncated: boolean;
   totalBytes: number;
   language: string | null;

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { SourceResponse } from "../../shared/api.ts";
 import { fetchSource } from "../api.ts";
 import { count } from "../format.ts";
-import { highlightSource } from "../highlight.ts";
+import { highlightDiff, highlightSource } from "../highlight.ts";
 import { CopyPathButton } from "./CopyPathButton.tsx";
 
 interface Props {
@@ -10,7 +10,12 @@ interface Props {
   onClose: () => void;
 }
 
-/** Read-only preview of one file from the scan, highlighted client-side. */
+/**
+ * Read-only preview of one file, highlighted client-side.
+ *
+ * Inside a comparison the file has two contents, so the preview is the unified
+ * diff. Showing the after-image alone would be a claim the page cannot support.
+ */
 export function SourceDialog({ path, onClose }: Props): React.JSX.Element {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [source, setSource] = useState<SourceResponse | null>(null);
@@ -37,7 +42,7 @@ export function SourceDialog({ path, onClose }: Props): React.JSX.Element {
     <dialog ref={dialogRef} className="viewer" onClose={onClose} onCancel={onClose}>
       <header className="viewer__head">
         <div>
-          <p className="eyebrow">Read-only preview</p>
+          <p className="eyebrow">{source?.mode === "diff" ? "Unified diff" : "Read-only preview"}</p>
           <div className="viewer__title-row">
             <h2>{path ?? ""}</h2>
             {path ? <CopyPathButton path={path} /> : null}
@@ -48,9 +53,18 @@ export function SourceDialog({ path, onClose }: Props): React.JSX.Element {
       <div className="viewer__body">
         {failure ? <p className="empty">{failure}</p> : null}
         {!failure && !source ? <p className="empty">Loading source</p> : null}
-        {source ? (
+        {source && source.content.trim() === "" ? (
+          <p className="empty">This comparison reports no textual change for the file.</p>
+        ) : null}
+        {source && source.content.trim() !== "" ? (
           <pre className="viewer__code">
-            <code dangerouslySetInnerHTML={{ __html: highlightSource(source.path, source.content) }} />
+            <code
+              dangerouslySetInnerHTML={{
+                __html: source.mode === "diff"
+                  ? highlightDiff(source.content)
+                  : highlightSource(source.path, source.content),
+              }}
+            />
           </pre>
         ) : null}
         {source?.truncated ? (

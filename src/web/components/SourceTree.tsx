@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
-import type { Measure, TreeRow, TreeSort } from "../../shared/api.ts";
-import { count } from "../format.ts";
+import type { Aspect, Measure, TreeRow, TreeSort } from "../../shared/api.ts";
+import { count, weightCount } from "../format.ts";
 import { MeasureMenu } from "./MeasureMenu.tsx";
 import { SortCaret } from "./SortCaret.tsx";
 import { Tooltip, tooltipHandlers } from "./Tooltip.tsx";
@@ -10,11 +10,15 @@ interface Props {
   sort: TreeSort;
   /** Names the numbers column, and the unit every figure on the page is in. */
   measure: Measure;
+  /** Side of the change the numbers describe. Only `net` is signed. */
+  aspect: Aspect;
+  isDiff: boolean;
   onSelect: (rowKind: "folder" | "files", path: string) => void;
   onDrill: (path: string) => void;
   onSortChange: (sort: TreeSort) => void;
   /** Picking a measure also orders the tree by it, so the menu is the weight sort. */
   onMeasureChange: (measure: Measure) => void;
+  onAspectChange: (aspect: Aspect) => void;
   onToggleExpanded: (path: string) => void;
   onToggleFolder: (row: TreeRow) => void;
   onToggleDirectFiles: (row: TreeRow) => void;
@@ -52,10 +56,15 @@ function ScopeCheckbox({ row, onChange }: { row: TreeRow; onChange: () => void }
 
 /** The folder hierarchy, with every row measured against the active scope root. */
 export function SourceTree({
-  rows, sort, measure, onSelect, onDrill, onSortChange, onMeasureChange, onToggleExpanded, onToggleFolder, onToggleDirectFiles, onExpandAll, onCollapseAll,
+  rows, sort, measure, aspect, isDiff, onSelect, onDrill, onSortChange, onMeasureChange, onAspectChange, onToggleExpanded, onToggleFolder, onToggleDirectFiles, onExpandAll, onCollapseAll,
 }: Props): React.JSX.Element {
   const expandableRows = rows.filter((row) => row.rowKind === "folder" && row.hasChildren);
   const allExpanded = expandableRows.length > 0 && expandableRows.every((row) => row.expanded);
+  // A signed quantity drawn as one bar loses the difference between a rewrite
+  // and a small addition, whose nets are nearly the same number. Two halves
+  // from a centre axis keep both facts, and position carries the sign so no
+  // reading of the page depends on hue.
+  const centreAxis = isDiff && aspect === "net";
   return (
     <section className="panel tree" aria-label="Source tree">
       <div className="panel__head">
@@ -71,7 +80,7 @@ export function SourceTree({
         </div>
       </div>
 
-      <div className="tree__scroll">
+      <div className="tree__scroll" data-axis={centreAxis}>
         {/* Aligned to the row grid, so each heading sits over the column it orders. */}
         <div className="tree__columns">
           <span className="tree__disclose tree__disclose--leaf" aria-hidden="true" />
@@ -88,7 +97,14 @@ export function SourceTree({
           </button>
           {/* The numbers column has no separate sort control: choosing the measure
               is what puts the tree on it, so one heading carries both jobs. */}
-          <MeasureMenu measure={measure} sorted={sort === "weight"} onChange={onMeasureChange} />
+          <MeasureMenu
+            measure={measure}
+            aspect={aspect}
+            isDiff={isDiff}
+            sorted={sort === "weight"}
+            onChange={onMeasureChange}
+            onAspectChange={onAspectChange}
+          />
         </div>
 
         {rows.length === 0 ? (
@@ -101,7 +117,12 @@ export function SourceTree({
               data-kind={row.rowKind}
               data-selected={row.selected}
               data-muted={!row.included}
-              style={{ "--indent": row.depth, "--mass": Math.min(1, Math.max(0, row.shareOfScope)) } as React.CSSProperties}
+              style={{
+                "--indent": row.depth,
+                "--mass": row.shareOfScope,
+                "--share-added": row.shareAdded,
+                "--share-removed": row.shareRemoved,
+              } as React.CSSProperties}
             >
               {row.rowKind === "folder" && row.hasChildren ? (
                 <button
@@ -138,8 +159,20 @@ export function SourceTree({
               <span className="tree__weight">
                 {row.included ? (
                   <>
-                    <span className="tree__mass" aria-hidden="true" />
-                    <span className="tree__count">{count(row.weight)}</span>
+                    {centreAxis ? (
+                      <span className="tree__axis" aria-hidden="true">
+                        <span className="tree__axis-half tree__axis-half--removed" />
+                        <span className="tree__axis-half tree__axis-half--added" />
+                      </span>
+                    ) : (
+                      <span className="tree__mass" aria-hidden="true" />
+                    )}
+                    <span className="tree__count" {...(centreAxis ? tooltipHandlers : {})}>
+                      {weightCount(row.weight, aspect)}
+                      {centreAxis ? (
+                        <Tooltip compact>{`${count(row.added)} added, ${count(row.removed)} removed`}</Tooltip>
+                      ) : null}
+                    </span>
                   </>
                 ) : null}
               </span>

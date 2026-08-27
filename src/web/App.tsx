@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { FileKind, Measure, RankMetric, TreeRow, ViewRequest, ViewResponse } from "../shared/api.ts";
-import { MEASURES } from "../shared/api.ts";
+import type { Aspect, FileKind, Measure, RankMetric, TreeRow, ViewRequest, ViewResponse } from "../shared/api.ts";
+import { ASPECTS, MEASURES } from "../shared/api.ts";
 import { fetchView, openRoot, rescan } from "./api.ts";
 import {
   DEFAULT_RANKING_HEIGHT, DEFAULT_WORKSPACE_HEIGHT, MAX_WORKSPACE_HEIGHT, MIN_WORKSPACE_HEIGHT,
@@ -107,7 +107,7 @@ export function App(): React.JSX.Element {
     } catch {
       // Accessing localStorage itself can be denied in locked-down contexts.
     }
-  }, [request.kinds, request.showGenerated, request.treeSort, request.measure, request.rank.metric]);
+  }, [request.kinds, request.showGenerated, request.treeSort, request.measure, request.aspect, request.rank.metric]);
 
   useEffect(() => {
     writeTreePanelRatio(window.localStorage, treePanelRatio);
@@ -151,6 +151,14 @@ export function App(): React.JSX.Element {
   const patch = useCallback((change: Partial<ViewRequest>) => {
     setRequest((previous) => ({ ...previous, ...change }));
   }, []);
+
+  // A scan and a diff draw different columns, so a stored or linked sort can
+  // name one the open index has not got. The server clamps it and echoes what
+  // it used; adopting that is what keeps the caret under a real heading.
+  useEffect(() => {
+    if (!view || view.rankMetric === requestRef.current.rank.metric) return;
+    setRequest((previous) => ({ ...previous, rank: { ...previous.rank, metric: view.rankMetric } }));
+  }, [view]);
 
   const handleRescan = useCallback(() => {
     setRescanning(true);
@@ -316,16 +324,46 @@ export function App(): React.JSX.Element {
    */
   const setRankMetric = useCallback((metric: RankMetric) => {
     setRequest((previous) => {
-      if (previous.rank.metric === metric) return previous;
       const measure = MEASURES.find((candidate) => candidate === metric);
+      const aspect = ASPECTS.find((candidate) => candidate === metric);
       const measureChanges = measure !== undefined && measure !== previous.measure;
+      const aspectChanges = aspect !== undefined && aspect !== previous.aspect;
+      if (previous.rank.metric === metric && !measureChanges && !aspectChanges) return previous;
       return {
         ...previous,
         measure: measureChanges ? measure : previous.measure,
+        aspect: aspectChanges ? aspect : previous.aspect,
         rank: {
           ...previous.rank,
           metric,
-          minWeight: measureChanges ? 0 : previous.rank.minWeight,
+          minWeight: measureChanges || aspectChanges ? 0 : previous.rank.minWeight,
+        },
+      };
+    });
+  }, []);
+
+  /**
+   * Switch which side of a change every figure describes.
+   *
+   * The same widget owns it as owns the measure, and it moves the same three
+   * things: the tree onto its numbers column, the file tables onto the matching
+   * column, and the threshold back to zero, because a floor of 2,000 churn
+   * tokens is not a floor of 2,000 net tokens.
+   */
+  const setAspect = useCallback((aspect: Aspect) => {
+    setRequest((previous) => {
+      if (previous.aspect === aspect) {
+        return previous.treeSort === "weight" ? previous : { ...previous, treeSort: "weight" };
+      }
+      const followsAspect = ASPECTS.some((candidate) => candidate === previous.rank.metric);
+      return {
+        ...previous,
+        aspect,
+        treeSort: "weight",
+        rank: {
+          ...previous.rank,
+          metric: followsAspect ? aspect : previous.rank.metric,
+          minWeight: 0,
         },
       };
     });
@@ -340,6 +378,11 @@ export function App(): React.JSX.Element {
       </main>
     );
   }
+
+  // Taken from the response rather than the pending request, so a heading
+  // never claims a mode the numbers beside it are not in.
+  const isDiff = view?.meta.diff != null;
+  const aspect = view?.aspect ?? request.aspect;
 
   return (
     <main className="app" data-busy={busy || rescanning || openingRoot !== null}>
@@ -381,10 +424,13 @@ export function App(): React.JSX.Element {
           rows={view?.tree ?? []}
           sort={request.treeSort}
           measure={view?.measure ?? request.measure}
+          aspect={aspect}
+          isDiff={isDiff}
           onSelect={select}
           onDrill={drill}
           onSortChange={(treeSort) => patch({ treeSort })}
           onMeasureChange={setMeasure}
+          onAspectChange={setAspect}
           onToggleExpanded={toggleExpanded}
           onToggleFolder={toggleFolder}
           onToggleDirectFiles={toggleDirectFiles}
@@ -395,6 +441,8 @@ export function App(): React.JSX.Element {
         <FolderDetail
           detail={view?.detail ?? null}
           measure={view?.measure ?? request.measure}
+          aspect={aspect}
+          isDiff={isDiff}
           sort={request.rank.metric}
           onSortChange={setRankMetric}
           path={request.selected.path}
@@ -422,6 +470,8 @@ export function App(): React.JSX.Element {
       <MassRibbon
         summary={view?.summary ?? null}
         measure={view?.measure ?? request.measure}
+        aspect={aspect}
+        isDiff={isDiff}
         selectedPath={request.selected.rowKind === "folder" ? request.selected.path : null}
         onSelect={(path) => select("folder", path)}
       />
@@ -429,6 +479,8 @@ export function App(): React.JSX.Element {
       <LargestFiles
         files={view?.ranked ?? []}
         measure={view?.measure ?? request.measure}
+        aspect={aspect}
+        isDiff={isDiff}
         total={view?.rankedTotal ?? 0}
         scopePath={request.selected.path}
         directFilesOnly={request.selected.rowKind === "files"}

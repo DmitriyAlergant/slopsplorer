@@ -1,7 +1,8 @@
-import type { FileRow, Measure, RankMetric } from "../../shared/api.ts";
+import type { Aspect, FileRow, Measure, RankMetric } from "../../shared/api.ts";
+import { rankMetricsFor, weightField } from "../../shared/api.ts";
 import { displayFilePath } from "../displayPath.ts";
 import { FILE_KIND_DETAILS } from "../fileKinds.ts";
-import { count, percent } from "../format.ts";
+import { aspectHeading, count, percent, signed, statusLabel } from "../format.ts";
 import { CopyPathButton } from "./CopyPathButton.tsx";
 import { SortCaret } from "./SortCaret.tsx";
 import { Tooltip, tooltipHandlers } from "./Tooltip.tsx";
@@ -10,6 +11,9 @@ interface Props {
   files: readonly FileRow[];
   /** Highlighted column: the measure every other figure on the page is drawn from. */
   measure: Measure;
+  /** Highlighted column in a diff, where the columns are the sides of the change. */
+  aspect: Aspect;
+  isDiff: boolean;
   /** Sorted column. Shared by both tables, so they never disagree on an order. */
   sort: RankMetric;
   /** Sorting on a measured column also makes that measure the page's unit. */
@@ -23,38 +27,68 @@ interface Props {
 }
 
 /**
- * The measured columns, in the order they are drawn.
+ * How each plain column is headed and where it reads its number.
  *
- * One entry per `RankMetric`, because sorting a column is the only way to
- * choose the metric: a metric without a heading here could never be picked.
+ * The aspect columns are not here: their unit is the active measure, so their
+ * field is resolved per request rather than fixed in a table.
  */
-const COLUMNS: ReadonlyArray<{ metric: RankMetric; label: string; value: (file: FileRow) => number }> = [
-  { metric: "tokens", label: "Tokens", value: (file) => file.tokens },
-  { metric: "lines", label: "Lines", value: (file) => file.lines },
-  { metric: "codeLines", label: "LOC", value: (file) => file.codeLines },
-  { metric: "commentLines", label: "Comment", value: (file) => file.commentLines },
-  { metric: "functions", label: "Fn", value: (file) => file.functions },
-  { metric: "branches", label: "Branch", value: (file) => file.branches },
-];
+const PLAIN_COLUMNS: Readonly<Record<
+  "tokens" | "lines" | "codeLines" | "commentLines" | "functions" | "branches",
+  { label: string; field: "tokens" | "lines" | "codeLines" | "commentLines" | "functions" | "branches" }
+>> = {
+  tokens: { label: "Tokens", field: "tokens" },
+  lines: { label: "Lines", field: "lines" },
+  codeLines: { label: "LOC", field: "codeLines" },
+  commentLines: { label: "Comment", field: "commentLines" },
+  functions: { label: "Fn", field: "functions" },
+  branches: { label: "Branch", field: "branches" },
+};
+
+/** Heading and value resolver for one drawn column. */
+interface Column {
+  metric: RankMetric;
+  label: string;
+  value: (file: FileRow) => number;
+  /** Whether the figure carries a sign of its own. */
+  isSigned: boolean;
+}
+
+function describeColumn(metric: RankMetric, measure: Measure): Column {
+  switch (metric) {
+    case "churn": case "net": case "added": case "removed": case "after": {
+      const field = weightField(measure, metric);
+      return {
+        metric, label: aspectHeading(metric), value: (file: FileRow) => file[field], isSigned: metric === "net",
+      };
+    }
+    default: {
+      const plain = PLAIN_COLUMNS[metric];
+      return { metric, label: plain.label, value: (file: FileRow) => file[plain.field], isSigned: false };
+    }
+  }
+}
 
 /** Structure counts are absent rather than zero for a file no grammar parsed. */
 const STRUCTURE_METRICS: ReadonlySet<RankMetric> = new Set<RankMetric>(["functions", "branches"]);
 
 /** The shared metrics table, used for a folder's own files and for the ranking. */
-export function FileTable({ files, measure, sort, onSortChange, displayRoot, prefixRelativePaths, onOpenSource, emptyMessage }: Props): React.JSX.Element {
+export function FileTable({ files, measure, aspect, isDiff, sort, onSortChange, displayRoot, prefixRelativePaths, onOpenSource, emptyMessage }: Props): React.JSX.Element {
   if (files.length === 0) return <p className="empty">{emptyMessage}</p>;
+  const columns = rankMetricsFor(isDiff).map((metric) => describeColumn(metric, measure));
+  const activeMetric: RankMetric = isDiff ? aspect : measure;
   return (
     <div className="table-scroll">
       <table className="metrics">
         <thead>
           <tr>
             <th scope="col">Flavor</th>
+            {isDiff ? <th scope="col">Change</th> : null}
             <th scope="col">File</th>
-            {COLUMNS.map(({ metric, label }) => (
+            {columns.map(({ metric, label }) => (
               <th
                 key={metric}
                 scope="col"
-                data-active={measure === metric}
+                data-active={activeMetric === metric}
                 aria-sort={sort === metric ? "descending" : "none"}
               >
                 {/* Heaviest first on every column, so the heading selects an order
@@ -85,6 +119,16 @@ export function FileTable({ files, measure, sort, onSortChange, displayRoot, pre
                     {file.generated ? "gen" : FILE_KIND_DETAILS[file.kind].label}
                   </span>
                 </td>
+                {isDiff ? (
+                  <td>
+                    <span className="tag" data-status={file.status} {...tooltipHandlers}>
+                      {statusLabel(file.status)}
+                      <Tooltip compact>
+                        {file.previousPath === null ? `File ${file.status}` : `Renamed from ${file.previousPath}`}
+                      </Tooltip>
+                    </span>
+                  </td>
+                ) : null}
                 <td className="metrics__path">
                   <span className="metrics__file">
                     <button type="button" className="link" onClick={() => onOpenSource(file.path)} {...tooltipHandlers}>
@@ -94,9 +138,16 @@ export function FileTable({ files, measure, sort, onSortChange, displayRoot, pre
                     <CopyPathButton path={file.path} />
                   </span>
                 </td>
-                {COLUMNS.map(({ metric, value }) => {
-                  const cell = STRUCTURE_METRICS.has(metric) && file.language === null ? "-" : count(value(file));
-                  const marks = { "data-active": measure === metric, "data-sorted": sort === metric };
+                {columns.map(({ metric, value, isSigned }) => {
+                  const raw = value(file);
+                  const cell = STRUCTURE_METRICS.has(metric) && file.language === null
+                    ? "-"
+                    : isSigned ? signed(raw) : count(raw);
+                  const marks = {
+                    "data-active": activeMetric === metric,
+                    "data-sorted": sort === metric,
+                    ...(isSigned ? { "data-sign": raw < 0 ? "negative" : raw > 0 ? "positive" : "zero" } : {}),
+                  };
                   return metric === "commentLines" ? (
                     <td key={metric} {...marks} {...tooltipHandlers}>
                       {cell}

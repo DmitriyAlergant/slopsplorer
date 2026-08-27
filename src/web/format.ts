@@ -1,4 +1,4 @@
-import type { Measure } from "../shared/api.ts";
+import type { Aspect, ChangeStatus, Measure } from "../shared/api.ts";
 
 const integer = new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 });
 
@@ -55,4 +55,84 @@ export function measureHeading(measure: Measure): string {
 /** Shortest form, for a tile caption where the number matters more than the unit. */
 export function measureAbbreviation(measure: Measure): string {
   return MEASURE_NAMES[measure].abbreviation;
+}
+
+/**
+ * How each aspect is named beside a unit and explained in the menu.
+ *
+ * One table for all three surfaces, so a new aspect cannot arrive with a label
+ * on one of them and nothing on the others.
+ */
+const ASPECT_NAMES: Record<Aspect, { heading: string; prose: string; description: string }> = {
+  churn: {
+    heading: "Churn",
+    prose: "churn",
+    description: "Added plus removed. The volume of the change, and never negative.",
+  },
+  net: {
+    heading: "Net",
+    prose: "net",
+    description: "Added minus removed. What the change leaves behind, and signed.",
+  },
+  added: { heading: "Added", prose: "added", description: "Only the lines the change introduced." },
+  removed: { heading: "Removed", prose: "removed", description: "Only the lines the change took away." },
+  after: {
+    heading: "After",
+    prose: "after",
+    description: "The whole file as the change leaves it, the same figure a scan reports.",
+  },
+};
+
+export function aspectHeading(aspect: Aspect): string {
+  return ASPECT_NAMES[aspect].heading;
+}
+
+export function aspectDescription(aspect: Aspect): string {
+  return ASPECT_NAMES[aspect].description;
+}
+
+/**
+ * Name the numbers column, which is one unit in a scan and a unit and a side
+ * in a diff.
+ */
+export function weightHeading(measure: Measure, aspect: Aspect, isDiff: boolean): string {
+  return isDiff
+    ? `${ASPECT_NAMES[aspect].heading} ${MEASURE_NAMES[measure].abbreviation}`
+    : MEASURE_NAMES[measure].heading;
+}
+
+/** Name for running text: "42,000 churn tokens", "1,200 LOC". */
+export function weightName(measure: Measure, aspect: Aspect, isDiff: boolean): string {
+  return isDiff && aspect !== "after"
+    ? `${ASPECT_NAMES[aspect].prose} ${MEASURE_NAMES[measure].prose}`
+    : MEASURE_NAMES[measure].prose;
+}
+
+/**
+ * A signed figure, with the sign always drawn.
+ *
+ * Net weight is the only signed quantity on the page, and a "-" that only
+ * appears sometimes reads as a hyphen rather than as a direction.
+ */
+export function signed(value: number): string {
+  if (value === 0) return "0";
+  return `${value < 0 ? "-" : "+"}${integer.format(Math.abs(value))}`;
+}
+
+/** Figures in the active aspect, signed only where the aspect is. */
+export function weightCount(value: number, aspect: Aspect): string {
+  return aspect === "net" ? signed(value) : count(value);
+}
+
+const CHANGE_STATUS_LABELS: Record<ChangeStatus, string> = {
+  added: "new",
+  modified: "edit",
+  deleted: "gone",
+  renamed: "moved",
+  unchanged: "same",
+};
+
+/** Short tag for the status column, sized for a table cell. */
+export function statusLabel(status: ChangeStatus): string {
+  return CHANGE_STATUS_LABELS[status];
 }
