@@ -123,6 +123,52 @@ describe("the agent definitions", () => {
   });
 });
 
+describe("the agent definitions, continued", () => {
+  it("asks Cursor in its read-only ask mode, and takes the answer from stdout", async () => {
+    const cursor = definitionOf("cursor");
+    const argv = cursor.askArguments({ prompt: "what is here?", root: "/tmp", answerPath: "/tmp/a.md" });
+    expect(argv).toContain("--print");
+    expect(argv).toContain("--mode");
+    expect(argv).toContain("ask");
+    expect(argv[argv.length - 1]).toBe("what is here?");
+
+    expect(cursor.isSignedIn(resultOf({ stdout: '{\n  "isAuthenticated": true\n}' }))).toBe(true);
+    expect(cursor.isSignedIn(resultOf({ stdout: '{\n  "isAuthenticated": false\n}' }))).toBe(false);
+    expect(cursor.readVersion(resultOf({ stdout: "2026.08.25-3e8eec8\n" }))).toBe("2026.08.25-3e8eec8");
+
+    const answer = await cursor.readAnswer(
+      { prompt: "", root: "/tmp", answerPath: "/tmp/a.md" }, resultOf({ stdout: "# Here\n\nA point.\n" }),
+    );
+    expect(answer).toEqual({ markdown: "# Here\n\nA point.", costUsd: null });
+  });
+
+  it("asks opencode as its plan agent, and joins the text events of the stream", async () => {
+    const opencode = definitionOf("opencode");
+    const argv = opencode.askArguments({ prompt: "what is here?", root: "/tmp", answerPath: "/tmp/a.md" });
+    expect(argv.slice(0, 5)).toEqual(["run", "--agent", "plan", "--format", "json"]);
+    expect(argv[argv.length - 1]).toBe("what is here?");
+
+    // opencode sets the window title on stdout even when stdout is a pipe, so
+    // the stream it writes carries terminal escapes in front of its JSON.
+    const title = "\u001B]0;project: ready\u0007";
+    const stream = [
+      `${title}{"type":"step_start","part":{}}`,
+      '{"type":"text","part":{"text":"# Here\\n\\n"}}',
+      '{"type":"text","part":{"text":"A point."}}',
+      '{"type":"step_finish","part":{"cost":0}}',
+      "",
+    ].join("\n");
+    const answer = await opencode.readAnswer(
+      { prompt: "", root: "/tmp", answerPath: "/tmp/a.md" }, resultOf({ stdout: stream }),
+    );
+    expect(answer).toEqual({ markdown: "# Here\n\nA point.", costUsd: null });
+
+    expect(opencode.isSignedIn(resultOf({ stdout: `${title}opencode/some-model\n` }))).toBe(true);
+    expect(opencode.isSignedIn(resultOf({ stdout: title }))).toBe(false);
+    expect(opencode.readVersion(resultOf({ stdout: "1.18.3\n" }))).toBe("1.18.3");
+  });
+});
+
 describe("discovering what this host can run", () => {
   it("offers a tool that is installed and signed in", async () => {
     const found = await discoverAgents([fakeAgent("present", ANSWER_SCRIPT)], workingRoot);
@@ -157,6 +203,21 @@ describe("the asks of one server run", () => {
     expect(finished.answer).toBe("# Answer\n\nThe brief, then the ");
     expect(finished.failure).toBeNull();
     expect(finished.finishedAt).not.toBeNull();
+    store.stopAll();
+  });
+
+  it("reports an agent that exited cleanly and said nothing", async () => {
+    const store = createAskStore();
+    const task = store.start({
+      definition: fakeAgent("silent", `require("node:fs").writeFileSync(process.argv[2], "  \\n");`),
+      question: "",
+      brief: "brief",
+      root: workingRoot,
+    });
+    const finished = await settled(() => store.list(), task.id);
+    expect(finished.state).toBe("failed");
+    expect(finished.failure).toContain("said nothing");
+    expect(finished.answer).toBeNull();
     store.stopAll();
   });
 

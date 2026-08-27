@@ -52,6 +52,18 @@ function lastWord(text: string): string {
 }
 
 /**
+ * Remove the escape sequences a tool writes for a terminal.
+ *
+ * opencode sets the window title on stdout even when stdout is a pipe, so its
+ * JSON lines arrive with those sequences in front of them.
+ */
+function withoutTerminalEscapes(text: string): string {
+  return text
+    .replace(/\u001B\][^\u0007\u001B]*(?:\u0007|\u001B\\)/g, "")
+    .replace(/\u001B\[[0-9;?]*[A-Za-z]/g, "");
+}
+
+/**
  * Claude Code.
  *
  * `--permission-mode plan` is what makes the run read-only: the reader asked a
@@ -102,5 +114,59 @@ const CODEX: AgentDefinition = {
   readAnswer: async ({ answerPath }) => ({ markdown: await readFile(answerPath, "utf8"), costUsd: null }),
 };
 
+/**
+ * Cursor.
+ *
+ * `--mode ask` is the read-only mode the tool offers by name, and it is the
+ * same decision the other two make with a sandbox or a plan mode. `--trust`
+ * answers the workspace prompt that would otherwise stall a headless run in a
+ * folder Cursor has not been opened in before; the run still cannot write.
+ */
+const CURSOR: AgentDefinition = {
+  id: "cursor",
+  label: "Cursor",
+  command: "cursor-agent",
+  versionArguments: ["--version"],
+  readVersion: (result) => firstWord(result.stdout),
+  authArguments: ["status", "--format", "json"],
+  isSignedIn: (result) => result.code === 0 && /"isAuthenticated"\s*:\s*true/.test(result.stdout),
+  askArguments: ({ prompt }) => ["--print", "--output-format", "text", "--mode", "ask", "--trust", prompt],
+  readAnswer: async (_invocation, result) => ({ markdown: result.stdout.trim(), costUsd: null }),
+};
+
+/**
+ * opencode.
+ *
+ * It reports no sign-in of its own, so the probe asks what it can answer with:
+ * a model list is what a configured provider produces, and an empty one means
+ * the tool cannot answer whoever installed it.
+ *
+ * The answer is assembled from the `text` events of the JSON stream, because
+ * the readable output is written for a terminal and carries its escapes. Which
+ * tools the `plan` agent may use is opencode's own configuration, so this is
+ * the one entry whose read-only run rests on the reader's settings.
+ */
+const OPENCODE: AgentDefinition = {
+  id: "opencode",
+  label: "opencode",
+  command: "opencode",
+  versionArguments: ["--version"],
+  readVersion: (result) => firstWord(result.stdout),
+  authArguments: ["models"],
+  isSignedIn: (result) => result.code === 0 && withoutTerminalEscapes(result.stdout).trim() !== "",
+  askArguments: ({ prompt }) => ["run", "--agent", "plan", "--format", "json", prompt],
+  readAnswer: async (_invocation, result) => {
+    const events = withoutTerminalEscapes(result.stdout)
+      .split("\n")
+      .filter((line) => line.trim() !== "")
+      .map((line) => JSON.parse(line) as { type?: unknown; part?: { text?: unknown } });
+    const markdown = events
+      .filter((event) => event.type === "text")
+      .map((event) => (typeof event.part?.text === "string" ? event.part.text : ""))
+      .join("");
+    return { markdown, costUsd: null };
+  },
+};
+
 /** The agents the host is searched for, in the order the menu lists them. */
-export const AGENT_DEFINITIONS: readonly AgentDefinition[] = [CLAUDE, CODEX];
+export const AGENT_DEFINITIONS: readonly AgentDefinition[] = [CLAUDE, CODEX, CURSOR, OPENCODE];

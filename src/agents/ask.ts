@@ -70,9 +70,16 @@ export function createAskStore(): AskStore {
     if (result.startFailure === null && result.code === 0) {
       try {
         const answer = await definition.readAnswer(invocation, result);
-        record.task.state = "answered";
-        record.task.answer = answer.markdown;
-        record.task.costUsd = answer.costUsd;
+        if (answer.markdown.trim() === "") {
+          // A clean exit with nothing to show is a failure the reader has to
+          // see, not an empty panel they are left to interpret.
+          record.task.state = "failed";
+          record.task.failure = `${definition.label} finished and said nothing.`;
+        } else {
+          record.task.state = "answered";
+          record.task.answer = answer.markdown;
+          record.task.costUsd = answer.costUsd;
+        }
       } catch (cause) {
         // The tool succeeded and its answer was still unreadable, which the
         // reader has to be told rather than left waiting for.

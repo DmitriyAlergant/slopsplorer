@@ -24,12 +24,14 @@ src/web/        AgentPicker -> AskDialog -> AskDock -> AnswerDialog
 
 ## Which agents are offered
 
-`AGENT_DEFINITIONS` in `src/agents/definitions.ts` is the table of known tools, one entry each for Claude Code and Codex.
+`AGENT_DEFINITIONS` in `src/agents/definitions.ts` is the table of known tools: Claude Code, Codex, Cursor, and opencode.
 An entry says how to run the tool: how to ask it its version, how to ask it whether it is signed in, what argument list one question is, and where the answer comes back.
 The tools agree about none of those four, so each entry answers them itself and no branch is shared.
 
 `discoverAgents()` runs the two probes once, before the server listens, and the command line prints what it found.
-A tool must pass both to be offered: it must start, and it must report that it is signed in.
+A tool must pass both to be offered: it must start, and it must report that it can answer.
+Three of them say so directly, and opencode reports no sign-in of its own, so it is asked for its model list instead: an empty list is a tool that cannot answer whoever installed it.
+opencode ships free models, so it usually passes with no credential at all, which is deliberate on its part and the right answer to the question actually being asked.
 A tool that fails either is left out, because a button that fails only after the reader has typed a question is worse than no button.
 
 Discovery, and every ask, resolves the command outside the `node_modules/.bin` folders npm puts in front of `PATH`.
@@ -49,8 +51,9 @@ It is written on the server and not in the browser for one reason: the figures m
 The whole text is kept on the task, and the answer dialog draws it under the answer, so what the agent was told is never something the reader has to take on trust.
 
 The brief tells the agent to answer in Markdown and to change nothing.
-That instruction is not what makes the run safe.
-Claude Code is asked in `plan` mode and Codex in the `read-only` sandbox, so neither can write whatever it is told.
+That instruction is a request and not a guarantee, so each tool is also asked in the most restricted mode it offers.
+Claude Code gets `plan` mode, Codex the `read-only` sandbox, and Cursor `ask` mode, and none of the three can write whatever it is told.
+opencode is asked as its `plan` agent, and what that agent may do is the reader's own opencode configuration rather than anything this repository can set, which is the one place the mode is a request too.
 
 ## Running one ask
 
@@ -59,7 +62,8 @@ Claude Code is asked in `plan` mode and Codex in the `read-only` sandbox, so nei
 A question is one argument, so a question that reads like a command line is still a question.
 
 An ask ends in one of three ways.
-The tool exits cleanly and its answer is read, by the route each definition names: the JSON on stdout for Claude Code, the last-message file for Codex.
+The tool exits cleanly and its answer is read, by the route each definition names: the JSON on stdout for Claude Code, the last-message file for Codex, plain stdout for Cursor, and the `text` events of the JSON stream for opencode.
+A tool that exits cleanly and says nothing has failed, and is reported as having failed rather than drawn as an empty panel.
 The tool exits with a failure, and the reader is told what it said.
 The tool passes the fifteen minute ceiling, and it is stopped and said to have been.
 

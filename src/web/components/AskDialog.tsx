@@ -74,8 +74,7 @@ export function AskDialog({ open, agent, starting, failure, onClose, onAsk }: Pr
 
         <p className="muted">
           The agent is also told what you have on screen: the subject, the drill, the selection,
-          the unit, the flavors counted, and the last file you opened. It reads the repository and
-          changes nothing. Leave the question empty to be told what you are looking at.
+          the unit, the flavors counted, and the last file you opened.
         </p>
 
         {failure ? <p className="empty">{failure}</p> : null}

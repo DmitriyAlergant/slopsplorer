@@ -3,6 +3,9 @@ import type { AskTask } from "../../shared/api.ts";
 import { duration } from "../format.ts";
 import { renderMarkdown } from "../markdown.tsx";
 
+/** What the heading says the reader asked when they typed nothing. */
+const UNASKED_QUESTION = "What am I looking at";
+
 interface Props {
   task: AskTask | null;
   onClose: () => void;
@@ -41,16 +44,25 @@ export function AnswerDialog({ task, onClose }: Props): React.JSX.Element {
   }, [task]);
 
   /**
-   * Copy the question with the answer, and not the brief.
+   * Copy the question with the answer, under headings, and not the brief.
    *
-   * There is no second turn here, so a follow-up is asked afresh. What carries
-   * over is what the reader wrote and what came back; the brief describes the
-   * page as it was, and the next ask writes its own.
+   * There is no second turn here, so a follow-up is pasted somewhere else and
+   * asked again. What travels is what the reader wrote and what came back: the
+   * brief describes the page as it was, and the next ask writes its own.
    */
   const copy = (): void => {
     if (task?.answer == null) return;
-    const question = task.question.trim();
-    const text = question === "" ? task.answer : `${question}\n\n${task.answer}`;
+    const text = [
+      "# USER QUESTION:",
+      "",
+      task.question.trim() === "" ? UNASKED_QUESTION : task.question.trim(),
+      "",
+      "",
+      "# AGENT RESPONSE:",
+      "",
+      task.answer.trim(),
+      "",
+    ].join("\n");
     void navigator.clipboard.writeText(text).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
@@ -62,7 +74,7 @@ export function AnswerDialog({ task, onClose }: Props): React.JSX.Element {
       <header className="viewer__head">
         <div>
           <p className="eyebrow">{task ? describeRun(task) : "Answer"}</p>
-          <h2>{task && task.question.trim() !== "" ? task.question.trim() : "What am I looking at"}</h2>
+          <h2>{task && task.question.trim() !== "" ? task.question.trim() : UNASKED_QUESTION}</h2>
         </div>
         <div className="viewer__actions">
           {task?.answer != null ? (

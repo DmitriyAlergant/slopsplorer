@@ -202,7 +202,7 @@ Outside one, the walker applies `.gitignore` itself, so a plain folder behaves t
 ## Ask an agent about it
 
 The map says where the weight sits, not why it sits there.
-If you have Claude Code or Codex installed and signed in, the **Ask** button in the header hands that question to one of them.
+If you have Claude Code, Codex, Cursor, or opencode installed and signed in, the **Ask** button in the header hands that question to one of them.
 
 Slopsplorer finds them at startup, and offers only a tool that starts and reports that it is signed in.
 Nothing is sent anywhere by Slopsplorer: the agent runs on your machine, under your own sign-in, in the folder being measured.
@@ -212,7 +212,9 @@ Slopsplorer adds what you have on screen - the scan or the comparison, the drill
 An answer takes minutes, so the question runs in the background and waits in a card at the corner of the window until it is ready.
 Open the card to read the answer, and open **What the agent was told** under it to see exactly what was sent.
 
-The agent is asked in a mode that cannot write: Claude Code in `plan` mode, Codex in its `read-only` sandbox.
+Each tool is asked in the most restricted mode it offers: `plan` mode for Claude Code, the `read-only` sandbox for Codex, `ask` mode for Cursor, and the `plan` agent for opencode.
+The first three cannot write.
+What opencode's `plan` agent may do is decided by your own opencode configuration, so check that if it matters to you.
 
 ## Agent skill
 
@@ -225,7 +227,8 @@ On Windows you get the same command written for PowerShell.
 
 The server binds to loopback by default and is read-only.
 It serves only files that were part of the scan, and refuses any path outside it.
-An agent it starts for you is asked in a read-only mode, and your question is passed as one argument rather than through a shell.
+Your question is passed to an agent as one argument and never through a shell.
+Each agent is asked in the most restricted mode it offers, which for three of the four cannot write; see [Ask an agent about it](#ask-an-agent-about-it).
 
 ## Development
 
