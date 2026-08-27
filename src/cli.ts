@@ -11,8 +11,9 @@ import {
 } from "./scanner/gitdiff.ts";
 import { DEFAULT_MAX_FILE_BYTES, scanSourceTree } from "./scanner/scan.ts";
 import type { ScanIndex, ScanOptions, ScanProgress } from "./scanner/scan.ts";
-import type { ComparisonRequest } from "./shared/api.ts";
+import { ASPECTS, type Aspect, type ComparisonRequest } from "./shared/api.ts";
 import { DEFAULT_TOKENIZER, isTokenizerName, TOKENIZERS } from "./scanner/tokenize.ts";
+import { buildReport, DEFAULT_REPORT_THRESHOLD, REPORT_UNITS, type ReportOptions } from "./server/report.ts";
 import { createSlopsplorerServer, resolvePackageRoot, type IndexProducer } from "./server/server.ts";
 
 const DEFAULT_HOST = "127.0.0.1";
@@ -60,8 +61,18 @@ OPTIONS
   -h, --help              Show this help.
   --version               Show the version.
 
+REPORT
+  --report                Print a text report to stdout and exit. No server.
+  --unit <name>           Unit of the report: ${Object.keys(REPORT_UNITS).join(", ")}. Default tokens.
+  --aspect <name>         Side of the change the report describes: ${ASPECTS.join(", ")}.
+                          Default churn. Comparison only.
+  --threshold <percent>   A node is expanded when it reaches this share of its
+                          section. Default ${DEFAULT_REPORT_THRESHOLD}.
+
 EXAMPLES
   slopsplorer                     Scan the current folder.
+  slopsplorer --report            Print a text report of the current folder.
+  slopsplorer --report --diff     Print a text report of the working-tree change.
   slopsplorer ../other-project    Scan a folder elsewhere.
   slopsplorer --diff              Compare HEAD against the working tree.
   slopsplorer --staged            Compare HEAD against the index.
@@ -253,6 +264,51 @@ async function readComparisonRequest(
   }
 }
 
+interface ReportFlags {
+  report?: boolean | undefined;
+  unit?: string | undefined;
+  aspect?: string | undefined;
+  threshold?: string | undefined;
+  host?: string | undefined;
+  port?: string | undefined;
+  dev?: boolean | undefined;
+  open?: boolean | undefined;
+}
+
+/**
+ * The report's options, or `null` when the run serves the page instead.
+ *
+ * A report flag without `--report` and a server flag with it are both
+ * refused, so a flag never silently does nothing.
+ */
+function readReportOptions(values: ReportFlags, isDiff: boolean): ReportOptions | null {
+  if (values.report !== true) {
+    for (const flag of ["unit", "aspect", "threshold"] as const) {
+      if (values[flag] !== undefined) fail(`--${flag} describes a report, so it needs --report`);
+    }
+    return null;
+  }
+  for (const flag of ["host", "port", "dev", "open"] as const) {
+    if (values[flag] !== undefined) fail(`--${flag} belongs to the server, and --report starts none`);
+  }
+
+  const unitName = values.unit ?? "tokens";
+  const measure = REPORT_UNITS[unitName];
+  if (measure === undefined) fail(`unknown unit "${unitName}". Known units: ${Object.keys(REPORT_UNITS).join(", ")}`);
+
+  if (values.aspect !== undefined && !isDiff) fail("--aspect names a side of a change, and a scan has none");
+  const aspectName = values.aspect ?? (isDiff ? "churn" : "after");
+  const aspect: Aspect | undefined = ASPECTS.find((candidate) => candidate === aspectName);
+  if (aspect === undefined) fail(`unknown aspect "${aspectName}". Known aspects: ${ASPECTS.join(", ")}`);
+
+  const threshold = values.threshold === undefined ? DEFAULT_REPORT_THRESHOLD : Number(values.threshold);
+  if (!Number.isFinite(threshold) || threshold < 0 || threshold > 100) {
+    fail(`--threshold expects a percent between 0 and 100, got "${values.threshold}"`);
+  }
+
+  return { measure, aspect, threshold };
+}
+
 async function main(): Promise<void> {
   let parsed;
   try {
@@ -274,6 +330,10 @@ async function main(): Promise<void> {
         open: { type: "boolean" },
         // parseArgs has no negation syntax, so the opt-out is its own flag.
         "no-open": { type: "boolean" },
+        report: { type: "boolean" },
+        unit: { type: "string" },
+        aspect: { type: "string" },
+        threshold: { type: "string" },
         help: { type: "boolean", short: "h" },
         version: { type: "boolean" },
       },
@@ -306,6 +366,7 @@ async function main(): Promise<void> {
   if (comparisonRequest !== null && values["all-files"] === true) {
     fail("--all-files widens a filesystem walk, and a diff runs none");
   }
+  const reportOptions = readReportOptions(values, comparisonRequest !== null);
 
   const maxFileBytes = values["max-file-bytes"] === undefined
     ? DEFAULT_MAX_FILE_BYTES
@@ -355,6 +416,10 @@ async function main(): Promise<void> {
   } catch (cause) {
     if (cause instanceof GitError) fail(cause.message);
     throw cause;
+  }
+  if (reportOptions !== null) {
+    process.stdout.write(buildReport(index, reportOptions));
+    return;
   }
   printSummary(index, maxFileBytes);
 

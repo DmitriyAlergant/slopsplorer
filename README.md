@@ -48,6 +48,44 @@ In net, every row of the source tree draws a band from a centre axis, removed le
 
 *Slopsplorer reading its own source tree.*
 
+## Text report
+
+A coding agent cannot open the page.
+`--report` prints the same map as text and exits, for a tree or for a change.
+
+```bash
+slopsplorer --report                 # the current folder
+slopsplorer --report main...HEAD     # a pull request
+slopsplorer --report --unit loc      # lines of code instead of tokens
+slopsplorer --report --threshold 1   # expand deeper
+```
+
+The report has one section per flavor.
+Code and tests are walked as a tree.
+Docs, data, i18n, and other files get one line each, with their heaviest files.
+Generated files are excluded from every figure and reported last.
+
+The walk follows one rule: a node is expanded when it reaches the threshold share of its section, 3% by default.
+An expanded folder lists the children that pass the same test, then one `...` row for the rest, so every level sums to its parent.
+A folder above the threshold with no child above it prints as a leaf.
+To see more, lower the threshold or point the command at a subfolder.
+
+```
+CODE  99k tokens, 48 files, 17% comment
+./                   99k  100%  48 files
+  src/               99k  100%  46 files
+    web/             48k   49%  31 files
+      components/    22k   22%  19 files
+      styles.css     15k   15%  1.1k loc
+      ... 11 files   12k   12%
+    scanner/         23k   24%  10 files
+    server/          18k   18%  3 files
+    ... 2 files     9.0k    9%
+  ... 2 files        191   <1%
+```
+
+*Slopsplorer reporting its own source tree at `--threshold 8`.*
+
 ## Three ways to filter and narrow-down
 
 They are deliberately different, and they compose.
@@ -87,10 +125,10 @@ Per file:
 
 No line measure counts blank lines, and `lines = codeLines + commentLines` always.
 
-Tokens, Lines, or LOC is the unit every total, bar, and ranking is expressed in.
+Every total, bar, and ranking uses one unit: Tokens, Lines, or LOC.
 You pick the unit once, from the switch at the top of the page, and sorting a file table on one of those columns picks it too.
 Tokens answer what a review or a context window will cost.
-LOC answers how much logic is actually there, which is the question a comment-padded file distorts.
+LOC answers how much logic is there, which is the question a comment-padded file distorts.
 
 Structure counts come from prebuilt WASM grammars for thirteen languages.
 A file outside them still gets token and line counts, and reports zero structure rather than a guess.
@@ -112,6 +150,10 @@ slopsplorer <path>              # defaults to the current folder
   --tokenizer cl100k_base       # default o200k_base
   --no-open                     # do not open a browser on start
   --dev                         # Vite hot reload, for work on Slopsplorer itself
+  --report                      # print a text report and exit, no server
+  --unit loc                    # report unit: tokens (default), lines, or loc
+  --aspect net                  # report side of a change: churn (default), net, added, removed, after
+  --threshold 1                 # report expands a node at this share of its section, default 3
 ```
 
 Inside a Git worktree the file list comes from the Git index plus untracked files that no ignore rule covers, so dependencies and build output never distort the map.

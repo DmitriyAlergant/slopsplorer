@@ -35,7 +35,7 @@ function planFolderCards(childCount: number, maxColumns: number): { columns: num
   return { columns: maxColumns, tiles: Math.min(childCount, maxColumns * CARD_ROWS) };
 }
 
-function flavorOf(file: FileRow): Flavor {
+export function flavorOf(file: FileRow): Flavor {
   return file.generated ? "generated" : file.kind;
 }
 
@@ -151,7 +151,7 @@ function share(part: number, whole: number): number {
 }
 
 /** Heaviest first, where "heavy" is magnitude, because net weight is signed. */
-function byMagnitude(left: number, right: number): number {
+export function byMagnitude(left: number, right: number): number {
   return Math.abs(right) - Math.abs(left);
 }
 

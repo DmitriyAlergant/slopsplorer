@@ -29,6 +29,7 @@ The data flows one way, and every aggregation happens on the server.
 src/scanner/     walk -> classify -> tokenize + measure -> ScanIndex
                  git diff -> align lines -> tokenize + measure -> ScanIndex
 src/server/      ScanIndex + ViewRequest -> buildView -> ViewResponse
+                 ScanIndex + ReportOptions -> buildReport -> text on stdout
 src/web/         ViewRequest state -> POST /api/view -> render
 src/shared/      the wire contract both sides import
 ```
@@ -40,6 +41,7 @@ Two design docs hold the detail, and they are the technical memory of this repos
 - [docs/architecture.md](docs/architecture.md) - how the parts fit together, the scan, the wire contract, the routes, the client.
 - [docs/classification.md](docs/classification.md) - which files enter a scan, flavors, grammar selection, structure counts, lines, tokens.
 - [docs/diff-mode.md](docs/diff-mode.md) - the second producer of an index: the command line, the line diff, churn and net, signed weight.
+- [docs/report.md](docs/report.md) - the second consumer of an index: `--report`, the sections, the one rule that decides how deep the walk goes.
 
 `README.md` is the user-facing page, and `skill/SKILL.md` is the agent skill that ships inside the package.
 Both describe behavior to someone outside the code, so a change in what a number means has to reach them too.
