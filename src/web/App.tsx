@@ -597,6 +597,8 @@ export function App(): React.JSX.Element {
           path={request.selected.path}
           onSelect={select}
           directFilesOnly={request.selected.rowKind === "files"}
+          fileScope={request.fileScope}
+          onFileScopeChange={(fileScope) => patch({ fileScope })}
           canDrill={request.selected.rowKind === "folder" && request.selected.path !== request.drillPath}
           onDrill={() => drill(request.selected.path)}
           rank={request.rank}

@@ -1358,6 +1358,11 @@ button { cursor: pointer; }
 /* A qualifier on the caption rather than a caption of its own, so it reads as
    part of the same line and not as a second claim. */
 .detail__caption-note { margin-left: 10px; color: var(--rule-firm); }
+/* The two controls of the file list share the right of its strip: what the rows
+   are, and the floor under them. */
+.detail__files-controls { display: flex; flex: none; align-items: center; gap: 14px; }
+/* Sized for a strip inside a panel rather than for the filter bar it borrows. */
+.switch--compact .switch__option { padding: 4px 9px; font-size: 11px; }
 .detail__threshold { display: flex; flex: none; align-items: center; gap: 8px; }
 .detail__threshold span {
   color: var(--ink-faint);
@@ -1463,8 +1468,10 @@ button { cursor: pointer; }
   border-bottom: 1px solid var(--rule);
   text-align: right; white-space: nowrap;
 }
+/* By class rather than by position: a diff draws one more column before the
+   file name, and a heading has to sit over the figures it names. */
 .metrics th:first-child, .metrics td:first-child,
-.metrics th:nth-child(2), .metrics td:nth-child(2) { text-align: left; }
+.metrics th.metrics__path, .metrics td.metrics__path { text-align: left; }
 .metrics tbody tr:hover { background: var(--sunk); }
 /* The whole heading is the target, so the button carries the cell's padding. */
 .metrics th:has(.metrics__sort) { padding: 0; }
@@ -1480,12 +1487,13 @@ button { cursor: pointer; }
   color: inherit;
   font: inherit; letter-spacing: inherit; text-transform: inherit;
 }
+.metrics th.metrics__path .metrics__sort { justify-content: flex-start; }
 .metrics__sort:hover { color: var(--ink); }
 /* Two different facts: bold marks the unit the page counts in, the caret and
    its heading colour mark the order the rows are in. Usually one column. */
 .metrics th[data-active="true"] { color: var(--ink); }
 .metrics td[data-active="true"] { color: var(--ink); font-weight: 600; }
-.metrics th[aria-sort="descending"] { color: var(--ink); }
+.metrics th[aria-sort="ascending"], .metrics th[aria-sort="descending"] { color: var(--ink); }
 .metrics td[data-sorted="true"] { color: var(--ink); }
 /* Colour repeats the sign the figure already carries; it never replaces it. */
 .metrics td[data-sign="positive"] { color: var(--status-added); }

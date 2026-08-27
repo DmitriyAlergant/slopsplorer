@@ -90,7 +90,7 @@ The browser never receives a file it does not display.
 
 ## The wire contract
 
-`ViewRequest` carries the flavor switches, the search text, the checkbox exclusions, the expanded folders, the drill path, the selection, the sorted column, the measure, and the aspect.
+`ViewRequest` carries the flavor switches, the search text, the checkbox exclusions, the expanded folders, the drill path, the selection, the file list scope, the sorted column, the measure, and the aspect.
 `ViewResponse` carries the tree rows, the folder panel, its ranked files, the headline figures, and the scan metadata.
 
 The measured quantity on the wire is always `weight`, never `tokens`.
@@ -170,7 +170,12 @@ The flavor chips are not applied to that whole, and generated files are never in
 So the bar's length is what the folder holds of the scope, its divisions are the flavors it is made of, and turning a flavor off takes a slice out of every bar instead of stretching the rest to fill the width.
 The tiles account for the whole of their folder, so at the top of a scope the bars add up to the scope.
 A separate ranking panel used to repeat the tiles as rows, which put the same subtree on the page twice.
-The strip above the ranked table holds the threshold that thins it, because that control belongs to the rows it removes.
+The strip above the ranked table holds the two controls that belong to the rows below it: how much of the selection the table lists, and the threshold that thins it.
+
+`ViewRequest.fileScope` is that first control.
+`subtree` lists every file under the selected folder, and `folder` lists only the files that sit directly in it.
+It moves the table alone: the tiles, the folder head, and the tree all keep describing the whole selection, so a reader can ask what one folder holds without leaving the subtree the panel is about.
+A `.` selection is a folder's own files already, so the switch is not drawn there and `rankFiles()` treats that selection as the narrow scope whatever the field says.
 
 The scope strip under the workspace draws the same columns as the folder head, in the same order, and one is read the same way in both places.
 Only the subject differs: the folder head describes the selection, and the strip describes the whole drill scope.
@@ -205,8 +210,13 @@ Sorting on `tokens`, `lines`, or `codeLines` makes that column the measure; sort
 Choosing one moves the sort to it, unless the tables are sorted on a metric it does not cover, such as comment lines or function count, which is a deliberate choice and stays where it is.
 Either way the threshold under the table resets, because a floor of 2,000 tokens is not a floor of 2,000 lines and a floor of 2,000 churn tokens is not a floor of 2,000 net tokens.
 
+The file column is the one sorted column that holds no figure.
+It orders the rows A to Z by whole path, which keeps the files of one folder together, and it moves neither the measure nor the aspect.
+It is also the one column that does not decide which rows the table holds: a name is not a ranking, so `rankFiles()` always cuts the list to the heaviest by the active measure and aspect, and the name orders what survives that cut.
+`MeasuredMetric` is every other sorted column, the ones a table draws a number in, and `rankMetricsFor()` returns those while `sortMetricsFor()` adds the file column to them.
+
 A scan and a diff draw different columns, so a stored preference or a pasted link can name one the open index has not got.
-`buildView()` clamps the metric to the mode and echoes what it used in `ViewResponse.rankMetric`, and the client adopts that, which keeps the sort caret under a heading that exists.
+`buildView()` clamps the metric to the columns the mode can sort on and echoes what it used in `ViewResponse.rankMetric`, and the client adopts that, which keeps the sort caret under a heading that exists.
 
 `aspectTotals()` in `src/shared/api.ts` applies the two identities that make net and churn out of the two sides.
 The folder head and the scope strip both call it, so a strip that states all five sides at once cannot disagree with the server about what any of them is.

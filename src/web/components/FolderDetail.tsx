@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import type { Aspect, DetailView, FileRow, Measure, RankMetric, RowKind, ViewRequest } from "../../shared/api.ts";
-import { ASPECTS, MEASURES, aspectTotals } from "../../shared/api.ts";
+import type { Aspect, DetailView, FileRow, FileScope, Measure, RankMetric, RowKind, ViewRequest } from "../../shared/api.ts";
+import { ASPECTS, FILE_SCOPES, MEASURES, aspectTotals } from "../../shared/api.ts";
 import {
   aspectFigure, count, countOf, measureHeading, percent, weightAbbreviation, weightCount, weightHeading, weightName,
 } from "../format.ts";
@@ -30,6 +30,9 @@ interface Props {
   onSelect: (rowKind: RowKind, path: string) => void;
   /** Whether the panel describes a folder's own files rather than its subtree. */
   directFilesOnly: boolean;
+  /** How much of the selected folder the file list holds. */
+  fileScope: FileScope;
+  onFileScopeChange: (fileScope: FileScope) => void;
   canDrill: boolean;
   onDrill: () => void;
   /** The threshold under the file list, in the active measure and aspect. */
@@ -46,11 +49,23 @@ const CARD_GAP = 8;
 const CARD_PADDING = 40;
 const MAX_COLUMNS = 6;
 
+/** What each scope of the file list is called, and what it holds. */
+const FILE_SCOPE_DETAILS: Record<FileScope, { label: string; description: string }> = {
+  folder: {
+    label: "This folder",
+    description: "List only the files that sit directly in the selected folder.",
+  },
+  subtree: {
+    label: "All below",
+    description: "List every file of the selected folder and of the folders under it.",
+  },
+};
+
 /** A round step for each measure, so the spinner moves by a useful amount. */
 const THRESHOLD_STEPS: Record<Measure, number> = { tokens: 500, lines: 50, codeLines: 50 };
 
 /** The selected folder: its weight, how its children divide it, and its own files. */
-export function FolderDetail({ detail, files, filesTotal, measure, aspect, isDiff, sort, onSortChange, path, onSelect, directFilesOnly, canDrill, onDrill, rank, onRankChange, onOpenSource, onCapacityChange }: Props): React.JSX.Element {
+export function FolderDetail({ detail, files, filesTotal, measure, aspect, isDiff, sort, onSortChange, path, onSelect, directFilesOnly, fileScope, onFileScopeChange, canDrill, onDrill, rank, onRankChange, onOpenSource, onCapacityChange }: Props): React.JSX.Element {
   const panelRef = useRef<HTMLElement>(null);
   const [columns, setColumns] = useState(3);
   // What the reader has typed, which is not the threshold: an empty box is a
@@ -87,6 +102,9 @@ export function FolderDetail({ detail, files, filesTotal, measure, aspect, isDif
   // Net is signed, so no whole divides it into an honest percentage. The bands
   // still scale against churn, and the page states no share of them.
   const showsShare = aspect !== "net";
+  // A `.` selection is a folder's own files already, so the panel is narrowed
+  // to them whatever the switch says, and the switch is not drawn.
+  const listsFolderOnly = directFilesOnly || fileScope === "folder";
 
   return (
     <section ref={panelRef} className="panel detail" aria-label="Folder detail">
@@ -242,8 +260,8 @@ export function FolderDetail({ detail, files, filesTotal, measure, aspect, isDif
           threshold that thins them stands with them. */}
       <div className="detail__files-head">
         <p className="detail__caption">
-          {directFilesOnly
-            ? "Files directly in this folder"
+          {listsFolderOnly
+            ? isDiff ? "Heaviest changes in this folder" : "Heaviest files in this folder"
             : isDiff ? "Heaviest changes below here" : "Heaviest files below here"}
           {files.length < filesTotal ? (
             <span className="detail__caption-note">
@@ -251,22 +269,44 @@ export function FolderDetail({ detail, files, filesTotal, measure, aspect, isDif
             </span>
           ) : null}
         </p>
-        <label className="detail__threshold">
-          <span>Minimum {unit}</span>
-          <input
-            type="number"
-            min={0}
-            step={THRESHOLD_STEPS[measure]}
-            value={thresholdDraft ?? String(rank.minWeight)}
-            onChange={(event) => {
-              setThresholdDraft(event.target.value);
-              onRankChange({ minWeight: Math.max(0, Number(event.target.value) || 0) });
-            }}
-            // Leaving the box gives it back to the threshold, so anything the
-            // reader left half-typed reads as the number the table was cut by.
-            onBlur={() => setThresholdDraft(null)}
-          />
-        </label>
+        <div className="detail__files-controls">
+          {/* Not drawn for a `.` row: that selection is the folder's own files,
+              and a switch offering the subtree would contradict every figure
+              above it. */}
+          {directFilesOnly ? null : (
+            <div className="switch switch--compact" role="group" aria-label="How much of the folder the file list holds">
+              {FILE_SCOPES.map((candidate) => (
+                <button
+                  key={candidate}
+                  type="button"
+                  className="switch__option"
+                  aria-pressed={candidate === fileScope}
+                  onClick={() => onFileScopeChange(candidate)}
+                  {...tooltipHandlers}
+                >
+                  {FILE_SCOPE_DETAILS[candidate].label}
+                  <Tooltip>{FILE_SCOPE_DETAILS[candidate].description}</Tooltip>
+                </button>
+              ))}
+            </div>
+          )}
+          <label className="detail__threshold">
+            <span>Minimum {unit}</span>
+            <input
+              type="number"
+              min={0}
+              step={THRESHOLD_STEPS[measure]}
+              value={thresholdDraft ?? String(rank.minWeight)}
+              onChange={(event) => {
+                setThresholdDraft(event.target.value);
+                onRankChange({ minWeight: Math.max(0, Number(event.target.value) || 0) });
+              }}
+              // Leaving the box gives it back to the threshold, so anything the
+              // reader left half-typed reads as the number the table was cut by.
+              onBlur={() => setThresholdDraft(null)}
+            />
+          </label>
+        </div>
       </div>
 
       <FileTable
@@ -279,7 +319,7 @@ export function FolderDetail({ detail, files, filesTotal, measure, aspect, isDif
         displayRoot={path}
         onOpenSource={onOpenSource}
         emptyMessage={
-          directFilesOnly
+          listsFolderOnly
             ? `No files sit directly in this folder under the current filters and the minimum ${unit} threshold.`
             : `No files match the current filters, scope, and minimum ${unit} threshold.`
         }

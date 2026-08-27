@@ -128,13 +128,17 @@ export const WEIGHT_FIELD_NAMES: readonly WeightField[] =
  * A sortable column of the file tables.
  *
  * Every metric here is a column both tables draw in the mode it belongs to,
- * and every numeric column they draw is a metric here. Sorting is the only way
- * to choose one, so a metric without a column would be unreachable.
+ * and every column they draw is a metric here. Sorting is the only way to
+ * choose one, so a metric without a column would be unreachable.
+ *
+ * `name` is the file column, the one metric that is not a quantity. It orders
+ * the rows A to Z, and it never decides which rows a curtailed list holds.
  *
  * The aspect names are the diff-mode columns: their unit is the active measure,
  * so sorting one chooses the aspect the way sorting `tokens` chooses a measure.
  */
 export type RankMetric =
+  | "name"
   | "tokens"
   | "lines"
   | "codeLines"
@@ -143,21 +147,34 @@ export type RankMetric =
   | "branches"
   | Aspect;
 
+/** Every sortable column that holds a figure, which is all of them but the file name. */
+export type MeasuredMetric = Exclude<RankMetric, "name">;
+
 /** Columns a scan draws. Every one is a plain numeric field of `FileRow`. */
-export const SCAN_RANK_METRICS: readonly RankMetric[] = [
+export const SCAN_RANK_METRICS: readonly MeasuredMetric[] = [
   "tokens", "lines", "codeLines", "commentLines", "functions", "branches",
 ];
 
 /** Columns a diff draws. The five aspect columns are `ASPECTS`, in its order. */
-export const DIFF_RANK_METRICS: readonly RankMetric[] = [
+export const DIFF_RANK_METRICS: readonly MeasuredMetric[] = [
   ...ASPECTS, "functions", "branches",
 ];
 
-export const RANK_METRICS: readonly RankMetric[] = [...SCAN_RANK_METRICS, ...ASPECTS];
+export const RANK_METRICS: readonly RankMetric[] = ["name", ...SCAN_RANK_METRICS, ...ASPECTS];
 
-/** Which columns a table draws, decided by the producer of the index. */
-export function rankMetricsFor(isDiff: boolean): readonly RankMetric[] {
+/** Which measured columns a table draws, decided by the producer of the index. */
+export function rankMetricsFor(isDiff: boolean): readonly MeasuredMetric[] {
   return isDiff ? DIFF_RANK_METRICS : SCAN_RANK_METRICS;
+}
+
+/**
+ * Every column a table can be sorted on in this mode.
+ *
+ * The file column stands in both modes and holds no figure, so it is not in
+ * either list of measured columns and is named here instead.
+ */
+export function sortMetricsFor(isDiff: boolean): readonly RankMetric[] {
+  return ["name", ...rankMetricsFor(isDiff)];
 }
 
 /**
@@ -238,6 +255,18 @@ export interface FileRow {
  * which the tree, the tiles, and the ribbon all draw as `.`.
  */
 export type RowKind = "folder" | "files";
+
+/**
+ * How much of the selected folder the file list holds.
+ *
+ * Only the list moves. The tiles, the headline figures, and the tree keep
+ * describing the whole selection, so this answers "what sits here" without
+ * making the reader leave the subtree the panel is about.
+ */
+export type FileScope = "folder" | "subtree";
+
+/** Narrow first, then wide, which is the order the switch that sets it reads. */
+export const FILE_SCOPES: readonly FileScope[] = ["folder", "subtree"];
 
 /** One rendered row of the source tree, already filtered and aggregated. */
 export interface TreeRow {
@@ -436,6 +465,8 @@ export interface ViewRequest {
   /** Folder that replaces the project root in the main workspace widgets. */
   drillPath: string;
   selected: { rowKind: RowKind; path: string };
+  /** How much of the selection the file list holds. A `.` selection is its own files already. */
+  fileScope: FileScope;
   /**
    * The sorted column of both file tables, and the ranking's order.
    *

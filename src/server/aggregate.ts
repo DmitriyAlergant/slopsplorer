@@ -1,11 +1,11 @@
 import path from "node:path";
 import type {
-  Aspect, DetailView, FileKind, FileRow, Flavor, FlavorSlice, FolderCard, Measure, PathCrumb,
-  RankMetric, RowKind, SummaryView, TreeRow, ViewRequest, ViewResponse, WeightField,
+  Aspect, DetailView, FileKind, FileRow, FileScope, Flavor, FlavorSlice, FolderCard, Measure, PathCrumb,
+  MeasuredMetric, RankMetric, RowKind, SummaryView, TreeRow, ViewRequest, ViewResponse, WeightField,
 } from "../shared/api.ts";
 import {
-  ASPECTS, FILE_KINDS, MEASURES, RANK_METRICS, TREE_SORTS,
-  defaultRankMetric, rankMetricsFor, weightField,
+  ASPECTS, FILE_KINDS, FILE_SCOPES, MEASURES, RANK_METRICS, TREE_SORTS,
+  defaultRankMetric, sortMetricsFor, weightField,
 } from "../shared/api.ts";
 import type { FolderNode, ScanIndex } from "../scanner/scan.ts";
 
@@ -132,12 +132,13 @@ export function byMagnitude(left: number, right: number): number {
 type ColumnField = WeightField | "commentLines" | "functions" | "branches";
 
 /**
- * The row field one sorted column reads.
+ * The row field one measured column reads.
  *
  * The aspect columns carry the active measure with them, which is what makes
  * "Added" and "Net" mean the same unit as the heading of the tree beside them.
+ * The file column holds no figure, so it never reaches this table.
  */
-function columnField(metric: RankMetric, measure: Measure): ColumnField {
+function columnField(metric: MeasuredMetric, measure: Measure): ColumnField {
   switch (metric) {
     case "added": case "removed": case "churn": case "net": case "after":
       return weightField(measure, metric);
@@ -564,20 +565,29 @@ function buildDetail(
   };
 }
 
+type FileOrder = (left: FileRow, right: FileRow) => number;
+
+/** Heaviest first in the active measure and aspect. */
+function byWeight(fields: ActiveFields): FileOrder {
+  return (left, right) =>
+    byMagnitude(left[fields.weight], right[fields.weight])
+    || left.path.localeCompare(right.path);
+}
+
+/** A to Z by whole path, so the rows of one folder stay together. */
+const byPath: FileOrder = (left, right) => left.path.localeCompare(right.path);
+
 /**
  * Order files by the sorted column, breaking ties on the active measure.
  *
  * Both file tables use it, so a folder's own files and the ranking beneath
  * them can never disagree about what one sorted column means.
  */
-function byMetric(
-  metric: RankMetric, measure: Measure, fields: ActiveFields,
-): (left: FileRow, right: FileRow) => number {
+function byMetric(metric: RankMetric, measure: Measure, fields: ActiveFields): FileOrder {
+  if (metric === "name") return byPath;
   const sorted = columnField(metric, measure);
-  return (left, right) =>
-    byMagnitude(left[sorted], right[sorted])
-    || byMagnitude(left[fields.weight], right[fields.weight])
-    || left.path.localeCompare(right.path);
+  const tieBreak = byWeight(fields);
+  return (left, right) => byMagnitude(left[sorted], right[sorted]) || tieBreak(left, right);
 }
 
 /**
@@ -585,16 +595,16 @@ function byMetric(
  *
  * This is the file list of the folder panel, and the only one the page draws.
  * It follows the tree selection, not just the visibility switches, so selecting
- * a folder narrows the list to that subtree. Selecting the `.` row narrows it
- * further to the files sitting directly in the folder. Because descendants are
- * contiguous in the path-sorted array, the subtree is a range rather than a
- * scan of the project.
+ * a folder narrows the list to that subtree. The `folder` file scope narrows it
+ * further to the files sitting directly in that folder, which is what the `.`
+ * row selects for the whole panel. Because descendants are contiguous in the
+ * path-sorted array, the subtree is a range rather than a scan of the project.
  */
 function rankFiles(
   index: ScanIndex, request: ViewRequest, aggregation: Aggregation, fields: ActiveFields,
 ): { rows: FileRow[]; total: number } {
   const folder = index.folderByPath.get(request.selected.path) ?? index.folderByPath.get("")!;
-  const directFilesOnly = request.selected.rowKind === "files";
+  const directFilesOnly = request.selected.rowKind === "files" || request.fileScope === "folder";
   const matches: FileRow[] = [];
   const consider = (position: number): void => {
     if (aggregation.included[position] !== 1) return;
@@ -609,8 +619,13 @@ function rankFiles(
   } else {
     for (let position = folder.start; position < folder.end; position += 1) consider(position);
   }
-  matches.sort(byMetric(request.rank.metric, request.measure, fields));
-  return { rows: matches.slice(0, Math.max(0, request.rank.limit)), total: matches.length };
+  // The cut is always by weight: a name is not a ranking, so ordering by it
+  // must not decide which files a curtailed list holds. It orders the survivors.
+  const sortsByName = request.rank.metric === "name";
+  matches.sort(sortsByName ? byWeight(fields) : byMetric(request.rank.metric, request.measure, fields));
+  const rows = matches.slice(0, Math.max(0, request.rank.limit));
+  if (sortsByName) rows.sort(byPath);
+  return { rows, total: matches.length };
 }
 
 /**
@@ -680,7 +695,7 @@ export function buildView(index: ScanIndex, request: ViewRequest): ViewResponse 
   // scan for churn and getting a page of zeroes.
   const isDiff = index.meta.diff !== null;
   const aspect: Aspect = isDiff ? request.aspect : "after";
-  const rankMetric = rankMetricsFor(isDiff).includes(request.rank.metric)
+  const rankMetric = sortMetricsFor(isDiff).includes(request.rank.metric)
     ? request.rank.metric
     : defaultRankMetric(isDiff);
   const fields = resolveFields(request.measure, aspect);
@@ -731,6 +746,7 @@ export function parseViewRequest(body: unknown): ViewRequest {
   const selected = (typeof raw["selected"] === "object" && raw["selected"] !== null ? raw["selected"] : {}) as Record<string, unknown>;
   const metric = RANK_METRICS.find((candidate) => candidate === rank["metric"]) ?? "tokens";
   const treeSort = TREE_SORTS.find((candidate) => candidate === raw["treeSort"]) ?? "name";
+  const fileScope: FileScope = FILE_SCOPES.find((candidate) => candidate === raw["fileScope"]) ?? "subtree";
   const measure = MEASURES.find((candidate) => candidate === raw["measure"]) ?? "tokens";
   const aspect = ASPECTS.find((candidate) => candidate === raw["aspect"]) ?? "net";
   return {
@@ -748,6 +764,7 @@ export function parseViewRequest(body: unknown): ViewRequest {
       rowKind: selected["rowKind"] === "files" ? "files" : "folder",
       path: typeof selected["path"] === "string" ? selected["path"] : "",
     },
+    fileScope,
     rank: {
       metric,
       minWeight: Number.isFinite(rank["minWeight"]) ? Math.max(0, Number(rank["minWeight"])) : 0,

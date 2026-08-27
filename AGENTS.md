@@ -61,7 +61,8 @@ Each is explained where it belongs; the list exists so nobody breaks one by acci
 - The server aggregates. The browser never receives a file it does not display.
 - `lines === codeLines + commentLines`, non-blank lines only, buckets exclusive. Comment detection may only move a line between the two buckets, never change `lines`, never touch `tokens`.
 - A `Measure` and an `Aspect` resolve to a numeric `FileRow` field through `weightField`, the one table that holds every such name whole. Both are validated by `parseViewRequest` before either reaches an index expression.
-- Every `RankMetric` is a column both file tables draw in the mode it belongs to, and every numeric column they draw is a `RankMetric`. Sorting is the only way to pick one, so a metric without a column could never be reached. `buildView` clamps a metric the open index cannot draw and echoes what it used.
+- Every `RankMetric` is a column both file tables draw in the mode it belongs to, and every column they draw is a `RankMetric`. Sorting is the only way to pick one, so a metric without a column could never be reached. `buildView` clamps a metric the open index cannot draw and echoes what it used.
+- `name` is the one `RankMetric` that is not a `MeasuredMetric`: it holds no figure, it orders the rows A to Z, and it never decides which rows a curtailed list holds. The cut is always by the active measure and aspect.
 - On the wire the measured quantity is `weight`, never `tokens`, and `ViewResponse` echoes the measure, the aspect, and the sorted column back.
 - `ScanMeta.diff` is the only thing that says which mode the page is in. A scan forces the aspect to `after`, because a scanned file has one content.
 - Churn is `added + removed` and net is `added - removed`, for every measure. Net is signed, so every share is drawn against churn, and every ordering and threshold uses magnitude.

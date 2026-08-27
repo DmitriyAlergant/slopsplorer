@@ -149,6 +149,9 @@ They do different things, and they compose.
   - Generated files (lockfiles and friends), off by default
 - **The tree checkboxes** drop a folder from every total and from the file table.
 - **Drill down** (**double-click**) rescopes the page to one subfolder.
+- **This folder / All below** lists the files of the selected folder alone or of everything under it. It moves the file list only, and changes no total.
+
+Click a column heading to sort the file list. The file name sorts A to Z; every other column sorts heaviest first.
 
 ## What it counts
 

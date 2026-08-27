@@ -1,4 +1,4 @@
-import type { Aspect, FileRow, Measure, RankMetric } from "../../shared/api.ts";
+import type { Aspect, FileRow, Measure, MeasuredMetric, RankMetric } from "../../shared/api.ts";
 import { rankMetricsFor, weightField } from "../../shared/api.ts";
 import { pathRelativeTo } from "../displayPath.ts";
 import { FILE_KIND_DETAILS } from "../fileKinds.ts";
@@ -44,14 +44,14 @@ const PLAIN_COLUMNS: Readonly<Record<
 
 /** Heading and value resolver for one drawn column. */
 interface Column {
-  metric: RankMetric;
+  metric: MeasuredMetric;
   label: string;
   value: (file: FileRow) => number;
   /** Whether the figure carries a sign of its own. */
   isSigned: boolean;
 }
 
-function describeColumn(metric: RankMetric, measure: Measure): Column {
+function describeColumn(metric: MeasuredMetric, measure: Measure): Column {
   switch (metric) {
     case "churn": case "net": case "added": case "removed": case "after": {
       const field = weightField(measure, metric);
@@ -86,7 +86,19 @@ export function FileTable({ files, measure, aspect, isDiff, sort, onSortChange, 
           <tr>
             <th scope="col">Flavor</th>
             {isDiff ? <th scope="col" className="metrics__change">Change</th> : null}
-            <th scope="col">File</th>
+            {/* Left-aligned above the paths it heads, and sorted A to Z: a path
+                is read from its start, and no order of it is a ranking. */}
+            <th scope="col" className="metrics__path" aria-sort={sort === "name" ? "ascending" : "none"}>
+              <button
+                type="button"
+                className="metrics__sort"
+                aria-label="Sort by file name, A to Z"
+                onClick={() => onSortChange("name")}
+              >
+                File
+                <SortCaret ascending placeholder={sort !== "name"} />
+              </button>
+            </th>
             {columns.map(({ metric, label }) => (
               <th
                 key={metric}
