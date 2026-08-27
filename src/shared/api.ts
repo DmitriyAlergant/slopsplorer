@@ -13,8 +13,6 @@ export type Flavor = FileKind | "generated";
 
 export const FILE_KINDS: readonly FileKind[] = ["code", "test", "text", "i18n", "data", "other"];
 
-export const FLAVORS: readonly Flavor[] = [...FILE_KINDS, "generated"];
-
 export type TreeSort = "name" | "weight";
 
 export const TREE_SORTS: readonly TreeSort[] = ["name", "weight"];
@@ -279,18 +277,18 @@ export interface FolderCard {
   files: number;
   /** 0-1 share of the drill scope as the filters leave it. Magnitude only. */
   shareOfScope: number;
+  /** What the folder is made of. Magnitudes, against `DetailView.flavorBaseline`. */
   flavors: FlavorSlice[];
-  /** How the change divides, for a diff. Empty for a scan. */
-  statuses: StatusSlice[];
 }
 
+/**
+ * One flavor's part of a folder, in the active measure and aspect.
+ *
+ * Generated files are never in one: the bar these draw states what the source
+ * of a folder is made of, and a lockfile is not part of that answer.
+ */
 export interface FlavorSlice {
-  flavor: Flavor;
-  weight: number;
-}
-
-export interface StatusSlice {
-  status: ChangeStatus;
+  flavor: FileKind;
   weight: number;
 }
 
@@ -330,6 +328,15 @@ export interface DetailView {
    */
   shareOfScope: number;
   cards: FolderCard[];
+  /**
+   * The whole every tile's bar divides, so all the tiles share one scale.
+   *
+   * The drill scope as the tree's own checkboxes and the path filter leave it,
+   * with every flavor in it and generated files out of it. The flavor chips
+   * are deliberately not applied: they take slices out of the bars, so turning
+   * one off shortens every bar rather than stretching the rest to fill it.
+   */
+  flavorBaseline: number;
   /** Fixed column capacity measured from the panel width. */
   cardColumns: number;
 }

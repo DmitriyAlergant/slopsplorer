@@ -155,10 +155,20 @@ describe("aggregating a diff", () => {
     expect({ added: card.added, removed: card.removed }).toEqual({ added: 30, removed: 0 });
   });
 
-  it("splits a folder tile by change status rather than by file kind", () => {
+  it("splits a folder tile by flavor inside a comparison too", () => {
     const view = buildView(diffIndex, request({ selected: { rowKind: "folder", path: "" } }));
     const card = view.detail.cards.find((entry) => entry.name === "grown")!;
-    expect(card.statuses).toEqual([{ status: "modified", weight: 30 }]);
+    expect(card.flavors).toEqual([{ flavor: "code", weight: 30 }]);
+  });
+
+  it("holds the tile baseline still when a flavor is turned off, so bars only shorten", () => {
+    const all = buildView(diffIndex, request({ selected: { rowKind: "folder", path: "" } }));
+    const withoutCode = buildView(diffIndex, request({ kinds: [], selected: { rowKind: "folder", path: "" } }));
+    expect(withoutCode.detail.flavorBaseline).toBe(all.detail.flavorBaseline);
+    const before = all.detail.cards.find((entry) => entry.name === "grown")!;
+    expect(before.flavors).not.toEqual([]);
+    const after = withoutCode.detail.cards.find((entry) => entry.name === "grown");
+    expect(after?.flavors ?? []).toEqual([]);
   });
 });
 

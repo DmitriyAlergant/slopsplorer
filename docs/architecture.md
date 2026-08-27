@@ -161,6 +161,11 @@ The bar is a view of the scope, so selecting from it is the same act as clicking
 
 There is one file table, and it is inside the folder panel.
 The panel divides its subject twice: the tiles divide it by child folder, and the table lists every file under it, heaviest first.
+
+Each tile carries a bar, and every bar in the panel divides one whole: `DetailView.flavorBaseline`, the drill scope as the tree's checkboxes and the path filter leave it.
+The flavor chips are not applied to that whole, and generated files are never in it.
+So the bar's length is what the folder holds of the scope, its divisions are the flavors it is made of, and turning a flavor off takes a slice out of every bar instead of stretching the rest to fill the width.
+The bars of one scope add up to the scope minus its own direct files, which have no tile.
 A separate ranking panel used to repeat the tiles as rows, which put the same subtree on the page twice.
 The strip above the ranked table holds the threshold that thins it, because that control belongs to the rows it removes.
 

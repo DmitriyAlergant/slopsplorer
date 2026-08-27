@@ -216,11 +216,10 @@ export function FolderDetail({ detail, files, filesTotal, measure, aspect, isDif
                 ) : null}
                 <FlavorBar
                   slices={card.flavors}
-                  statuses={card.statuses}
                   measure={measure}
                   aspect={aspect}
                   isDiff={isDiff}
-                  scale={card.shareOfScope}
+                  baseline={detail.flavorBaseline}
                 />
               </>
             );

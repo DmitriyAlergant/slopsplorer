@@ -530,7 +530,12 @@ button { cursor: pointer; }
  * The side of the change and the unit are properties of every figure, so each
  * is stated once. They sit together and read as one phrase: "net tokens".
  */
-.filters__switches { display: flex; flex: none; align-items: center; gap: 18px; }
+/*
+ * The switches take the free space on the line, so the chips beside them sit
+ * at the right edge while they share it and start at the left edge once they
+ * have a line of their own.
+ */
+.filters__switches { display: flex; flex: 1 0 auto; align-items: center; gap: 18px; }
 .switch {
   display: flex;
   border: 1px solid var(--rule-firm);
@@ -565,16 +570,19 @@ button { cursor: pointer; }
   background: color-mix(in oklab, var(--paper) 90%, transparent);
   backdrop-filter: blur(10px);
 }
+/* Sized from the switch beside it, so the two read as one row of controls. */
 .search input {
   width: 100%;
-  padding: 8px 12px;
+  padding: 5px 10px;
   border: 1px solid var(--rule-firm);
   border-radius: var(--radius-sm);
   background: var(--surface);
+  font-size: 12.5px;
+  line-height: 1.4;
 }
 .search input::placeholder { color: var(--ink-faint); }
 
-.chips { display: flex; flex: 1 0 auto; flex-wrap: nowrap; gap: 6px; justify-content: flex-end; }
+.chips { display: flex; flex: none; flex-wrap: nowrap; gap: 6px; }
 .chip {
   position: relative;
   display: inline-flex;
@@ -1130,12 +1138,6 @@ button { cursor: pointer; }
 [data-flavor="i18n"].flavor-bar__slice { background: var(--flavor-i18n); }
 [data-flavor="data"].flavor-bar__slice { background: var(--flavor-data); }
 [data-flavor="other"].flavor-bar__slice { background: var(--flavor-other); }
-[data-flavor="generated"].flavor-bar__slice { background: var(--flavor-generated); }
-[data-status="added"].flavor-bar__slice { background: var(--status-added); }
-[data-status="modified"].flavor-bar__slice { background: var(--status-modified); }
-[data-status="deleted"].flavor-bar__slice { background: var(--status-deleted); }
-[data-status="renamed"].flavor-bar__slice { background: var(--status-renamed); }
-[data-status="unchanged"].flavor-bar__slice { background: var(--status-unchanged); }
 
 /* ---- Metrics tables ---------------------------------------------------- */
 
@@ -1429,7 +1431,7 @@ button { cursor: pointer; }
   .filters { flex-direction: column; align-items: stretch; }
   .search, .filters__switches, .chips { flex: none; }
   .filters__switches { flex-wrap: wrap; }
-  .chips { flex-wrap: wrap; justify-content: flex-start; }
+  .chips { flex-wrap: wrap; }
 }
 
 @media (max-width: 680px) {

@@ -2,7 +2,7 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import type { FileKind, TreeRow, ViewRequest } from "../src/shared/api.ts";
+import type { FileKind, TreeRow, ViewRequest, ViewResponse } from "../src/shared/api.ts";
 import { scanSourceTree, type ScanIndex } from "../src/scanner/scan.ts";
 import { buildView, parseViewRequest } from "../src/server/aggregate.ts";
 
@@ -460,11 +460,43 @@ describe("primary measure", () => {
   });
 
   it("splits a tile's flavor bar in the active measure, so the slices still add up to the tile", () => {
-    const view = buildView(index, request({ measure: "lines", showGenerated: true }));
+    const view = buildView(index, request({ measure: "lines" }));
     for (const card of view.detail.cards) {
       const sliceTotal = card.flavors.reduce((total, slice) => total + slice.weight, 0);
       expect(sliceTotal).toBe(card.weight);
     }
+  });
+
+  it("keeps generated output out of the bars, even when the page counts it", () => {
+    const view = buildView(index, request({ showGenerated: true }));
+    const generated = view.detail.cards.find((card) => card.name === "dist")!;
+    expect(generated.weight).toBe(tokensOf("dist/bundle.js"));
+    expect(generated.flavors).toEqual([]);
+    const sliced = view.detail.cards.flatMap((card) => card.flavors.map((slice) => slice.flavor));
+    expect(sliced).not.toContain("generated");
+  });
+
+  it("measures the tile baseline over every flavor, so turning one off only shortens bars", () => {
+    const everything = buildView(index, request());
+    const codeOnly = buildView(index, request({ kinds: ["code"] }));
+    // Generated output is never in the whole, whether the page counts it or not.
+    const withGenerated = buildView(index, request({ showGenerated: true }));
+
+    expect(codeOnly.detail.flavorBaseline).toBe(everything.detail.flavorBaseline);
+    expect(withGenerated.detail.flavorBaseline).toBe(everything.detail.flavorBaseline);
+
+    const sliceTotal = (view: ViewResponse): number => view.detail.cards
+      .reduce((total, card) => total + card.flavors.reduce((sum, slice) => sum + slice.weight, 0), 0);
+    expect(sliceTotal(codeOnly)).toBeLessThan(sliceTotal(everything));
+  });
+
+  it("narrows the tile baseline with the scope, because a bar states a share of what is drawn", () => {
+    const everything = buildView(index, request());
+    const excluded = buildView(index, request({ excludedFolders: ["tests"] }));
+    const searched = buildView(index, request({ query: "deep" }));
+
+    expect(excluded.detail.flavorBaseline).toBeLessThan(everything.detail.flavorBaseline);
+    expect(searched.detail.flavorBaseline).toBeLessThan(everything.detail.flavorBaseline);
   });
 });
 
