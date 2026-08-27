@@ -510,21 +510,27 @@ button { cursor: pointer; }
 
 /* ---- Filters ----------------------------------------------------------- */
 
+/*
+ * One row while the three groups fit, and the chips take a row of their own
+ * when they do not. They wrap as a group rather than folding into two ragged
+ * rows beside the switches, so the flavors always read as one set.
+ */
 .filters {
   position: sticky;
   top: 0;
   z-index: 5;
-  display: grid;
-  grid-template-columns: minmax(180px, 280px) auto minmax(0, 1fr);
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 14px;
   padding: 12px 0;
 }
+.search { flex: 0 1 280px; min-width: 180px; }
 /*
  * The side of the change and the unit are properties of every figure, so each
  * is stated once. They sit together and read as one phrase: "net tokens".
  */
-.filters__switches { display: flex; align-items: center; gap: 10px; }
+.filters__switches { display: flex; flex: none; align-items: center; gap: 18px; }
 .switch {
   display: flex;
   border: 1px solid var(--rule-firm);
@@ -568,7 +574,7 @@ button { cursor: pointer; }
 }
 .search input::placeholder { color: var(--ink-faint); }
 
-.chips { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+.chips { display: flex; flex: 1 0 auto; flex-wrap: nowrap; gap: 6px; justify-content: flex-end; }
 .chip {
   position: relative;
   display: inline-flex;
@@ -1418,14 +1424,17 @@ button { cursor: pointer; }
   /* Set on the panels rather than on the variable: the dragged height is an
      inline property of the workspace, which no stylesheet rule can outrank. */
   .tree, .detail { height: 460px; }
-  .filters { grid-template-columns: 1fr; }
+  /* Too narrow for two groups on a line, so every group takes one, and the
+     chips fold inside their own row rather than running off the page. */
+  .filters { flex-direction: column; align-items: stretch; }
+  .search, .filters__switches, .chips { flex: none; }
   .filters__switches { flex-wrap: wrap; }
-  .chips { justify-content: flex-start; }
+  .chips { flex-wrap: wrap; justify-content: flex-start; }
 }
 
 @media (max-width: 680px) {
   .app { width: calc(100% - 24px); padding-top: 18px; }
-  .filters { position: static; grid-template-columns: 1fr; gap: 10px; }
+  .filters { position: static; gap: 10px; }
   .readout[data-emphasis="true"] .readout__value { font-size: 24px; }
   .ribbon__head, .detail__head { flex-direction: column; gap: 10px; }
   .ribbon__actions, .detail__actions { flex-direction: row; align-items: center; gap: 20px; }
