@@ -1,1 +1,0 @@
-A folder tile's bar now divides by flavor in a comparison as well as in a scan, and it draws against a whole the flavor filters never change, so turning a flavor off shortens the bars instead of stretching the rest, and generated files are never in one.
