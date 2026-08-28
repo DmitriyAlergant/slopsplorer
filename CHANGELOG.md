@@ -12,6 +12,7 @@ Write yours under Unreleased as you make the change, and rename that heading to 
 
 ### Bug Fixes
 
+- Flavor filters now start with all flavors on and generated files off on every visit instead of restoring the last selection.
 - Choosing one commit in the band now draws that commit alone on a branch that has taken `main` in with a merge. It used to compare from the commit listed above it, which for a commit the merge brought in sits on the other line of history, so one commit of a pull request drew the whole branch. A run of commits stops at such a seam, and the band draws the seam.
 
 ## [0.5.1](https://github.com/DmitriyAlergant/slopsplorer/releases/tag/v0.5.1) - 2026-08-28

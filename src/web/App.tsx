@@ -140,7 +140,7 @@ export function App({ runtime = liveRuntime, backlink = null }: Props = {}): Rea
 
   useEffect(() => {
     writePreferences(browserStorage(), request);
-  }, [request.kinds, request.showGenerated, request.treeSort, request.measure, request.aspect, request.rank.metric]);
+  }, [request.treeSort, request.measure, request.aspect, request.rank.metric]);
 
   // The tab names what was measured, so two open windows are told apart at a
   // glance. It follows the response rather than the request, for the same

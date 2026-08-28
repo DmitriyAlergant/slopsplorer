@@ -168,6 +168,7 @@ Two places keep the request:
 
 - `src/web/urlState.ts` writes the parts of the request that describe what is on screen into the URL, so a view can be sent to another person as a link.
 - `src/web/preferences.ts` keeps the parts that are personal habit, such as the measure and the sorted column, in local storage.
+  It does not keep flavor filters: each visit starts with all flavors on and generated files off unless the URL states another selection.
   A browser can deny storage, and it denies it from the property access as well as from the call, so every read and write goes through `browserStorage()` and the two guarded primitives beside it.
   A denied read is an absent value and a denied write holds for the visit only, so no caller decides that again.
 

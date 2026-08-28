@@ -13,14 +13,14 @@ describe("source-tree sort URL state", () => {
     expect(writeRequest(byName)).not.toContain("tree=");
   });
 
-  it("uses saved preferences unless the URL embeds its own complete preference state", () => {
+  it("uses saved display preferences but always defaults flavor selection", () => {
     const saved: ViewPreferences = {
-      kinds: ["code", "test"], showGenerated: true, treeSort: "weight", measure: "codeLines", aspect: "churn",
-      rankMetric: "commentLines",
+      treeSort: "weight", measure: "codeLines", aspect: "churn", rankMetric: "commentLines",
     };
     const inherited = readRequest("?path=src", saved);
     expect(inherited).toMatchObject({
-      kinds: saved.kinds, showGenerated: true, treeSort: "weight", measure: "codeLines", aspect: "churn",
+      kinds: ["code", "test", "text", "i18n", "data", "other"], showGenerated: false,
+      treeSort: "weight", measure: "codeLines", aspect: "churn",
     });
     expect(inherited.rank.metric).toBe("commentLines");
 
@@ -37,7 +37,7 @@ describe("source-tree sort URL state", () => {
     const written = writeRequest(request);
     expect(written).toContain("prefs=1");
     const stored: ViewPreferences = {
-      kinds: ["text"], showGenerated: false, treeSort: "name", measure: "tokens", aspect: "churn", rankMetric: "tokens",
+      treeSort: "name", measure: "tokens", aspect: "churn", rankMetric: "tokens",
     };
     expect(readRequest(`?${written}`, stored))
       .toMatchObject({ kinds: ["code"], showGenerated: true, treeSort: "weight" });

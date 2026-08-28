@@ -12,8 +12,6 @@ const RANK_LIMIT = 100;
  * not restore is a link that does not survive the trip.
  */
 const DEFAULT_PREFERENCES: ViewPreferences = {
-  kinds: [...FILE_KINDS],
-  showGenerated: false,
   treeSort: "name",
   measure: "tokens",
   aspect: "net",
@@ -65,10 +63,10 @@ export function readRequest(search: string, stored: ViewPreferences | null = nul
     embeddedPreferences || stored === null ? DEFAULT_PREFERENCES[field] : stored[field]
   );
   return {
-    kinds: rawKinds !== null ? rawKinds.split(",").filter(isFileKind) : preferred("kinds"),
+    kinds: rawKinds !== null ? rawKinds.split(",").filter(isFileKind) : [...FILE_KINDS],
     measure: measure ?? preferred("measure"),
     aspect: aspect ?? preferred("aspect"),
-    showGenerated: params.has("gen") ? params.get("gen") === "1" : preferred("showGenerated"),
+    showGenerated: params.get("gen") === "1",
     query: params.get("q") ?? "",
     excludedFolders: params.getAll("x"),
     excludedDirectFiles: params.getAll("xf"),
@@ -100,7 +98,7 @@ export function writeRequest(request: ViewRequest): string {
   const params = new URLSearchParams();
   const preferencesDifferFromDefaults =
     request.kinds.length !== FILE_KINDS.length
-    || request.showGenerated !== DEFAULT_PREFERENCES.showGenerated
+    || request.showGenerated
     || request.treeSort !== DEFAULT_PREFERENCES.treeSort
     || request.measure !== DEFAULT_PREFERENCES.measure
     || request.aspect !== DEFAULT_PREFERENCES.aspect
