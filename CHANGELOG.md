@@ -8,7 +8,7 @@ Write yours under Unreleased as you make the change, and rename that heading to 
 
 ### Features
 
-- `--export <dir>` writes a portable static explorer with filters, rankings, source or diff previews, a read-only commit band, and a backlink when a full GitHub or GitLab review URL names the comparison, then prints its path and exits.
+- `--export <dir>` writes a portable static explorer with filters, rankings, source or diff previews, a read-only commit band, and a backlink when a full GitHub or GitLab review URL names the comparison, then prints its path and exits. Serve the folder over HTTP to read it: a browser loads no module, worker, or data file from a `file://` address, and the page says so when opened that way.
 
 ### Bug Fixes
 

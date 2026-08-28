@@ -10,8 +10,32 @@
     <title>Slopsplorer snapshot</title>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <!--
+        A file:// document loads no module, worker, or data file, so the page would
+        otherwise stay blank with nothing to read. The styles are inline because the
+        stylesheet is a subresource of the same blocked document.
+      -->
+      <div id="slopsplorer-file-url-notice" hidden style="max-width: 44rem; margin: 4rem auto; padding: 0 1.5rem; font: 15px/1.6 ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;">
+        <h1 style="margin: 0 0 1rem; font-size: 1.4rem;">This snapshot needs an HTTP server</h1>
+        <p style="margin: 0 0 1rem;">
+          You opened it from a <code>file://</code> address. A browser refuses to load
+          modules, workers, and data files from there, so the page cannot start.
+        </p>
+        <p style="margin: 0 0 0.5rem;">Serve this folder, then open the address it prints:</p>
+        <pre style="margin: 0 0 1rem; padding: 0.75rem 1rem; overflow-x: auto; border-radius: 6px; background: rgba(127, 127, 127, 0.16);"><code>npx --yes http-server . -p 8080</code></pre>
+        <p style="margin: 0;">
+          Any static server works, such as <code>python3 -m http.server 8080</code>, and so
+          does uploading the folder to a static host.
+        </p>
+      </div>
+    </div>
     <script id="slopsplorer-snapshot-context" type="application/json">__SLOPSPLORER_SNAPSHOT_CONTEXT__</script>
+    <script>
+      if (location.protocol === "file:") {
+        document.querySelector("#slopsplorer-file-url-notice").hidden = false;
+      }
+    </script>
     <script type="module" src="/snapshotMain.tsx"></script>
   </body>
 </html>

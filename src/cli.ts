@@ -631,6 +631,10 @@ async function main(): Promise<void> {
     } catch (cause) {
       fail(`static export failed: ${cause instanceof Error ? cause.message : String(cause)}`);
     }
+    process.stderr.write(
+      "  serve the folder over HTTP to read it, for example `npx --yes http-server . -p 8080`\n"
+      + "  a file:// address cannot load the modules, the worker, and the data the page needs\n",
+    );
     process.stdout.write(`${exportDirectory}\n`);
     return;
   }
