@@ -1,6 +1,17 @@
-import type { Aspect, ChangeStatus, ComparisonRequest, Measure } from "../shared/api.ts";
+import type { Aspect, ChangeStatus, ComparisonRequest, ScanMeta } from "../shared/api.ts";
 
 const integer = new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 });
+
+/**
+ * What a rejected promise says, as text a banner can hold.
+ *
+ * Every failure the page reports arrives as `unknown` from a `catch`, and a
+ * thrown value is not always an `Error`. One reading of it, so no two banners
+ * describe the same fault differently.
+ */
+export function messageOf(cause: unknown): string {
+  return cause instanceof Error ? cause.message : String(cause);
+}
 
 export function count(value: number): string {
   return integer.format(value);
@@ -121,6 +132,19 @@ export function comparisonLabel(request: ComparisonRequest): string {
     case "mergeBase":
       return `${shortRevision(request.base)} -> ${shortRevision(request.target)}, from the merge base`;
   }
+}
+
+/**
+ * The browser tab's name for what the page holds.
+ *
+ * The subject comes first, because a tab is cut from the right and the folder
+ * is what tells two Slopsplorer windows apart. The product name follows it in
+ * the form the wordmark uses, so the tab and the strip name one mode.
+ */
+export function documentTitle(meta: ScanMeta | null): string {
+  if (meta === null) return "Slopsplorer";
+  if (meta.diff === null) return `${meta.rootName} - Slopsplorer`;
+  return `${meta.rootName}: ${comparisonLabel(meta.diff.request)} - Slopsplorer diff`;
 }
 
 /**

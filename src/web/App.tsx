@@ -8,14 +8,13 @@ import {
   compare, dismissAsk, fetchAgents, fetchAsks, fetchSpine, fetchView, openRoot, rescan, startAsk,
 } from "./api.ts";
 import {
-  DEFAULT_WORKSPACE_HEIGHT, MAX_WORKSPACE_HEIGHT, MIN_WORKSPACE_HEIGHT,
-  DEFAULT_SPINE_HEIGHT,
-  readAskAgent, readPreferences, readSpineExpanded, readSpineHeight, readTreePanelRatio,
-  readWorkspaceHeight, writeAskAgent, writePreferences, writeSpineExpanded, writeSpineHeight,
-  writeTreePanelRatio, writeWorkspaceHeight,
+  DEFAULT_SPINE_HEIGHT, DEFAULT_WORKSPACE_HEIGHT, MAX_WORKSPACE_HEIGHT, MIN_WORKSPACE_HEIGHT,
+  browserStorage, readAskAgent, readPreferences, readSpineExpanded, readSpineHeight,
+  readTreePanelRatio, readWorkspaceHeight, writeAskAgent, writePreferences, writeSpineExpanded,
+  writeSpineHeight, writeTreePanelRatio, writeWorkspaceHeight,
 } from "./preferences.ts";
 import { isInsideFolder } from "./displayPath.ts";
-import { comparisonLabel } from "./format.ts";
+import { comparisonLabel, documentTitle, messageOf } from "./format.ts";
 import { closeTooltip } from "./tooltip.ts";
 import { readRequest, selectionKey, writeRequest } from "./urlState.ts";
 import { AnswerDialog } from "./components/AnswerDialog.tsx";
@@ -43,43 +42,7 @@ const REQUEST_DEBOUNCE_MS = 80;
 const ASK_POLL_MS = 1200;
 
 function requestFromLocation(): ViewRequest {
-  try {
-    return readRequest(window.location.search, readPreferences(window.localStorage));
-  } catch {
-    return readRequest(window.location.search);
-  }
-}
-
-function spineHeightFromStorage(): number {
-  try {
-    return readSpineHeight(window.localStorage, DEFAULT_SPINE_HEIGHT);
-  } catch {
-    return DEFAULT_SPINE_HEIGHT;
-  }
-}
-
-function spineExpandedFromStorage(): boolean {
-  try {
-    return readSpineExpanded(window.localStorage);
-  } catch {
-    return false;
-  }
-}
-
-function treePanelRatioFromStorage(): number {
-  try {
-    return readTreePanelRatio(window.localStorage, DEFAULT_TREE_PANEL_RATIO);
-  } catch {
-    return DEFAULT_TREE_PANEL_RATIO;
-  }
-}
-
-function workspaceHeightFromStorage(): number {
-  try {
-    return readWorkspaceHeight(window.localStorage, DEFAULT_WORKSPACE_HEIGHT);
-  } catch {
-    return DEFAULT_WORKSPACE_HEIGHT;
-  }
+  return readRequest(window.location.search, readPreferences(browserStorage()));
 }
 
 /** Open `root` and every folder under it, and leave the rest of the tree as it is. */
@@ -113,13 +76,7 @@ export function App(): React.JSX.Element {
   const [preview, setPreview] = useState<Preview | null>(null);
   const [skillOpen, setSkillOpen] = useState(false);
   const [agents, setAgents] = useState<readonly AgentTool[]>([]);
-  const [agentId, setAgentId] = useState<string | null>(() => {
-    try {
-      return readAskAgent(window.localStorage);
-    } catch {
-      return null;
-    }
-  });
+  const [agentId, setAgentId] = useState<string | null>(() => readAskAgent(browserStorage()));
   const [askOpen, setAskOpen] = useState(false);
   const [askStarting, setAskStarting] = useState(false);
   const [askFailure, setAskFailure] = useState<string | null>(null);
@@ -128,10 +85,14 @@ export function App(): React.JSX.Element {
   const [lastViewedPath, setLastViewedPath] = useState<string | null>(null);
   const [spine, setSpine] = useState<CommitSpine | null>(null);
   const [spineLoading, setSpineLoading] = useState(false);
-  const [spineExpanded, setSpineExpanded] = useState(spineExpandedFromStorage);
-  const [spineHeight, setSpineHeight] = useState(spineHeightFromStorage);
-  const [treePanelRatio, setTreePanelRatio] = useState(treePanelRatioFromStorage);
-  const [workspaceHeight, setWorkspaceHeight] = useState(workspaceHeightFromStorage);
+  const [spineExpanded, setSpineExpanded] = useState(() => readSpineExpanded(browserStorage()));
+  const [spineHeight, setSpineHeight] = useState(() => readSpineHeight(browserStorage(), DEFAULT_SPINE_HEIGHT));
+  const [treePanelRatio, setTreePanelRatio] = useState(
+    () => readTreePanelRatio(browserStorage(), DEFAULT_TREE_PANEL_RATIO),
+  );
+  const [workspaceHeight, setWorkspaceHeight] = useState(
+    () => readWorkspaceHeight(browserStorage(), DEFAULT_WORKSPACE_HEIGHT),
+  );
   const requestRef = useRef(request);
   requestRef.current = request;
   const spineRef = useRef(spine);
@@ -171,19 +132,22 @@ export function App(): React.JSX.Element {
   }, []);
 
   useEffect(() => {
-    try {
-      writePreferences(window.localStorage, request);
-    } catch {
-      // Accessing localStorage itself can be denied in locked-down contexts.
-    }
+    writePreferences(browserStorage(), request);
   }, [request.kinds, request.showGenerated, request.treeSort, request.measure, request.aspect, request.rank.metric]);
 
+  // The tab names what was measured, so two open windows are told apart at a
+  // glance. It follows the response rather than the request, for the same
+  // reason every heading does.
   useEffect(() => {
-    writeTreePanelRatio(window.localStorage, treePanelRatio);
+    document.title = documentTitle(view?.meta ?? null);
+  }, [view?.meta]);
+
+  useEffect(() => {
+    writeTreePanelRatio(browserStorage(), treePanelRatio);
   }, [treePanelRatio]);
 
   useEffect(() => {
-    writeWorkspaceHeight(window.localStorage, workspaceHeight);
+    writeWorkspaceHeight(browserStorage(), workspaceHeight);
   }, [workspaceHeight]);
 
   useEffect(() => {
@@ -197,7 +161,7 @@ export function App(): React.JSX.Element {
         })
         .catch((cause: unknown) => {
           if (controller.signal.aborted) return;
-          setError(cause instanceof Error ? cause.message : String(cause));
+          setError(messageOf(cause));
         })
         .finally(() => {
           if (!controller.signal.aborted) setBusy(false);
@@ -220,7 +184,7 @@ export function App(): React.JSX.Element {
   useEffect(() => {
     let cancelled = false;
     const fail = (cause: unknown): void => {
-      if (!cancelled) setError(cause instanceof Error ? cause.message : String(cause));
+      if (!cancelled) setError(messageOf(cause));
     };
     fetchAgents().then((found) => { if (!cancelled) setAgents(found.agents); }, fail);
     fetchAsks().then((held) => { if (!cancelled) setTasks(held.tasks); }, fail);
@@ -235,7 +199,7 @@ export function App(): React.JSX.Element {
     const poll = (): void => {
       fetchAsks().then(
         (held) => { if (!cancelled) setTasks(held.tasks); },
-        (cause: unknown) => { if (!cancelled) setError(cause instanceof Error ? cause.message : String(cause)); },
+        (cause: unknown) => { if (!cancelled) setError(messageOf(cause)); },
       );
     };
     const timer = setInterval(poll, ASK_POLL_MS);
@@ -287,7 +251,7 @@ export function App(): React.JSX.Element {
         .catch((cause: unknown) => {
           if (cancelled) return;
           setSpine(null);
-          setError(cause instanceof Error ? cause.message : String(cause));
+          setError(messageOf(cause));
         })
         .finally(() => {
           if (!cancelled) setSpineLoading(false);
@@ -307,7 +271,7 @@ export function App(): React.JSX.Element {
         setView(next);
         setError(null);
       })
-      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause)))
+      .catch((cause: unknown) => setError(messageOf(cause)))
       .finally(() => setRescanning(false));
   }, []);
 
@@ -317,7 +281,7 @@ export function App(): React.JSX.Element {
 
   const chooseAgent = useCallback((chosen: string) => {
     setAgentId(chosen);
-    writeAskAgent(window.localStorage, chosen);
+    writeAskAgent(browserStorage(), chosen);
   }, []);
 
   /**
@@ -342,7 +306,7 @@ export function App(): React.JSX.Element {
         setTasks((previous) => [task, ...previous]);
         setAskOpen(false);
       })
-      .catch((cause: unknown) => setAskFailure(cause instanceof Error ? cause.message : String(cause)))
+      .catch((cause: unknown) => setAskFailure(messageOf(cause)))
       .finally(() => setAskStarting(false));
   }, [chosenAgentId]);
 
@@ -350,7 +314,7 @@ export function App(): React.JSX.Element {
     setOpenAnswerId((open) => (open === id ? null : open));
     dismissAsk(id)
       .then((held) => setTasks(held.tasks))
-      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause)));
+      .catch((cause: unknown) => setError(messageOf(cause)));
   }, []);
 
   const openFile = useCallback((path: string) => {
@@ -386,7 +350,7 @@ export function App(): React.JSX.Element {
         setPreview(null);
         setError(null);
       })
-      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause)))
+      .catch((cause: unknown) => setError(messageOf(cause)))
       .finally(finish);
   }, []);
 
@@ -407,20 +371,12 @@ export function App(): React.JSX.Element {
 
   const resizeSpine = useCallback((height: number) => {
     setSpineHeight(height);
-    try {
-      writeSpineHeight(window.localStorage, height);
-    } catch {
-      // Storage may be denied; the band still keeps the height for this visit.
-    }
+    writeSpineHeight(browserStorage(), height);
   }, []);
 
   const toggleSpineExpanded = useCallback((expanded: boolean) => {
     setSpineExpanded(expanded);
-    try {
-      writeSpineExpanded(window.localStorage, expanded);
-    } catch {
-      // Storage may be denied; the band still opens for this visit.
-    }
+    writeSpineExpanded(browserStorage(), expanded);
   }, []);
 
   const toggleKind = useCallback((kind: FileKind) => {

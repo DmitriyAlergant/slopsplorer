@@ -1645,20 +1645,53 @@ button { cursor: pointer; }
 .viewer__title-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .viewer__title-row h2 { min-width: 0; }
 .viewer__actions { display: flex; flex: none; align-items: center; gap: 10px; }
-/* Shaped as the button beside it: two controls in one row, one silhouette. */
+/*
+ * A bare switch beside the button: the track is the control, so it takes no
+ * frame of its own. The margin evens the air after a frameless label with the
+ * air inside the framed button beside it.
+ */
 .viewer__toggle {
   display: inline-flex; align-items: center; gap: 8px;
-  padding: 7px 13px;
-  border: 1px solid var(--rule-firm); border-radius: var(--radius-sm);
-  background: var(--surface);
+  margin-right: 6px;
+  padding: 7px 0;
+  border-radius: var(--radius-sm);
   color: var(--ink-soft);
   font-size: 12.5px;
+  cursor: pointer;
   user-select: none;
-  transition: border-color 120ms ease, color 120ms ease;
+  transition: color 120ms ease;
 }
-.viewer__toggle:hover { border-color: var(--signal); color: var(--signal); }
+.viewer__toggle:hover { color: var(--signal); }
 .viewer__toggle[data-on="true"] { color: var(--ink); }
-.viewer__toggle input { margin: 0; accent-color: var(--signal); }
+/*
+ * The checkbox is drawn as a switch: a track with a knob that slides to the
+ * side that is on. A tick answers "is this true", a switch answers "is this
+ * on", and these are both modes the preview is in. The label takes the focus
+ * ring, because the track alone is too small to carry it.
+ */
+.viewer__toggle input {
+  appearance: none;
+  position: relative;
+  flex: none;
+  width: 26px; height: 14px;
+  margin: 0;
+  border: 1px solid var(--rule-firm); border-radius: 999px;
+  background: var(--sunk);
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+.viewer__toggle input::before {
+  content: "";
+  position: absolute; top: 2px; left: 2px;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--ink-faint);
+  transition: transform 120ms ease, background-color 120ms ease;
+}
+.viewer__toggle input:checked { border-color: var(--signal); background: var(--signal); }
+.viewer__toggle input:checked::before { background: var(--signal-ink); transform: translateX(12px); }
+.viewer__toggle input:focus-visible { outline: none; }
+.viewer__toggle:has(input:focus-visible) { outline: 2px solid var(--signal); outline-offset: 4px; }
 .viewer__body {
   flex: 1 1 auto; min-height: 0;
   overflow: auto;
@@ -1671,6 +1704,16 @@ button { cursor: pointer; }
   font-family: var(--font-mono); font-size: 11.5px; line-height: 1.6;
   tab-size: 2;
 }
+/*
+ * Wrapping breaks anywhere rather than at a word, because a minified line or a
+ * long literal has no word boundary, and one that never breaks would scroll the
+ * body sideways again. A row keeps its gutter column: the text column is what
+ * shrinks, so it must be allowed to go below its content width.
+ */
+.viewer__body[data-wrap="true"] .viewer__code { white-space: pre-wrap; overflow-wrap: anywhere; }
+.viewer__body[data-wrap="true"] .diff { min-width: 0; }
+.viewer__body[data-wrap="true"] .diff__line { grid-template-columns: auto minmax(0, 1fr); }
+.viewer__body[data-wrap="true"] .diff__text { white-space: pre-wrap; overflow-wrap: anywhere; }
 .viewer__note {
   margin: 0; padding: 10px 20px;
   border-top: 1px solid var(--rule);

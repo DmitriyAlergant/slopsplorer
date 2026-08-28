@@ -107,10 +107,6 @@ export function dismissTooltip(event: React.MouseEvent<HTMLElement>): void {
   closeTooltip();
 }
 
-export function hideTooltip(): void {
-  closeTooltip();
-}
-
 /** Keyboard focus asks for the description. A press focuses too, so it is excluded. */
 export function focusTooltip(event: React.FocusEvent<HTMLElement>): void {
   if (!event.currentTarget.matches(":focus-visible")) return;

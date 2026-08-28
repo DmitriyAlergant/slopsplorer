@@ -76,7 +76,9 @@ function describeColumn(metric: MeasuredMetric, measure: Measure): Column {
 const STRUCTURE_METRICS: ReadonlySet<RankMetric> = new Set<RankMetric>(["functions", "branches"]);
 
 /** The metrics table of the folder panel: one row for each file of the selection. */
-export function FileTable({ files, measure, aspect, isDiff, sort, onSortChange, displayRoot, onOpenSource, emptyMessage }: Props): React.JSX.Element {
+export function FileTable({
+  files, measure, aspect, isDiff, sort, onSortChange, displayRoot, onOpenSource, emptyMessage,
+}: Props): React.JSX.Element {
   if (files.length === 0) return <p className="empty">{emptyMessage}</p>;
   const columns = rankMetricsFor(isDiff).map((metric) => describeColumn(metric, measure));
   const activeMetric: RankMetric = isDiff ? aspect : measure;

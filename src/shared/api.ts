@@ -46,10 +46,6 @@ export const TREE_SORTS: readonly TreeSort[] = ["name", "weight"];
  */
 export type ChangeStatus = "added" | "modified" | "deleted" | "renamed" | "unchanged";
 
-export const CHANGE_STATUSES: readonly ChangeStatus[] = [
-  "added", "modified", "deleted", "renamed", "unchanged",
-];
-
 /**
  * The quantity every total, bar, and ranking is expressed in.
  *
@@ -142,29 +138,18 @@ export function aspectTotals(sides: MeasuredSides, measure: Measure): Record<Asp
 }
 
 /**
- * The words every surface uses for a unit.
- *
- * Here rather than in the client, because the page is not the only reader of
- * them: the brief an ask hands to a local agent has to name the unit exactly
- * as the panel the reader is looking at does.
- */
-
-/**
  * How each measure is named in prose, in a heading, and in a tight cell.
  *
  * One table rather than three, so a new measure cannot arrive with a label
- * missing from one surface and present in another.
+ * missing from one surface and present in another. Here rather than in the
+ * client, because the page is not the only reader: the brief an ask hands to a
+ * local agent has to name the unit exactly as the panel the reader sees does.
  */
 const MEASURE_NAMES: Record<Measure, { prose: string; heading: string; abbreviation: string }> = {
   tokens: { prose: "tokens", heading: "Tokens", abbreviation: "tok" },
   lines: { prose: "lines", heading: "Lines", abbreviation: "lines" },
   codeLines: { prose: "LOC", heading: "LOC", abbreviation: "LOC" },
 };
-
-/** Name for running text: "42,000 tokens", "1,200 LOC". */
-export function measureName(measure: Measure): string {
-  return MEASURE_NAMES[measure].prose;
-}
 
 /** Title-case name for a control, a button, or a column heading. */
 export function measureHeading(measure: Measure): string {
@@ -306,11 +291,6 @@ export function sortMetricsFor(isDiff: boolean): readonly RankMetric[] {
  */
 export function defaultRankMetric(isDiff: boolean): RankMetric {
   return isDiff ? "net" : "tokens";
-}
-
-/** The aspect a diff column names, or `null` for a plain field column. */
-export function aspectOfMetric(metric: RankMetric): Aspect | null {
-  return ASPECTS.find((aspect) => aspect === metric) ?? null;
 }
 
 /**
@@ -568,6 +548,10 @@ export interface ScanMeta {
   languages: string[];
 }
 
+/** Bounds on the tile row, applied by the panel that measures it and by the server. */
+export const MIN_CARD_COLUMNS = 1;
+export const MAX_CARD_COLUMNS = 6;
+
 /** Everything the client controls, sent on every view request. */
 export interface ViewRequest {
   kinds: FileKind[];
@@ -596,9 +580,11 @@ export interface ViewRequest {
   /**
    * How many tiles fit across the panel at its current width.
    *
-   * The client measures this. The server decides the actual column count and
-   * tile count from it, because only the server knows how many child folders
-   * there are. Purely a layout concern, so it is not part of the linkable state.
+   * The client measures this and holds it to {@link MIN_CARD_COLUMNS} and
+   * {@link MAX_CARD_COLUMNS}, and the server holds an untrusted body to the
+   * same pair. The server decides the actual column and tile count from it,
+   * because only the server knows how many child folders there are. Purely a
+   * layout concern, so it is not part of the linkable state.
    */
   cardColumns: number;
 }
@@ -714,17 +700,24 @@ export interface Span {
   end: number;
 }
 
+/**
+ * Every field of a comparison in one string.
+ *
+ * A revision name holds no space, so the kind and its revisions read back
+ * unambiguously. Written as one value, so comparing two comparisons needs no
+ * cast to reach the fields only one of the five branches has.
+ */
+function comparisonKey(request: ComparisonRequest): string {
+  switch (request.kind) {
+    case "workingTree": case "staged": return request.kind;
+    case "revisionToWorkingTree": return `${request.kind} ${request.rev}`;
+    case "revisionPair": case "mergeBase": return `${request.kind} ${request.base} ${request.target}`;
+  }
+}
+
 /** Whether two requests name the same comparison. */
 export function sameComparisonRequest(one: ComparisonRequest, other: ComparisonRequest): boolean {
-  if (one.kind !== other.kind) return false;
-  switch (one.kind) {
-    case "workingTree": case "staged": return true;
-    case "revisionToWorkingTree": return one.rev === (other as { rev: string }).rev;
-    default: {
-      const pair = other as { base: string; target: string };
-      return one.base === pair.base && one.target === pair.target;
-    }
-  }
+  return comparisonKey(one) === comparisonKey(other);
 }
 
 /**

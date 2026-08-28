@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useModalDialog } from "../dialog.ts";
 import type { AgentTool } from "../../shared/api.ts";
 
 interface Props {
@@ -21,18 +22,12 @@ interface Props {
  * browser has since left.
  */
 export function AskDialog({ open, agent, starting, failure, onClose, onAsk }: Props): React.JSX.Element {
-  const dialogRef = useRef<HTMLDialogElement>(null);
+  const dialogRef = useModalDialog(open);
   const questionRef = useRef<HTMLTextAreaElement>(null);
   const [question, setQuestion] = useState("");
 
   useEffect(() => {
-    const dialog = dialogRef.current;
-    if (!dialog) return;
-    if (!open) {
-      if (dialog.open) dialog.close();
-      return;
-    }
-    if (!dialog.open) dialog.showModal();
+    if (!open) return;
     // Emptied when the panel opens rather than when it is sent, so an ask that
     // fails to start leaves the reader their question.
     setQuestion("");

@@ -1,6 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
+import { useModalDialog } from "../dialog.ts";
 import type { SkillInstallResponse } from "../../shared/api.ts";
 import { fetchSkillInstall } from "../api.ts";
+import { messageOf } from "../format.ts";
 
 interface Props {
   open: boolean;
@@ -15,24 +17,18 @@ interface Props {
  * command is short enough to read before pasting.
  */
 export function SkillInstallDialog({ open, onClose, onPreviewSkill }: Props): React.JSX.Element {
-  const dialogRef = useRef<HTMLDialogElement>(null);
+  const dialogRef = useModalDialog(open);
   const [install, setInstall] = useState<SkillInstallResponse | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
-    const dialog = dialogRef.current;
-    if (!dialog) return;
-    if (!open) {
-      if (dialog.open) dialog.close();
-      return;
-    }
-    if (!dialog.open) dialog.showModal();
+    if (!open) return;
     setCopied(false);
     let cancelled = false;
     fetchSkillInstall()
       .then((loaded) => { if (!cancelled) setInstall(loaded); })
-      .catch((cause: unknown) => { if (!cancelled) setFailure(cause instanceof Error ? cause.message : String(cause)); });
+      .catch((cause: unknown) => { if (!cancelled) setFailure(messageOf(cause)); });
     return () => { cancelled = true; };
   }, [open]);
 

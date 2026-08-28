@@ -90,6 +90,13 @@ class BadRequestError extends Error {}
 /** A valid request that cannot run until the active scan finishes. */
 class ConflictError extends Error {}
 
+/** A known route, asked with a method it does not answer. */
+class MethodNotAllowedError extends Error {}
+
+function requireMethod(request: IncomingMessage, method: "GET" | "POST"): void {
+  if (request.method !== method) throw new MethodNotAllowedError(`use ${method}`);
+}
+
 /**
  * Read a comparison out of an untrusted body.
  *
@@ -334,13 +341,8 @@ async function sendStaticFile(response: ServerResponse, filePath: string): Promi
   response.end(body);
 }
 
-/**
- * Create the local HTTP server.
- *
- * The index and its scan options move together so source reads can never use a new index with an old root, or vice versa.
- */
-
-const MAX_TCP_PORT = 65535;
+/** The highest port a TCP socket can bind. The command line holds `--port` to it too. */
+export const MAX_TCP_PORT = 65535;
 
 /** `EADDRINUSE`, whichever layer raised it. */
 export function isAddressInUse(cause: unknown): boolean {
@@ -391,6 +393,12 @@ async function bindFirstFreePort(
   }
 }
 
+/**
+ * Create the local HTTP server.
+ *
+ * The index and its producer move together, so a source read can never pair a
+ * new index with the root the old one was taken from, or the reverse.
+ */
 export function createSlopsplorerServer(options: SlopsplorerServerOptions): SlopsplorerServer {
   const packageRoot = resolvePackageRoot();
   const staticRoot = path.join(packageRoot, "dist", "web");
@@ -593,28 +601,19 @@ export function createSlopsplorerServer(options: SlopsplorerServerOptions): Slop
   async function handleApi(request: IncomingMessage, response: ServerResponse, url: URL): Promise<void> {
     switch (url.pathname) {
       case "/api/view": {
-        if (request.method !== "POST") {
-          sendJson(response, 405, { error: "use POST" });
-          return;
-        }
+        requireMethod(request, "POST");
         sendJson(response, 200, buildView(scanState.index, parseViewRequest(await readJsonBody(request))));
         return;
       }
       case "/api/rescan": {
-        if (request.method !== "POST") {
-          sendJson(response, 405, { error: "use POST" });
-          return;
-        }
+        requireMethod(request, "POST");
         const viewRequest = parseViewRequest(await readJsonBody(request));
         const rescanned = await rescan();
         sendJson(response, 200, buildView(rescanned, viewRequest));
         return;
       }
       case "/api/open": {
-        if (request.method !== "POST") {
-          sendJson(response, 405, { error: "use POST" });
-          return;
-        }
+        requireMethod(request, "POST");
         const openRequest = await parseOpenRootRequest(await readJsonBody(request));
         const previous = scanState.producer;
         const scanOptions: ScanOptions = previous.kind === "scan"
@@ -632,10 +631,7 @@ export function createSlopsplorerServer(options: SlopsplorerServerOptions): Slop
         return;
       }
       case "/api/compare": {
-        if (request.method !== "POST") {
-          sendJson(response, 405, { error: "use POST" });
-          return;
-        }
+        requireMethod(request, "POST");
         const compareRequest = parseCompareRequest(await readJsonBody(request));
         const previous = scanState.producer;
         // Only a comparison can be recompared: a scan has no repository the
@@ -659,10 +655,7 @@ export function createSlopsplorerServer(options: SlopsplorerServerOptions): Slop
         return;
       }
       case "/api/spine": {
-        if (request.method !== "GET") {
-          sendJson(response, 405, { error: "use GET" });
-          return;
-        }
+        requireMethod(request, "GET");
         sendJson(response, 200, await spineOf(scanState.producer));
         return;
       }
@@ -688,10 +681,7 @@ export function createSlopsplorerServer(options: SlopsplorerServerOptions): Slop
         return;
       }
       case "/api/ask": {
-        if (request.method !== "POST") {
-          sendJson(response, 405, { error: "use POST" });
-          return;
-        }
+        requireMethod(request, "POST");
         const ask = parseAskRequest(await readJsonBody(request));
         const agent = agents.find((candidate) => candidate.definition.id === ask.agentId);
         if (agent === undefined) {
@@ -713,10 +703,7 @@ export function createSlopsplorerServer(options: SlopsplorerServerOptions): Slop
         return;
       }
       case "/api/ask-dismiss": {
-        if (request.method !== "POST") {
-          sendJson(response, 405, { error: "use POST" });
-          return;
-        }
+        requireMethod(request, "POST");
         const body = await readJsonBody(request);
         const id = (body as { id?: unknown })?.id;
         if (typeof id !== "string") throw new BadRequestError("`id` must name an ask");
@@ -782,6 +769,10 @@ export function createSlopsplorerServer(options: SlopsplorerServerOptions): Slop
         // after the reply rather than reading bytes we already refused.
         if (!request.readableEnded) response.setHeader("Connection", "close");
         sendJson(response, 400, { error: error.message });
+        return;
+      }
+      if (error instanceof MethodNotAllowedError) {
+        sendJson(response, 405, { error: error.message });
         return;
       }
       if (error instanceof ConflictError) {

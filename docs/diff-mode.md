@@ -270,7 +270,9 @@ One producer means the preview and the numbers beside it can never describe diff
 
 The route sends the file whole, unchanged lines included, because hunks answer a question the reader did not ask.
 A gutter holds the number on each side, so a reader can see where a passage sits and how far apart two changes are.
-`Unchanged lines` in the dialog head hides every line further than three from a change, and a band counts what it hid.
+`Only changed lines` in the dialog head hides every line further than three from a change, and a band counts what it hid.
+`Wrap lines` folds a long line into the width of the dialog instead of scrolling the body sideways, in a comparison and in a scan alike.
+Both are habits of the reader and not facts about the file, so `src/web/preferences.ts` keeps them in local storage and they open as they were last left.
 
 `DiffView` highlights each side whole with `highlightToLines()`, then hands each row the line that belongs to it.
 Highlighting a row on its own would lose every construct that spans lines, and a diff grammar would colour the markers and leave the code grey.

@@ -5,7 +5,7 @@ import type { FileKind } from "../shared/api.ts";
  * Extensions the scanner will read. Anything else is treated as a binary or
  * uninteresting artifact and never enters a snapshot.
  */
-export const SOURCE_EXTENSIONS: ReadonlySet<string> = new Set([
+const SOURCE_EXTENSIONS: ReadonlySet<string> = new Set([
   ".adoc", ".bash", ".bats", ".c", ".cc", ".cjs", ".cpp", ".cs", ".csv",
   ".css", ".fish", ".go", ".h", ".hpp", ".html", ".java", ".js", ".json",
   ".jsonc", ".jsx", ".ksh", ".kt", ".kts", ".lock", ".lua", ".md", ".mdx",
