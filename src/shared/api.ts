@@ -548,6 +548,17 @@ export interface ScanMeta {
   languages: string[];
 }
 
+/** The review page a static snapshot can return its reader to. */
+export interface SnapshotBacklink {
+  label: string;
+  url: string;
+}
+
+/** Data embedded in the static entry page before its client starts. */
+export interface SnapshotContext {
+  backlink: SnapshotBacklink | null;
+}
+
 /** Bounds on the tile row, applied by the panel that measures it and by the server. */
 export const MIN_CARD_COLUMNS = 1;
 export const MAX_CARD_COLUMNS = 6;
@@ -830,6 +841,15 @@ interface SourceResponseBase {
 export type SourceResponse =
   | (SourceResponseBase & { mode: "source"; content: string })
   | (SourceResponseBase & { mode: "diff"; lines: DiffLine[] });
+
+/**
+ * One `data/sources/<index>.json` record of a static snapshot.
+ *
+ * A file the exporter could not read is stored as the same refusal the live
+ * source route would send, so one unreadable file never blocks an export
+ * and its preview fails on the page exactly as it would against the server.
+ */
+export type SnapshotSourceRecord = SourceResponse | { error: string };
 
 /** One directory the install command writes a copy of the skill into. */
 export interface SkillInstallTarget {

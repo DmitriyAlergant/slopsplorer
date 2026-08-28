@@ -56,6 +56,8 @@ The same rule catches `A...B` where B is already an ancestor of A, because the m
 
 A squash merge deletes the branch and keeps none of its commits, so a pull request's own revisions are in no local branch and `git rev-parse` refuses every one of them.
 `--pr` fetches the change instead of asking the repository for something it does not hold.
+When `--export` receives the full review URL, `pullRequestBacklink()` also retains that exact URL for the static header.
+A numeric `--pr` value has no page address to retain.
 
 `--pr` needs `gh` or `glab` installed and signed in, and that is not a convenience.
 The branch a request is against is the one fact Git has no record of.
@@ -264,7 +266,8 @@ Sorting one of the aspect columns chooses the aspect, exactly as sorting a measu
 Inside a comparison a file has two contents, so `SourceDialog` draws the change with `DiffView`.
 Showing the after-image alone would be a claim the page cannot support.
 
-`diffOneFile()` reads both sides again and `alignedLines()` interleaves them into one sequence, from the same aligner the figures came from, rather than shelling out to `git diff` a second time.
+The aligner that `openDiffAligner()` opens reads both sides again and `alignedLines()` interleaves them into one sequence, from the same aligner the figures came from, rather than shelling out to `git diff` a second time.
+One aligner serves every row it was opened for through one size batch and one object reader, so the exporter walking a whole index shares two git processes instead of paying two per file.
 One producer means the preview and the numbers beside it can never describe different changes, and it reaches an untracked file, which `git diff` cannot show at all.
 `tests/linediff.test.ts` reads each side back out of one alignment over a random corpus and requires the two files again.
 

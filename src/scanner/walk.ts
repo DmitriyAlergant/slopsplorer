@@ -7,6 +7,9 @@ import { EXCLUDED_DIRECTORIES, isSourceFile } from "./classify.ts";
 
 const execFileAsync = promisify(execFile);
 
+/** Marks a static export root so later scans do not measure generated bundle data. */
+export const STATIC_EXPORT_MARKER = ".slopsplorer-export";
+
 /** Whether `root` sits inside a Git worktree. */
 async function isGitWorktree(root: string): Promise<boolean> {
   try {
@@ -31,6 +34,19 @@ async function listGitFiles(root: string): Promise<string[]> {
     { cwd: root, maxBuffer: 256 * 1024 * 1024, encoding: "utf8" },
   );
   return [...new Set(stdout.split("\0").filter(Boolean))];
+}
+
+/** Ignored export markers, which the ordinary Git listing intentionally omits. */
+async function listIgnoredGitExportMarkers(root: string): Promise<string[]> {
+  const { stdout } = await execFileAsync(
+    "git",
+    [
+      "ls-files", "-z", "--others", "--ignored", "--exclude-standard", "--",
+      STATIC_EXPORT_MARKER, `:(glob)**/${STATIC_EXPORT_MARKER}`,
+    ],
+    { cwd: root, maxBuffer: 256 * 1024 * 1024, encoding: "utf8" },
+  );
+  return stdout.split("\0").filter(Boolean);
 }
 
 /** One `.gitignore` file, with the directory its patterns are relative to. */
@@ -89,6 +105,10 @@ async function listFilesystemFiles(
         if (respectGitignore && isIgnored(activeScopes, childRelative, true)) continue;
         await descend(path.join(directory, entry.name), childRelative, activeScopes);
       } else if (entry.isFile()) {
+        if (entry.name === STATIC_EXPORT_MARKER) {
+          found.push(childRelative);
+          continue;
+        }
         if (respectGitignore && isIgnored(activeScopes, childRelative, false)) continue;
         found.push(childRelative);
       }
@@ -100,25 +120,33 @@ async function listFilesystemFiles(
 }
 
 /**
- * The source files one revision holds, without touching the working tree.
+ * All files one revision holds, without touching the working tree.
  *
  * A comparison measures only the files a change touched, and that is not
  * enough to judge the shape of a folder. This gives the second producer the
  * same view of the tree that a scan gets from its own listing.
  */
-export async function listRevisionSourceFiles(
-  root: string, rev: string, exclude: readonly string[],
-): Promise<string[]> {
+export async function listRevisionFiles(root: string, rev: string): Promise<string[]> {
   const { stdout } = await execFileAsync(
     "git",
     ["ls-tree", "-r", "-z", "--name-only", rev, "--", "."],
     { cwd: root, maxBuffer: 256 * 1024 * 1024, encoding: "utf8" },
   );
-  return acceptSourcePaths(stdout.split("\0").filter(Boolean), exclude);
+  return stdout.split("\0").filter(Boolean);
+}
+
+/** The accepted source files one revision holds. */
+export async function listRevisionSourceFiles(
+  root: string, rev: string, exclude: readonly string[],
+): Promise<string[]> {
+  const inventory = await listRevisionFiles(root, rev);
+  return acceptSourcePaths(inventory, exclude);
 }
 
 export interface FileListing {
   relativePaths: string[];
+  /** All listed files, including non-source files used to identify excluded export roots. */
+  inventory: string[];
   /** The listing came from the Git index rather than a filesystem walk. */
   gitTracked: boolean;
   /** `.gitignore` rules were applied, by Git or by the walker. */
@@ -146,9 +174,12 @@ export async function listSourceFiles(root: string, options: ListOptions): Promi
   const candidates = useGit
     ? await listGitFiles(root)
     : await listFilesystemFiles(root, extraExclusions, respectGitignore);
+  const exportMarkers = useGit ? await listIgnoredGitExportMarkers(root) : [];
+  const inventory = [...candidates, ...exportMarkers];
 
   return {
-    relativePaths: acceptSourcePaths(candidates, options.exclude),
+    relativePaths: acceptSourcePaths(candidates, options.exclude, inventory),
+    inventory,
     gitTracked: useGit,
     respectsGitignore: respectGitignore,
   };
@@ -161,10 +192,21 @@ export async function listSourceFiles(root: string, options: ListOptions): Promi
  * about what counts as a source file. The sort is what makes every subtree a
  * contiguous slice of `ScanIndex.files`.
  */
-export function acceptSourcePaths(candidates: readonly string[], exclude: readonly string[]): string[] {
+export function acceptSourcePaths(
+  candidates: readonly string[], exclude: readonly string[], inventory: readonly string[] = candidates,
+): string[] {
   const extraExclusions = new Set(exclude);
+  const exportRoots = inventory
+    .filter((relativePath) => path.posix.basename(relativePath) === STATIC_EXPORT_MARKER)
+    .map((relativePath) => {
+      const directory = path.posix.dirname(relativePath);
+      return directory === "." ? "" : directory;
+    });
   return candidates
     .filter((relativePath) => isSourceFile(relativePath))
+    .filter((relativePath) => !exportRoots.some((root) => (
+      root === "" || relativePath === root || relativePath.startsWith(`${root}/`)
+    )))
     .filter((relativePath) => {
       const directories = path.posix.dirname(relativePath).split("/").filter((part) => part && part !== ".");
       return !directories.some((directory) => extraExclusions.has(directory));

@@ -100,6 +100,28 @@ Click a file for its diff, whole, with the unchanged runs folded.
 
 *One file inside the comparison, changed lines only.*
 
+## Export a static snapshot
+
+Write the complete explorer as a static folder instead of keeping a local server alive:
+
+```bash
+slopsplorer --export ./site
+slopsplorer --export ./branch-review main...HEAD
+slopsplorer --export ./pr-619 https://github.com/owner/repo/pull/619
+```
+
+The command scans once, writes the interactive bundle, prints its absolute path, and exits.
+The static page keeps the filters, measures, tree controls, drilling, rankings, linked URL state, and source or diff previews.
+When a full GitHub pull request or GitLab merge request URL names the comparison, the snapshot header links back to that review page.
+It is a frozen snapshot, so it cannot rescan, open another folder, change the comparison, or run a local coding agent.
+The commit band is present but read-only.
+
+The destination can be missing or empty, and a non-empty destination is refused without changing it.
+Invalid comparison input and scan failures do not create a missing destination.
+A marker in the bundle keeps an export inside the source tree out of later scans.
+Assets and data use relative URLs, so the folder can be served at a domain root or below a path prefix by any static HTTP server.
+The bundle contains every accepted source preview, so protect or distribute the output as you would the repository itself.
+
 ## Text report
 
 A coding agent cannot open the page, and it has some slop to answer for.
@@ -190,6 +212,7 @@ slopsplorer <path>              # defaults to the current folder
   --dev                         # Vite hot reload, for work on Slopsplorer itself
   --pr 619                      # fetch a pull request and compare it, by number or URL
   --report                      # print a text report and exit, no server
+  --export ./site               # write a complete static snapshot and exit
   --unit loc                    # report unit: tokens (default), lines, or loc
   --aspect net                  # report side of a change: churn (default), net, added, removed, after
   --threshold 1                 # report expands a node at this share of its section, default 3
@@ -229,6 +252,8 @@ On Windows you get the same command written for PowerShell.
 
 The server binds to loopback by default and is read-only.
 It serves only files that were part of the scan, and refuses any path outside it.
+`--export <dir>` writes every accepted source preview into the output folder and states that before it scans.
+Protect or distribute that folder as you would the repository itself.
 Your question is passed to an agent as one argument and never through a shell.
 Each agent is asked in the most restricted mode it offers, which for three of the four cannot write; see [Ask an agent about it](#ask-an-agent-about-it).
 

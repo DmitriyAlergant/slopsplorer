@@ -1,47 +1,14 @@
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
-import type { FileRow, ScanMeta, WeightField } from "../shared/api.ts";
-import { WEIGHT_FIELD_NAMES } from "../shared/api.ts";
+import type { FileRow, ScanMeta } from "../shared/api.ts";
+import { assembleIndex, type FolderNode, type ScanIndex } from "../shared/index.ts";
 import { classifyFile, findLocaleLevels, hasGeneratedHeader, isGenerated, refineKindByContent } from "./classify.ts";
 import { measureFile } from "./measure.ts";
 import { StructureAnalyzer } from "./structure.ts";
 import { tokenCounter, type TokenizerName } from "./tokenize.ts";
 import { listSourceFiles } from "./walk.ts";
 
-/**
- * One folder in the scanned tree.
- *
- * `start`/`end` bound this folder's descendants inside the path-sorted `files`
- * array. Sorting makes every subtree contiguous, so aggregating a folder is a
- * range walk rather than a scan of every file in the project.
- */
-export interface FolderNode {
-  path: string;
-  name: string;
-  parentPath: string | null;
-  childPaths: string[];
-  directFileIndices: number[];
-  depth: number;
-  start: number;
-  end: number;
-}
-
-export interface ScanIndex {
-  meta: ScanMeta;
-  /** Sorted by path. */
-  files: FileRow[];
-  /**
-   * Running totals over `files` per weight field, where `prefix[field][n]` is
-   * the sum of the first `n` files. Because a folder's descendants are
-   * contiguous, its unfiltered weight in any measure and aspect is one
-   * subtraction, independent of any active filter.
-   */
-  weightPrefix: Record<WeightField, Float64Array>;
-  /** Sorted by path, so a parent always precedes its children. */
-  folders: FolderNode[];
-  folderByPath: Map<string, FolderNode>;
-  fileIndexByPath: Map<string, number>;
-}
+export { assembleIndex, type FolderNode, type ScanIndex } from "../shared/index.ts";
 
 export interface ScanProgress {
   completedFiles: number;
@@ -203,37 +170,6 @@ export async function scanSourceTree(options: ScanOptions): Promise<ScanIndex> {
   };
 
   return assembleIndex(meta, files, folders);
-}
-
-/**
- * Assemble the queryable index from the parts a producer has measured.
- *
- * A tree and a comparison differ in how they arrive at `files`, and in nothing
- * after that, so every derived lookup is built in one place and neither
- * producer can grow a table the other one lacks.
- */
-export function assembleIndex(meta: ScanMeta, files: FileRow[], folders: FolderNode[]): ScanIndex {
-  return {
-    meta,
-    files,
-    weightPrefix: buildWeightPrefixes(files),
-    folders,
-    folderByPath: new Map(folders.map((folder) => [folder.path, folder])),
-    fileIndexByPath: new Map(files.map((file, index) => [file.path, index])),
-  };
-}
-
-/** One running-total array per weight field, so any of them costs the same to query. */
-function buildWeightPrefixes(files: readonly FileRow[]): Record<WeightField, Float64Array> {
-  const prefixes = {} as Record<WeightField, Float64Array>;
-  for (const field of WEIGHT_FIELD_NAMES) {
-    const running = new Float64Array(files.length + 1);
-    for (const [position, file] of files.entries()) {
-      running[position + 1] = running[position]! + file[field];
-    }
-    prefixes[field] = running;
-  }
-  return prefixes;
 }
 
 /** Derive the folder hierarchy, including folders that only contain other folders. */

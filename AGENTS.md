@@ -46,6 +46,7 @@ Two design docs hold the detail, and they are the technical memory of this repos
 - [docs/commit-band.md](docs/commit-band.md) - the commits inside a comparison: the span, the band above the filter bar, and where the spine is held.
 - [docs/report.md](docs/report.md) - the second consumer of an index: `--report`, the sections, the one rule that decides how deep the walk goes.
 - [docs/ask.md](docs/ask.md) - handing a question to a local coding agent: discovery, the brief, the one process per ask, and how an answer is drawn.
+- [docs/export.md](docs/export.md) - the static consumer of an index: the output directory, embedded data, lazy previews, and browser worker.
 
 `README.md` is the user-facing page, and `skill/SKILL.md` is the agent skill that ships inside the package.
 Both describe behavior to someone outside the code, so a change in what a number means has to reach them too.
@@ -57,11 +58,11 @@ Start any non-trivial task by reading the design doc that covers the area you ar
 A change that breaks one of these changes the product, and is not a refactor.
 Each is explained where it belongs; the list exists so nobody breaks one by accident.
 
-- `src/shared/api.ts` is the contract and the only file both builds import. Change it and both sides change together.
+- `src/shared/api.ts` is the wire contract both builds import. `src/shared/index.ts` is the one other shared module, so a static worker rebuilds the same queryable index as the scanner. Change either and both sides change together.
 - `src/scanner/measure.ts` is the single place that decides whether a file gets tree-sitter comment spans or the marker table, so the scanner and the corpus test cannot drift apart.
 - `ScanIndex.files` is sorted by path, which is what makes a subtree total a slice. `tests/scan.test.ts` pins it, and `tests/diff-scan.test.ts` pins it for the other producer.
 - `acceptSourcePaths` in `src/scanner/walk.ts` is the single acceptance rule, so a scan and a diff cannot disagree about what a source file is.
-- The server aggregates. The browser never receives a file it does not display.
+- The server aggregates a live page, and its browser never receives a file it does not display. A static snapshot is the explicit exception: its worker receives the measured file index, and source text still loads one file at a time.
 - `lines === codeLines + commentLines`, non-blank lines only, buckets exclusive. Comment detection may only move a line between the two buckets, never change `lines`, never touch `tokens`.
 - A `Measure` and an `Aspect` resolve to a numeric `FileRow` field through `weightField`, the one table that holds every such name whole. Both are validated by `parseViewRequest` before either reaches an index expression.
 - Every `RankMetric` is a column both file tables draw in the mode it belongs to, and every column they draw is a `RankMetric`. Sorting is the only way to pick one, so a metric without a column could never be reached. `buildView` clamps a metric the open index cannot draw and echoes what it used.

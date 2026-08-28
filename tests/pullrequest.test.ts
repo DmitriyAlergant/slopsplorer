@@ -5,7 +5,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
-  commitUrlBase, fetchPullRequest, parsePullRequestUrl, resolveComparison,
+  commitUrlBase, fetchPullRequest, parsePullRequestUrl, pullRequestBacklink, resolveComparison,
   type PullRequestMetadata,
 } from "../src/scanner/gitdiff.ts";
 import type { ComparisonRequest } from "../src/shared/api.ts";
@@ -130,6 +130,27 @@ describe("parsePullRequestUrl", () => {
     expect(parsePullRequestUrl("https://github.com/owner/repo/pull/12/commits")?.number).toBe(12);
   });
 
+  it("retains a GitHub pull request page as a snapshot backlink", () => {
+    expect(pullRequestBacklink("https://github.com/owner/repo/pull/12")).toEqual({
+      label: "PR #12",
+      url: "https://github.com/owner/repo/pull/12",
+    });
+  });
+
+  it("does not reparse a validated backlink with the URL constructor", () => {
+    expect(pullRequestBacklink("https://github.com:99999/owner/repo/pull/12")).toEqual({
+      label: "PR #12",
+      url: "https://github.com:99999/owner/repo/pull/12",
+    });
+  });
+
+  it("takes the backlink label from the terminal review route", () => {
+    expect(pullRequestBacklink("https://github.com/acme/merge_requests/pull/12")).toEqual({
+      label: "PR #12",
+      url: "https://github.com/acme/merge_requests/pull/12",
+    });
+  });
+
   it("reads a GitLab merge request under a nested group", () => {
     expect(parsePullRequestUrl("https://gitlab.example.com/group/sub/project/-/merge_requests/42")).toEqual({
       number: 42,
@@ -137,9 +158,17 @@ describe("parsePullRequestUrl", () => {
     });
   });
 
+  it("retains a GitLab merge request page as a snapshot backlink", () => {
+    expect(pullRequestBacklink("https://gitlab.example.com/group/sub/project/-/merge_requests/42")).toEqual({
+      label: "MR !42",
+      url: "https://gitlab.example.com/group/sub/project/-/merge_requests/42",
+    });
+  });
+
   it("is not a revision range or a directory", () => {
     expect(parsePullRequestUrl("main...HEAD")).toBeNull();
     expect(parsePullRequestUrl("../other-project")).toBeNull();
+    expect(pullRequestBacklink("main...HEAD")).toBeNull();
   });
 });
 

@@ -1,48 +1,30 @@
 import { existsSync } from "node:fs";
-import { readFile, realpath, stat } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { createServer as createHttpServer } from "node:http";
 import type { IncomingMessage, Server, ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import path from "node:path";
-import { StringDecoder } from "node:string_decoder";
 import { fileURLToPath } from "node:url";
 import type { ViteDevServer } from "vite";
 import { createAskStore } from "../agents/ask.ts";
 import type { AvailableAgent } from "../agents/discover.ts";
-import { diffOneFile, scanDiff } from "../scanner/diffScan.ts";
+import { scanDiff } from "../scanner/diffScan.ts";
 import type { DiffScanOptions } from "../scanner/diffScan.ts";
 import { GitError, listRefs, resolveComparison, verifyComparisonRequest } from "../scanner/gitdiff.ts";
 import { buildSpine } from "../scanner/spine.ts";
 import { scanSourceTree } from "../scanner/scan.ts";
 import type { ScanIndex, ScanOptions } from "../scanner/scan.ts";
 import type {
-  AgentsResponse, AskListResponse, AskRequest, CommitSpine, CompareRequest, ComparisonRequest, DiffLine,
+  AgentsResponse, AskListResponse, AskRequest, CommitSpine, CompareRequest, ComparisonRequest,
   OpenRootRequest, SkillInstallResponse, SourceResponse,
 } from "../shared/api.ts";
 import { spansRequest } from "../shared/api.ts";
 import { buildView, parseViewRequest } from "./aggregate.ts";
 import { composeBrief } from "./brief.ts";
+import { readIndexedSource, SourceReadError } from "./source.ts";
 
 /** Ceiling on `POST` bodies. A view request is a few kilobytes even for a huge tree. */
 const MAX_REQUEST_BODY_BYTES = 1024 * 1024;
-
-/** Ceiling on a source preview, so one generated bundle cannot stall the browser. */
-const MAX_SOURCE_BYTES = 512 * 1024;
-
-/**
- * Cut a compared file at the same ceiling a previewed file gets, on a line
- * boundary. `totalBytes` counts the whole change, so the note the page draws
- * says how much was left out.
- */
-function takeUpToByteCeiling(aligned: readonly DiffLine[]): { lines: DiffLine[]; totalBytes: number } {
-  let totalBytes = 0;
-  let kept = aligned.length;
-  for (const [index, line] of aligned.entries()) {
-    totalBytes += Buffer.byteLength(line.text) + 1;
-    if (totalBytes > MAX_SOURCE_BYTES && index < kept) kept = index;
-  }
-  return { lines: aligned.slice(0, kept), totalBytes };
-}
 
 const SKILL_NAME = "slopsplorer";
 
@@ -536,66 +518,15 @@ export function createSlopsplorerServer(options: SlopsplorerServerOptions): Slop
     const state = scanState;
     const requestedPath = url.searchParams.get("path");
     if (requestedPath === null) throw new BadRequestError("missing `path` query parameter");
-
-    // The index is the allowlist: only files the scan accepted are readable.
-    const fileIndex = state.index.fileIndexByPath.get(requestedPath);
-    if (fileIndex === undefined) {
-      sendJson(response, 404, { error: "file is not part of the current scan" });
-      return;
-    }
-    const row = state.index.files[fileIndex]!;
-
-    // Inside a diff, a file has two contents, so showing either one alone
-    // would be a claim the page cannot support. Both sides go over whole and
-    // the page decides how much of the unchanged text to draw.
-    if (state.producer.kind === "diff") {
-      const aligned = await diffOneFile(state.producer.options, row);
-      const kept = takeUpToByteCeiling(aligned);
-      const payload: SourceResponse = {
-        path: row.path,
-        lines: kept.lines,
-        mode: "diff",
-        truncated: kept.lines.length < aligned.length,
-        totalBytes: kept.totalBytes,
-        language: row.language,
-      };
-      sendJson(response, 200, payload);
-      return;
-    }
-
-    const scanRoot = path.resolve(state.producer.options.root);
-    const absolutePath = path.resolve(scanRoot, requestedPath);
-    let realFilePath: string;
-    let realScanRoot: string;
     try {
-      realFilePath = await realpath(absolutePath);
-      realScanRoot = await realpath(scanRoot);
-    } catch {
-      sendJson(response, 404, { error: "file is no longer readable" });
-      return;
+      const producer = state.producer.kind === "diff"
+        ? { kind: "diff" as const, options: state.producer.options }
+        : { kind: "scan" as const, root: state.producer.options.root };
+      sendJson(response, 200, await readIndexedSource(state.index, producer, requestedPath));
+    } catch (cause) {
+      if (!(cause instanceof SourceReadError)) throw cause;
+      sendJson(response, cause.statusCode, { error: cause.message });
     }
-    // Defence in depth: a symlink added since the scan must not read outside the root.
-    const relative = path.relative(realScanRoot, realFilePath);
-    if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) {
-      sendJson(response, 403, { error: "file resolves outside the scan root" });
-      return;
-    }
-
-    const buffer = await readFile(realFilePath);
-    const truncated = buffer.byteLength > MAX_SOURCE_BYTES;
-    // The decoder drops a trailing partial code point instead of emitting U+FFFD.
-    const content = truncated
-      ? new StringDecoder("utf8").write(buffer.subarray(0, MAX_SOURCE_BYTES))
-      : buffer.toString("utf8");
-    const payload: SourceResponse = {
-      path: row.path,
-      content,
-      mode: "source",
-      truncated,
-      totalBytes: buffer.byteLength,
-      language: row.language,
-    };
-    sendJson(response, 200, payload);
   }
 
   async function handleApi(request: IncomingMessage, response: ServerResponse, url: URL): Promise<void> {

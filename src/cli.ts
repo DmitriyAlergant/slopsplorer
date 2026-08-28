@@ -8,15 +8,17 @@ import { AGENT_DEFINITIONS } from "./agents/definitions.ts";
 import { discoverAgents, type AvailableAgent } from "./agents/discover.ts";
 import { scanDiff, type DiffScanOptions } from "./scanner/diffScan.ts";
 import {
-  fetchPullRequest, GitError, parseComparisonSpec, parsePullRequestUrl, parseRevisionArgument,
+  fetchPullRequest, GitError, parseComparisonSpec, parsePullRequestUrl, parseRevisionArgument, pullRequestBacklink,
   repositoryRoot, resolveComparison, verifyComparisonRequest,
   type Comparison, type PullRequestLocation,
 } from "./scanner/gitdiff.ts";
 import { DEFAULT_MAX_FILE_BYTES, scanSourceTree } from "./scanner/scan.ts";
 import type { ScanIndex, ScanOptions, ScanProgress } from "./scanner/scan.ts";
+import { buildSpine } from "./scanner/spine.ts";
 import { ASPECTS, type Aspect, type ComparisonRequest } from "./shared/api.ts";
 import { DEFAULT_TOKENIZER, isTokenizerName, TOKENIZERS } from "./scanner/tokenize.ts";
 import { buildReport, DEFAULT_REPORT_THRESHOLD, REPORT_UNITS, type ReportOptions } from "./server/report.ts";
+import { writeStaticBundle } from "./server/export.ts";
 import {
   createSlopsplorerServer, isAddressInUse, MAX_TCP_PORT, resolvePackageRoot,
   type IndexProducer, type ServerAddress,
@@ -96,6 +98,8 @@ OPTIONS
   --open                  Open the URL in the default browser when the scan finishes.
                           This is the default outside --dev.
   --no-open               Do not open a browser.
+  --export <dir>          Write a complete static explorer to a missing or empty
+                          directory, then exit. Includes source previews.
   -h, --help              Show this help.
   --version               Show the version.
 
@@ -111,6 +115,9 @@ EXAMPLES
   slopsplorer .                   Scan the current folder. The same with no argument.
   slopsplorer --report            Print a text report of the current folder.
   slopsplorer --report --diff     Print a text report of the working-tree change.
+  slopsplorer --export ./site     Export the current folder as a static snapshot.
+  slopsplorer --export ./review main...HEAD
+                                  Export a comparison as a static snapshot.
   slopsplorer ../other-project    Scan a folder elsewhere.
   slopsplorer --diff              Compare HEAD against the working tree.
   slopsplorer --staged            Compare HEAD against the index.
@@ -490,6 +497,7 @@ async function main(): Promise<void> {
         open: { type: "boolean" },
         // parseArgs has no negation syntax, so the opt-out is its own flag.
         "no-open": { type: "boolean" },
+        export: { type: "string" },
         report: { type: "boolean" },
         unit: { type: "string" },
         aspect: { type: "string" },
@@ -514,6 +522,26 @@ async function main(): Promise<void> {
 
   const workingDirectory = path.resolve(values.C ?? ".");
   if (!isDirectory(workingDirectory)) fail(`no such directory: ${workingDirectory}`);
+
+  const exportDirectory = values.export === undefined ? null : path.resolve(workingDirectory, values.export);
+  const backlinkArgument = exportDirectory === null
+    ? undefined
+    : values.pr ?? (positionals.length === 1 ? positionals[0] : undefined);
+  const exportBacklink = backlinkArgument === undefined ? null : pullRequestBacklink(backlinkArgument);
+
+  if (exportDirectory !== null) {
+    if (values.report === true) fail("--report and --export name two different output modes");
+    for (const flag of ["host", "port", "dev", "open", "no-open"] as const) {
+      if (values[flag] !== undefined) fail(`--${flag} belongs to the server, and --export starts none`);
+    }
+    for (const flag of ["unit", "aspect", "threshold"] as const) {
+      if (values[flag] !== undefined) fail(`--${flag} describes a report, and --export writes the explorer`);
+    }
+    const snapshotEntry = path.join(resolvePackageRoot(), "dist", "web", "snapshot.html");
+    if (statSync(snapshotEntry, { throwIfNoEntry: false })?.isFile() !== true) {
+      fail("static client assets are missing. Run `npm run build` first");
+    }
+  }
 
   const tokenizer = values.tokenizer ?? DEFAULT_TOKENIZER;
   if (!isTokenizerName(tokenizer)) {
@@ -579,6 +607,31 @@ async function main(): Promise<void> {
   }
   if (reportOptions !== null) {
     process.stdout.write(buildReport(index, reportOptions));
+    return;
+  }
+  if (exportDirectory !== null) {
+    process.stderr.write(`  exporting the complete accepted source to ${exportDirectory}\n`);
+    try {
+      const spine = producer.kind === "diff"
+        ? await buildSpine(producer.options, producer.options.comparison.request)
+        : null;
+      const onProgress = createProgressReporter("exporting");
+      await writeStaticBundle({
+        clientRoot: path.join(resolvePackageRoot(), "dist", "web"),
+        output: exportDirectory,
+        index,
+        producer: producer.kind === "diff"
+          ? { kind: "diff", options: producer.options }
+          : { kind: "scan", root: producer.options.root },
+        spine,
+        concurrency,
+        backlink: exportBacklink,
+        ...(onProgress ? { onProgress } : {}),
+      });
+    } catch (cause) {
+      fail(`static export failed: ${cause instanceof Error ? cause.message : String(cause)}`);
+    }
+    process.stdout.write(`${exportDirectory}\n`);
     return;
   }
   // Asked of the tools themselves, and only for a run that serves a page: a
