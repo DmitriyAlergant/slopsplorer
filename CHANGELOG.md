@@ -6,13 +6,19 @@ Write yours under Unreleased as you make the change, and rename that heading to 
 
 ## [Unreleased]
 
+## [0.5.1](https://github.com/DmitriyAlergant/slopsplorer/releases/tag/v0.5.1) - 2026-08-28
+
 ### Features
 
-- The file preview can wrap a long line instead of scrolling it sideways, in a scan and in a comparison. The switch stands in the dialog head beside Only changed lines, and both are drawn as switches.
+- The file preview can wrap a long line instead of scrolling it sideways, in a scan and in a comparison. The switch stands in the dialog head beside Only changed lines, and both are drawn as switches. ([7c4345b](https://github.com/DmitriyAlergant/slopsplorer/commit/7c4345b))
 
 ### Bug Fixes
 
-- The caption over the file list now reads "showing 100 of 128 matches" instead of "matchs", and it breaks between the caption and that count rather than leaving one word on a line of its own.
+- The caption over the file list now reads "showing 100 of 128 matches" instead of "matchs", and it breaks between the caption and that count rather than leaving one word on a line of its own. ([e80246d](https://github.com/DmitriyAlergant/slopsplorer/commit/e80246d))
+
+### Documentation
+
+- The README shows the page as it stands, with the measure switch, the folder summary and its share cards, and the whole-project readouts under the panels. ([44f5b94](https://github.com/DmitriyAlergant/slopsplorer/commit/44f5b94))
 
 ## [0.5.0](https://github.com/DmitriyAlergant/slopsplorer/releases/tag/v0.5.0) - 2026-08-27
 
