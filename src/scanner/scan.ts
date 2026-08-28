@@ -80,6 +80,12 @@ export const UNCHANGED_FILE_FIELDS = {
   beforeFunctions: 0, beforeClasses: 0, beforeBranches: 0,
 } as const satisfies Partial<FileRow>;
 
+/** The folder holding this path, where `""` is the scan root. */
+function parentFolderOf(posixPath: string): string {
+  const parent = path.posix.dirname(posixPath);
+  return parent === "." ? "" : parent;
+}
+
 /** First index whose value is >= `target`. */
 function lowerBound(values: readonly string[], target: string): number {
   let low = 0;
@@ -179,11 +185,12 @@ export async function scanSourceTree(options: ScanOptions): Promise<ScanIndex> {
 
   const files = measured.filter((row): row is FileRow => row !== null);
 
-  const folders = buildFolders(files, path.basename(path.resolve(options.root)) || options.root);
+  const rootName = path.basename(path.resolve(options.root)) || options.root;
+  const folders = buildFolders(files, rootName);
 
   const meta: ScanMeta = {
     rootPath: options.root,
-    rootName: path.basename(path.resolve(options.root)) || options.root,
+    rootName,
     tokenizer: options.tokenizer,
     fileCount: files.length,
     folderCount: folders.length,
@@ -195,6 +202,17 @@ export async function scanSourceTree(options: ScanOptions): Promise<ScanIndex> {
     languages,
   };
 
+  return assembleIndex(meta, files, folders);
+}
+
+/**
+ * Assemble the queryable index from the parts a producer has measured.
+ *
+ * A tree and a comparison differ in how they arrive at `files`, and in nothing
+ * after that, so every derived lookup is built in one place and neither
+ * producer can grow a table the other one lacks.
+ */
+export function assembleIndex(meta: ScanMeta, files: FileRow[], folders: FolderNode[]): ScanIndex {
   return {
     meta,
     files,
@@ -206,7 +224,7 @@ export async function scanSourceTree(options: ScanOptions): Promise<ScanIndex> {
 }
 
 /** One running-total array per weight field, so any of them costs the same to query. */
-export function buildWeightPrefixes(files: readonly FileRow[]): Record<WeightField, Float64Array> {
+function buildWeightPrefixes(files: readonly FileRow[]): Record<WeightField, Float64Array> {
   const prefixes = {} as Record<WeightField, Float64Array>;
   for (const field of WEIGHT_FIELD_NAMES) {
     const running = new Float64Array(files.length + 1);
@@ -233,8 +251,7 @@ export function buildFolders(files: readonly FileRow[], rootName: string): Folde
   const filePaths = files.map((file) => file.path);
   const directIndices = new Map<string, number[]>();
   for (const [index, file] of files.entries()) {
-    const parent = path.posix.dirname(file.path);
-    const key = parent === "." ? "" : parent;
+    const key = parentFolderOf(file.path);
     const bucket = directIndices.get(key);
     if (bucket) bucket.push(index);
     else directIndices.set(key, [index]);
@@ -243,8 +260,7 @@ export function buildFolders(files: readonly FileRow[], rootName: string): Folde
   const childPaths = new Map<string, string[]>();
   for (const folderPath of sortedPaths) {
     if (!folderPath) continue;
-    const parent = path.posix.dirname(folderPath);
-    const key = parent === "." ? "" : parent;
+    const key = parentFolderOf(folderPath);
     const bucket = childPaths.get(key);
     if (bucket) bucket.push(folderPath);
     else childPaths.set(key, [folderPath]);
@@ -259,7 +275,7 @@ export function buildFolders(files: readonly FileRow[], rootName: string): Folde
     return {
       path: folderPath,
       name: folderPath ? path.posix.basename(folderPath) : rootName,
-      parentPath: folderPath ? (path.posix.dirname(folderPath) === "." ? "" : path.posix.dirname(folderPath)) : null,
+      parentPath: folderPath ? parentFolderOf(folderPath) : null,
       childPaths: childPaths.get(folderPath) ?? [],
       directFileIndices: directIndices.get(folderPath) ?? [],
       depth: folderPath ? folderPath.split("/").length : 0,

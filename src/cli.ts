@@ -18,7 +18,7 @@ import { ASPECTS, type Aspect, type ComparisonRequest } from "./shared/api.ts";
 import { DEFAULT_TOKENIZER, isTokenizerName, TOKENIZERS } from "./scanner/tokenize.ts";
 import { buildReport, DEFAULT_REPORT_THRESHOLD, REPORT_UNITS, type ReportOptions } from "./server/report.ts";
 import {
-  createSlopsplorerServer, isAddressInUse, resolvePackageRoot,
+  createSlopsplorerServer, isAddressInUse, MAX_TCP_PORT, resolvePackageRoot,
   type IndexProducer, type ServerAddress,
 } from "./server/server.ts";
 
@@ -568,7 +568,7 @@ async function main(): Promise<void> {
   }
 
   const host = values.host ?? DEFAULT_HOST;
-  const port = values.port === undefined ? DEFAULT_PORT : parseIntegerOption("port", values.port, 0, 65535);
+  const port = values.port === undefined ? DEFAULT_PORT : parseIntegerOption("port", values.port, 0, MAX_TCP_PORT);
 
   let index: ScanIndex;
   try {

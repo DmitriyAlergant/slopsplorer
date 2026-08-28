@@ -1,11 +1,10 @@
-import path from "node:path";
 import type {
   Aspect, DetailView, FileKind, FileRow, FileScope, Flavor, FlavorSlice, FolderCard, Measure, PathCrumb,
   MeasuredMetric, RankMetric, RowKind, SummaryView, TreeRow, ViewRequest, ViewResponse, WeightField,
 } from "../shared/api.ts";
 import {
-  ASPECTS, FILE_KINDS, FILE_SCOPES, MEASURES, RANK_METRICS, TREE_SORTS,
-  defaultRankMetric, sortMetricsFor, weightField,
+  ASPECTS, FILE_KINDS, FILE_SCOPES, MAX_CARD_COLUMNS, MEASURES, MIN_CARD_COLUMNS, RANK_METRICS,
+  TREE_SORTS, defaultRankMetric, sortMetricsFor, weightField,
 } from "../shared/api.ts";
 import type { FolderNode, ScanIndex } from "../scanner/scan.ts";
 
@@ -17,9 +16,6 @@ import type { FolderNode, ScanIndex } from "../scanner/scan.ts";
  */
 const DIRECT_FILES_LABEL = ".";
 
-/** Bounds on the column count the client may ask for. */
-const MIN_CARD_COLUMNS = 1;
-const MAX_CARD_COLUMNS = 6;
 export function flavorOf(file: FileRow): Flavor {
   return file.generated ? "generated" : file.kind;
 }
@@ -267,28 +263,23 @@ function aggregate(
   for (let position = index.folders.length - 1; position >= 0; position -= 1) {
     const folder = index.folders[position]!;
     const directTotals = emptyTotals();
+    let visibleBelow = 0;
+    let visibleDirectWeight = 0;
+    let baselineWeight = 0;
     for (const fileIndex of folder.directFileIndices) {
-      if (included[fileIndex]) addFile(directTotals, index.files[fileIndex]!, fields);
+      const file = index.files[fileIndex]!;
+      if (included[fileIndex]) addFile(directTotals, file, fields);
+      if (categoryVisible[fileIndex]) {
+        visibleBelow += 1;
+        visibleDirectWeight += Math.abs(file[fields.weight]);
+      }
+      if (flavorBaselineIncluded[fileIndex]) baselineWeight += Math.abs(file[fields.weight]);
     }
     direct.set(folder.path, directTotals);
 
     const subtreeTotals = emptyTotals();
     mergeTotals(subtreeTotals, directTotals);
-    let visibleBelow = 0;
-    let visibleDirectWeight = 0;
-    for (const fileIndex of folder.directFileIndices) {
-      if (categoryVisible[fileIndex]) {
-        visibleBelow += 1;
-        visibleDirectWeight += Math.abs(index.files[fileIndex]![fields.weight]);
-      }
-    }
     let visibleSubtreeWeight = visibleDirectWeight;
-    let baselineWeight = 0;
-    for (const fileIndex of folder.directFileIndices) {
-      if (flavorBaselineIncluded[fileIndex]) {
-        baselineWeight += Math.abs(index.files[fileIndex]![fields.weight]);
-      }
-    }
     for (const childPath of folder.childPaths) {
       const childTotals = subtree.get(childPath);
       if (childTotals) mergeTotals(subtreeTotals, childTotals);
@@ -345,10 +336,10 @@ function unfilteredWeight(index: ScanIndex, folderPath: string, field: WeightFie
   return prefix[folder.end]! - prefix[folder.start]!;
 }
 
-/** The unfiltered weight of the whole tree, which the ribbon states as `project`. */
-function projectBaseline(index: ScanIndex, field: WeightField): number {
-  return unfilteredWeight(index, "", field);
-}
+/** One row under a folder: a child folder, or the pseudo-row holding its own files. */
+type TreeChild =
+  | { rowKind: "folder"; folder: FolderNode; name: string; weight: number; sortWeight: number }
+  | { rowKind: "files"; name: string; weight: number; sortWeight: number };
 
 function buildTree(
   index: ScanIndex,
@@ -374,9 +365,7 @@ function buildTree(
       .filter((child): child is FolderNode => child !== undefined)
       .filter((child) => (aggregation.categoryCount.get(child.path) ?? 0) > 0);
     const hasVisibleDirectFiles = folder.directFileIndices.some((fileIndex) => aggregation.categoryVisible[fileIndex] === 1);
-    const children: ({ rowKind: "folder"; folder: FolderNode; name: string; weight: number; sortWeight: number } | {
-      rowKind: "files"; name: string; weight: number; sortWeight: number;
-    })[] = childFolders.map((child) => ({
+    const children: TreeChild[] = childFolders.map((child) => ({
       rowKind: "folder",
       folder: child,
       name: child.name,
@@ -645,7 +634,6 @@ function buildSummary(
   scopeBaseline: number,
   visibleScopeWeight: number,
 ): SummaryView {
-  const isDiff = index.meta.diff !== null;
   const scopeTotals = aggregation.subtree.get(scopeRoot.path) ?? emptyTotals();
   const ribbon: FolderCard[] = [];
   const children = scopeRoot.childPaths
@@ -702,7 +690,8 @@ export function buildView(index: ScanIndex, request: ViewRequest): ViewResponse 
   const modeRequest: ViewRequest = { ...effectiveRequest, aspect, rank: { ...effectiveRequest.rank, metric: rankMetric } };
   const exclusions = computeExclusions(index, request);
   const aggregation = aggregate(index, request, exclusions, fields);
-  const baseline = projectBaseline(index, fields.baseline);
+  // The whole tree, unfiltered, which the ribbon states as `project`.
+  const baseline = unfilteredWeight(index, "", fields.baseline);
   const scopeBaseline = unfilteredWeight(index, scopeRoot.path, fields.baseline);
   const scopeTotals = aggregation.subtree.get(scopeRoot.path) ?? emptyTotals();
   // One scale for every band, so a row's length means the same wherever it sits

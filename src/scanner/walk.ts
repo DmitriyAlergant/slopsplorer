@@ -8,7 +8,7 @@ import { EXCLUDED_DIRECTORIES, isSourceFile } from "./classify.ts";
 const execFileAsync = promisify(execFile);
 
 /** Whether `root` sits inside a Git worktree. */
-export async function isGitWorktree(root: string): Promise<boolean> {
+async function isGitWorktree(root: string): Promise<boolean> {
   try {
     const { stdout } = await execFileAsync("git", ["rev-parse", "--is-inside-work-tree"], { cwd: root });
     return stdout.trim() === "true";

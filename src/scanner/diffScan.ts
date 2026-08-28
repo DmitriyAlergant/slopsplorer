@@ -7,7 +7,7 @@ import { alignedLines, diffLines } from "./linediff.ts";
 import type { LineBucket } from "./lines.ts";
 import { splitLines } from "./lines.ts";
 import { measureFile, type FileMeasurement } from "./measure.ts";
-import { buildFolders, buildWeightPrefixes, mapWithConcurrency, type ScanIndex, type ScanProgress } from "./scan.ts";
+import { assembleIndex, buildFolders, mapWithConcurrency, type ScanIndex, type ScanProgress } from "./scan.ts";
 import { StructureAnalyzer } from "./structure.ts";
 import { tokenCounter, type TokenizerName } from "./tokenize.ts";
 import { acceptSourcePaths, listRevisionSourceFiles, listSourceFiles } from "./walk.ts";
@@ -292,12 +292,5 @@ export async function scanDiff(options: DiffScanOptions): Promise<ScanIndex> {
     languages,
   };
 
-  return {
-    meta,
-    files,
-    weightPrefix: buildWeightPrefixes(files),
-    folders,
-    folderByPath: new Map(folders.map((folder) => [folder.path, folder])),
-    fileIndexByPath: new Map(files.map((file, index) => [file.path, index])),
-  };
+  return assembleIndex(meta, files, folders);
 }

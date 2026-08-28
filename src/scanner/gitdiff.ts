@@ -26,6 +26,12 @@ export interface Comparison {
 
 export class GitError extends Error {}
 
+/** What a failed command said on stderr, or the thrown value when it said nothing. */
+function failureDetail(cause: unknown): string {
+  const stderr = cause instanceof Error && "stderr" in cause ? String(cause.stderr).trim() : "";
+  return stderr || String(cause);
+}
+
 async function git(cwd: string, args: readonly string[], env?: NodeJS.ProcessEnv): Promise<string> {
   try {
     const { stdout } = await execFileAsync("git", [...args], {
@@ -33,8 +39,7 @@ async function git(cwd: string, args: readonly string[], env?: NodeJS.ProcessEnv
     });
     return stdout;
   } catch (cause) {
-    const detail = cause instanceof Error && "stderr" in cause ? String(cause.stderr).trim() : String(cause);
-    throw new GitError(`git ${args.join(" ")} failed: ${detail || "unknown error"}`);
+    throw new GitError(`git ${args.join(" ")} failed: ${failureDetail(cause)}`);
   }
 }
 
@@ -253,7 +258,7 @@ export function commitComparison(sha: string, parent: string | null): Comparison
 }
 
 /** How many commits a spine holds. Past this it lists the newest and says how many it left. */
-export const MAX_SPINE_COMMITS = 200;
+const MAX_SPINE_COMMITS = 200;
 
 /** One commit as the spine lists it, before it is measured. */
 export interface SpineCommit {
@@ -444,9 +449,14 @@ async function remoteUrl(directory: string, remote: string): Promise<string> {
   return (await git(directory, ["config", "--get", `remote.${remote}.url`])).trim();
 }
 
+/** Every remote this repository is configured with. */
+async function listRemotes(directory: string): Promise<string[]> {
+  return (await git(directory, ["remote"])).split("\n").map((line) => line.trim()).filter(Boolean);
+}
+
 /** The remote a repository is read from: `origin`, or its only one. */
 async function defaultRemote(directory: string): Promise<string | null> {
-  const names = (await git(directory, ["remote"])).split("\n").map((line) => line.trim()).filter(Boolean);
+  const names = await listRemotes(directory);
   if (names.includes("origin")) return "origin";
   return names[0] ?? null;
 }
@@ -477,7 +487,7 @@ export async function commitUrlBase(directory: string): Promise<string | null> {
  * the only remote when the repository has exactly one.
  */
 async function chooseRemote(directory: string, location: PullRequestLocation): Promise<string> {
-  const names = (await git(directory, ["remote"])).split("\n").map((line) => line.trim()).filter(Boolean);
+  const names = await listRemotes(directory);
   if (names.length === 0) throw new GitError("this repository has no remote to fetch a pull request from");
 
   const wanted = location.project;
@@ -540,8 +550,7 @@ async function runForgeCommand(directory: string, command: string, args: readonl
         + "because only the forge knows which branch a pull request is against",
       );
     }
-    const detail = cause instanceof Error && "stderr" in cause ? String(cause.stderr).trim() : String(cause);
-    throw new GitError(`${command} ${args.join(" ")} failed: ${detail || "unknown error"}`);
+    throw new GitError(`${command} ${args.join(" ")} failed: ${failureDetail(cause)}`);
   }
 }
 
@@ -554,7 +563,7 @@ async function runForgeCommand(directory: string, command: string, args: readonl
  * else, and wrong quietly: the page would draw a comparison and never say it
  * had measured a different one.
  */
-export async function readPullRequestMetadata(
+async function readPullRequestMetadata(
   directory: string, project: Project, number: number,
 ): Promise<PullRequestMetadata> {
   const forge = forgeOf(project.host);

@@ -1,6 +1,6 @@
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { buildFolders, buildWeightPrefixes, UNCHANGED_FILE_FIELDS, type ScanIndex } from "../src/scanner/scan.ts";
+import { assembleIndex, buildFolders, UNCHANGED_FILE_FIELDS, type ScanIndex } from "../src/scanner/scan.ts";
 import { buildReport, formatCompact, type ReportOptions } from "../src/server/report.ts";
 import type { ChangeStatus, DiffMeta, FileKind, FileRow } from "../src/shared/api.ts";
 
@@ -56,26 +56,19 @@ function rowOf(spec: FileSpec): FileRow {
 function makeIndex(specs: readonly FileSpec[], diff: DiffMeta | null = null): ScanIndex {
   const files = specs.map(rowOf).sort((left, right) => (left.path < right.path ? -1 : left.path > right.path ? 1 : 0));
   const folders = buildFolders(files, "repo");
-  return {
-    meta: {
-      rootPath: "/repo",
-      rootName: "repo",
-      tokenizer: "cl100k_base",
-      fileCount: files.length,
-      folderCount: folders.length,
-      scannedAt: "2026-01-01T00:00:00.000Z",
-      durationMs: 0,
-      fileSource: diff === null ? "git-index" : "git-diff",
-      diff,
-      skippedLargeFiles: 0,
-      languages: [],
-    },
-    files,
-    weightPrefix: buildWeightPrefixes(files),
-    folders,
-    folderByPath: new Map(folders.map((folder) => [folder.path, folder])),
-    fileIndexByPath: new Map(files.map((file, index) => [file.path, index])),
-  };
+  return assembleIndex({
+    rootPath: "/repo",
+    rootName: "repo",
+    tokenizer: "cl100k_base",
+    fileCount: files.length,
+    folderCount: folders.length,
+    scannedAt: "2026-01-01T00:00:00.000Z",
+    durationMs: 0,
+    fileSource: diff === null ? "git-index" : "git-diff",
+    diff,
+    skippedLargeFiles: 0,
+    languages: [],
+  }, files, folders);
 }
 
 const SCAN_OPTIONS: ReportOptions = { measure: "tokens", aspect: "after", threshold: 3 };
