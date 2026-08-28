@@ -1384,8 +1384,10 @@ button { cursor: pointer; }
   font-size: 11px; letter-spacing: 0.05em; text-transform: uppercase;
 }
 /* A qualifier on the caption rather than a caption of its own, so it reads as
-   part of the same line and not as a second claim. */
-.detail__caption-note { margin-left: 10px; color: var(--rule-firm); }
+   part of the same line and not as a second claim. The space before it in the
+   markup is the break opportunity, so a strip too narrow for both drops the
+   whole qualifier to the next line rather than stranding one word of it. */
+.detail__caption-note { margin-left: 6px; color: var(--rule-firm); white-space: nowrap; }
 /* The two controls of the file list share the right of its strip: what the rows
    are, and the floor under them. */
 .detail__files-controls { display: flex; flex: none; align-items: center; gap: 14px; }

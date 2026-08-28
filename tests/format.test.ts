@@ -1,8 +1,21 @@
 import { describe, expect, it } from "vitest";
 import type { ComparisonRequest, DiffMeta, ScanMeta } from "../src/shared/api.ts";
-import { aspectFigure, comparisonLabel, documentTitle, shortRevision } from "../src/web/format.ts";
+import { aspectFigure, comparisonLabel, countOf, documentTitle, shortRevision } from "../src/web/format.ts";
 
 const FULL_SHA = "87d1e8b76cece130474a7fcc6093528f3c20cd4c";
+
+describe("countOf", () => {
+  it("agrees with the noun", () => {
+    expect(countOf(1, "file")).toBe("1 file");
+    expect(countOf(0, "file")).toBe("0 files");
+    expect(countOf(1234, "file")).toBe("1,234 files");
+  });
+
+  it("takes es after a sibilant", () => {
+    expect(countOf(1, "match")).toBe("1 match");
+    expect(countOf(128, "match")).toBe("128 matches");
+  });
+});
 
 describe("shortRevision", () => {
   it("abbreviates a whole object name", () => {

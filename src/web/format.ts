@@ -24,9 +24,10 @@ export function compact(value: number): string {
   return `${(value / 1_000_000).toFixed(value < 10_000_000 ? 1 : 0)}M`;
 }
 
-/** A count and the noun it agrees with: "1 file", "2 files". */
+/** A count and the noun it agrees with: "1 file", "2 files", "2 matches". */
 export function countOf(value: number, noun: string): string {
-  return `${count(value)} ${noun}${value === 1 ? "" : "s"}`;
+  if (value === 1) return `${count(value)} ${noun}`;
+  return `${count(value)} ${noun}${/(?:s|x|z|ch|sh)$/.test(noun) ? "es" : "s"}`;
 }
 
 /** A 0-1 ratio as a percentage, keeping one decimal below 10 percent. */
