@@ -1,14 +1,15 @@
 import { describe, expect, it } from "vitest";
 import type { CommitSpine, SpineEntry } from "../src/shared/api.ts";
 import {
-  requestForSpan, sameComparisonRequest, slideSpan, spanBetween, spanOf, spansRequest,
+  chainedSpan, requestForSpan, sameComparisonRequest, slideSpan, spanBetween, spanOf, spansRequest,
 } from "../src/shared/api.ts";
 import { heaviestChurn, sidesOf } from "../src/web/spine.ts";
 
-function entry(sha: string, added: number, removed: number): SpineEntry {
+function entry(sha: string, parent: string, added: number, removed: number): SpineEntry {
   return {
     sha,
     shortSha: sha.slice(0, 7),
+    parent,
     subject: `work on ${sha}`,
     body: "",
     url: null,
@@ -26,8 +27,19 @@ function entry(sha: string, added: number, removed: number): SpineEntry {
 
 const spine: CommitSpine = {
   range: { kind: "revisionPair", base: "base0", target: "head" },
-  base: "base0",
-  commits: [entry("c1", 10, 0), entry("c2", 4, 6), entry("c3", 1, 1)],
+  commits: [entry("c1", "base0", 10, 0), entry("c2", "c1", 4, 6), entry("c3", "c2", 1, 1)],
+  omitted: 0,
+};
+
+/**
+ * A range that holds a commit a merge brought in.
+ *
+ * `m1` sits on the line that was merged, so it does not follow `c1` and `c2`
+ * does not follow it. The list is what the range holds, and it is not a chain.
+ */
+const merged: CommitSpine = {
+  range: { kind: "revisionPair", base: "base0", target: "head" },
+  commits: [entry("c1", "base0", 10, 0), entry("m1", "other", 4, 6), entry("c2", "c1", 1, 1)],
   omitted: 0,
 };
 
@@ -46,6 +58,29 @@ describe("requestForSpan", () => {
     expect(requestForSpan(spine, { start: 2, end: 2 }))
       .toEqual({ kind: "revisionPair", base: "c2", target: "c3" });
   });
+
+  /**
+   * The commit before a merged-in one is on another line, so comparing from it
+   * would draw that whole line beside the one commit that was asked for.
+   */
+  it("compares a merged-in commit against its own parent", () => {
+    expect(requestForSpan(merged, { start: 1, end: 1 }))
+      .toEqual({ kind: "revisionPair", base: "other", target: "m1" });
+    expect(requestForSpan(merged, { start: 2, end: 2 }))
+      .toEqual({ kind: "revisionPair", base: "c1", target: "c2" });
+  });
+});
+
+describe("chainedSpan", () => {
+  it("holds for one commit and for a run that follows the parents", () => {
+    expect(chainedSpan(spine, { start: 0, end: 2 })).toBe(true);
+    expect(chainedSpan(merged, { start: 1, end: 1 })).toBe(true);
+  });
+
+  it("fails for a run that crosses a break", () => {
+    expect(chainedSpan(merged, { start: 0, end: 1 })).toBe(false);
+    expect(chainedSpan(merged, { start: 1, end: 2 })).toBe(false);
+  });
 });
 
 describe("spanOf", () => {
@@ -57,6 +92,10 @@ describe("spanOf", () => {
 
   it("does not claim the whole range, which the list may not cover", () => {
     expect(spanOf(spine, spine.range)).toBeNull();
+  });
+
+  it("does not claim a run that crosses a break, which spans more than it lists", () => {
+    expect(spanOf(merged, { kind: "revisionPair", base: "base0", target: "m1" })).toBeNull();
   });
 
   it("does not claim a comparison outside the spine", () => {
@@ -91,12 +130,22 @@ describe("slideSpan", () => {
     expect(slideSpan(spine, { start: 2, end: 2 }, 1)).toBeNull();
     expect(slideSpan(spine, { start: 1, end: 2 }, 1)).toBeNull();
   });
+
+  it("steps a single commit over a break and will not take a window over one", () => {
+    expect(slideSpan(merged, { start: 0, end: 0 }, 1)).toEqual({ start: 1, end: 1 });
+    expect(slideSpan(merged, { start: 0, end: 1 }, 1)).toBeNull();
+  });
 });
 
 describe("spanBetween", () => {
   it("reads the same run whichever end was reached first", () => {
-    expect(spanBetween(2, 0)).toEqual({ start: 0, end: 2 });
-    expect(spanBetween(0, 2)).toEqual({ start: 0, end: 2 });
+    expect(spanBetween(spine, 2, 0)).toEqual({ start: 0, end: 2 });
+    expect(spanBetween(spine, 0, 2)).toEqual({ start: 0, end: 2 });
+  });
+
+  it("stops at the first break, in either direction", () => {
+    expect(spanBetween(merged, 0, 2)).toEqual({ start: 0, end: 0 });
+    expect(spanBetween(merged, 2, 0)).toEqual({ start: 2, end: 2 });
   });
 });
 

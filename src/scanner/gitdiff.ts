@@ -244,8 +244,7 @@ export async function resolveComparison(directory: string, request: ComparisonRe
 const EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 
 /** One commit against its own first parent, which is how the spine measures one. */
-export function commitComparison(sha: string, parent: string | null): Comparison {
-  const base = parent ?? EMPTY_TREE;
+export function commitComparison(sha: string, base: string): Comparison {
   return {
     spec: `${base}..${sha}`,
     request: { kind: "revisionPair", base, target: sha },
@@ -269,8 +268,8 @@ export interface SpineCommit {
   body: string;
   author: string;
   date: string;
-  /** First parent, or null for a commit that has none. */
-  parent: string | null;
+  /** First parent, and the empty tree for a commit that has none. */
+  parent: string;
 }
 
 /** Git writes `%x1f` as this byte, which no commit message can hold. */
@@ -331,7 +330,7 @@ export async function listSpineCommits(
       date,
       subject: message.split("\n")[0]?.trim() ?? "",
       body: commitBody(message),
-      parent: firstParent ?? null,
+      parent: firstParent ?? EMPTY_TREE,
     });
   }
   return { commits, omitted: Math.max(0, total - commits.length) };

@@ -7,6 +7,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { resolveComparison } from "../src/scanner/gitdiff.ts";
 import { buildSpine } from "../src/scanner/spine.ts";
 import type { CommitSpine } from "../src/shared/api.ts";
+import { requestForSpan } from "../src/shared/api.ts";
 
 const execFileAsync = promisify(execFile);
 const SETUP_TIMEOUT_MS = 60_000;
@@ -70,8 +71,9 @@ describe("buildSpine", () => {
     expect(spine.omitted).toBe(0);
   });
 
-  it("starts the range from the parent of the first commit", () => {
-    expect(spine.base).toBe(baseSha);
+  it("carries the parent each commit was measured against", () => {
+    expect(spine.commits[0]!.parent).toBe(baseSha);
+    expect(spine.commits[1]!.parent).toBe(spine.commits[0]!.sha);
   });
 
   it("carries the message under the subject, so a tooltip can explain a commit", () => {
@@ -115,5 +117,84 @@ describe("buildSpine", () => {
       root, comparison, tokenizer: "cl100k_base", exclude: [], maxFileBytes: 2 * 1024 * 1024, concurrency: 4,
     }, { kind: "workingTree" });
     expect(built).toBeNull();
+  });
+});
+
+/**
+ * A branch that took `main` in with a merge, which is how most reviewed
+ * branches look. The range then holds a commit from the other line, so the
+ * list of commits is not a chain of parents.
+ */
+describe("a range that holds a merged-in commit", () => {
+  let mergedRoot: string;
+  let mergedSpine: CommitSpine;
+  let onMain: string;
+  let onMainParent: string;
+
+  async function gitIn(...args: string[]): Promise<string> {
+    const { stdout } = await execFileAsync("git", args, { cwd: mergedRoot });
+    return stdout;
+  }
+
+  async function commitIn(files: Record<string, string>, message: string): Promise<string> {
+    for (const [name, contents] of Object.entries(files)) {
+      await writeFile(path.join(mergedRoot, name), contents, "utf8");
+    }
+    await gitIn("add", "-A");
+    await gitIn("-c", "user.name=Test", "-c", "user.email=test@example.com",
+      "commit", "--no-gpg-sign", "-m", message);
+    return (await gitIn("rev-parse", "HEAD")).trim();
+  }
+
+  beforeAll(async () => {
+    mergedRoot = await mkdtemp(path.join(os.tmpdir(), "slopsplorer-merged-"));
+    await gitIn("init", "-q", "-b", "main");
+
+    const forkPoint = await commitIn({ "a.ts": lines(3, "a") }, "base");
+    await gitIn("checkout", "-q", "-b", "feature");
+    await commitIn({ "b.ts": lines(4, "b") }, "on the branch");
+
+    await gitIn("checkout", "-q", "main");
+    onMainParent = forkPoint;
+    onMain = await commitIn({ "c.ts": lines(200, "c") }, "on main");
+
+    await gitIn("checkout", "-q", "feature");
+    await gitIn("-c", "user.name=Test", "-c", "user.email=test@example.com",
+      "merge", "--no-gpg-sign", "-q", "--no-ff", "-m", "merge main", "main");
+    await commitIn({ "b.ts": lines(6, "b") }, "after the merge");
+
+    const request = { kind: "revisionPair", base: forkPoint, target: "HEAD" } as const;
+    const built = await buildSpine({
+      root: mergedRoot,
+      comparison: await resolveComparison(mergedRoot, request),
+      tokenizer: "cl100k_base",
+      exclude: [],
+      maxFileBytes: 2 * 1024 * 1024,
+      concurrency: 4,
+    }, request);
+    if (built === null) throw new Error("a comparison of two revisions has a spine");
+    mergedSpine = built;
+  }, SETUP_TIMEOUT_MS);
+
+  afterAll(async () => {
+    await rm(mergedRoot, { recursive: true, force: true });
+  });
+
+  it("lists the commit the merge brought in, with the parent it was measured against", () => {
+    const entry = mergedSpine.commits.find((commit) => commit.subject === "on main");
+    expect(entry?.parent).toBe(onMainParent);
+    expect(entry?.sha).toBe(onMain);
+  });
+
+  /**
+   * The regression: a span used to compare from the commit listed before it,
+   * which for a merged-in commit is on the other line, so one commit drew the
+   * whole branch.
+   */
+  it("opens each commit against its own parent and nothing else", () => {
+    for (const [index, entry] of mergedSpine.commits.entries()) {
+      expect(requestForSpan(mergedSpine, { start: index, end: index }))
+        .toEqual({ kind: "revisionPair", base: entry.parent, target: entry.sha });
+    }
   });
 });

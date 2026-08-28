@@ -671,6 +671,14 @@ export type ComparisonRequest =
 export interface SpineEntry {
   sha: string;
   shortSha: string;
+  /**
+   * First parent, and Git's empty tree for a commit that has none.
+   *
+   * It is the side the row's figures were measured against, and it is the base
+   * a span starting at this commit compares from, so the band and the page it
+   * opens can never describe different changes.
+   */
+  parent: string;
   subject: string;
   /** The message under the subject, trimmed. Empty when the commit has none. */
   body: string;
@@ -698,8 +706,6 @@ export interface SpineEntry {
 export interface CommitSpine {
   /** The comparison this spine was built for, so the page can return to it whole. */
   range: ComparisonRequest;
-  /** Commit the range starts from: the parent of the first listed commit. */
-  base: string;
   commits: SpineEntry[];
   /** Commits the range holds beyond the ones listed. */
   omitted: number;
@@ -734,13 +740,34 @@ export function sameComparisonRequest(one: ComparisonRequest, other: ComparisonR
 /**
  * The comparison a span asks for.
  *
- * A span that starts at the first commit starts from the range's own base, so
- * one control expresses a single commit, a run of them, and everything from the
- * start of the range, without a mode to switch between them.
+ * A span compares from the parent of the commit it starts at, so one control
+ * expresses a single commit, a run of them, and everything from the start of
+ * the range, without a mode to switch between them. The parent rather than the
+ * commit listed before it: a range holds every commit a merge brought in, so
+ * the list is not always a chain, and the neighbour of a merged-in commit is on
+ * another line of history.
  */
 export function requestForSpan(spine: CommitSpine, span: Span): ComparisonRequest {
-  const base = span.start === 0 ? spine.base : spine.commits[span.start - 1]!.sha;
-  return { kind: "revisionPair", base, target: spine.commits[span.end]!.sha };
+  return {
+    kind: "revisionPair",
+    base: spine.commits[span.start]!.parent,
+    target: spine.commits[span.end]!.sha,
+  };
+}
+
+/**
+ * Whether every commit of a run follows the one before it.
+ *
+ * A run that crosses a break is not a comparison of what it selects: its two
+ * endpoints sit on different lines of history, so the change between them holds
+ * everything the other line carried. Only a chain is offered, which is why a
+ * drag stops at a break and a window will not step over one.
+ */
+export function chainedSpan(spine: CommitSpine, span: Span): boolean {
+  for (let index = span.start + 1; index <= span.end; index += 1) {
+    if (spine.commits[index]!.parent !== spine.commits[index - 1]!.sha) return false;
+  }
+  return true;
 }
 
 /**
@@ -754,11 +781,10 @@ export function spanOf(spine: CommitSpine, request: ComparisonRequest): Span | n
   if (request.kind !== "revisionPair") return null;
   const end = spine.commits.findIndex((commit) => commit.sha === request.target);
   if (end < 0) return null;
-  const start = request.base === spine.base
-    ? 0
-    : spine.commits.findIndex((commit) => commit.sha === request.base) + 1;
-  if (start === 0 && request.base !== spine.base) return null;
-  return start > end ? null : { start, end };
+  const start = spine.commits.findIndex((commit) => commit.parent === request.base);
+  if (start < 0 || start > end) return null;
+  const span = { start, end };
+  return chainedSpan(spine, span) ? span : null;
 }
 
 /**
@@ -783,12 +809,24 @@ export function slideSpan(spine: CommitSpine, span: Span, delta: number): Span |
   const width = span.end - span.start;
   const start = span.start + delta;
   if (start < 0 || start + width > spine.commits.length - 1) return null;
-  return { start, end: start + width };
+  const next = { start, end: start + width };
+  return chainedSpan(spine, next) ? next : null;
 }
 
-/** Extend a span from its anchor to a commit, which is what a shift-click asks for. */
-export function spanBetween(anchor: number, reached: number): Span {
-  return anchor <= reached ? { start: anchor, end: reached } : { start: reached, end: anchor };
+/**
+ * Extend a span from its anchor to a commit, which is what a shift-click asks
+ * for, and stop it at the first break in the chain.
+ */
+export function spanBetween(spine: CommitSpine, anchor: number, reached: number): Span {
+  const step = reached < anchor ? -1 : 1;
+  let end = anchor;
+  while (end !== reached) {
+    const next = end + step;
+    const child = step > 0 ? next : end;
+    if (spine.commits[child]!.parent !== spine.commits[child - 1]!.sha) break;
+    end = next;
+  }
+  return anchor <= end ? { start: anchor, end } : { start: end, end: anchor };
 }
 
 /** A ref the page can offer as a side of a comparison. */

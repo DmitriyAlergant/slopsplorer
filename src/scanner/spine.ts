@@ -25,6 +25,7 @@ function measuredCommit(commit: SpineCommit, files: readonly FileRow[], urlBase:
   const entry: SpineEntry = {
     sha: commit.sha,
     shortSha: commit.shortSha,
+    parent: commit.parent,
     subject: commit.subject,
     body: commit.body,
     url: urlBase === null ? null : `${urlBase}${commit.sha}`,
@@ -76,12 +77,5 @@ export async function buildSpine(
     return measuredCommit(commit, index.files, urlBase);
   });
 
-  const first = listed.commits[0];
-  const rangeBase = options.comparison.base.kind === "revision" ? options.comparison.base.rev : "";
-  return {
-    range: request,
-    base: first?.parent ?? rangeBase,
-    commits,
-    omitted: listed.omitted,
-  };
+  return { range: request, commits, omitted: listed.omitted };
 }

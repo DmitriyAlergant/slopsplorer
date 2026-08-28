@@ -104,8 +104,12 @@ export function SpineBand({
   const rowFor = (entry: SpineEntry, index: number): React.JSX.Element => {
     const { added, removed } = sidesOf(entry, measure);
     const inSpan = span !== null && index >= span.start && index <= span.end;
+    // A commit a merge brought in does not follow the row above it, and a
+    // selection cannot cross the seam, so the seam is drawn.
+    const previous = spine.commits[index - 1];
+    const breaksChain = previous !== undefined && entry.parent !== previous.sha;
     return (
-      <div key={entry.sha} className="spine-row" data-in-span={inSpan}>
+      <div key={entry.sha} className="spine-row" data-in-span={inSpan} data-breaks-chain={breaksChain}>
         {/* The whole row selects, and it is a layer under the cells rather than
             their parent, because an object name that opens the forge has to be
             a link and a link cannot sit inside a button. */}
@@ -117,7 +121,7 @@ export function SpineBand({
           disabled={disabled}
           onClick={(event) => {
             if (event.shiftKey) {
-              choose(spanBetween(anchor, index));
+              choose(spanBetween(spine, anchor, index));
               return;
             }
             setAnchor(index);
