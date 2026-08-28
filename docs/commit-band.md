@@ -25,6 +25,7 @@ A span has two endpoints, so it is an ordinary `revisionPair` request and nothin
 Individual and cumulative are two spans and not a switch, which is why the band needs no mode.
 
 `requestForSpan()` and `spanOf()` in `src/shared/api.ts` convert between a span and a comparison.
+A span compares from the parent of the commit it starts at, which `SpineEntry.parent` holds, and not from the commit listed above it.
 `slideSpan()` moves a span by whole commits and keeps its width, so one step control walks single commits and slides a window: a window of one is a single commit.
 `spanBetween()` is what a shift-click asks for.
 
@@ -33,6 +34,16 @@ It is `CommitSpine.range`, the comparison the spine was built for, because a cap
 
 The selection is one run and never a set.
 Commits 2, 7, and 19 are not a comparison, and a union of three patches would break `net = added - removed` as soon as a line added in one comes out in another.
+
+## The list is not always a chain
+
+A range holds every commit a merge brought in, so a branch that has taken `main` in lists commits from both lines.
+The commit above such a row is on the other line, and comparing from it would draw that whole line beside the one commit that was asked for.
+Each row therefore carries the parent it was measured against, and a span starts from that parent, so the figures in a row and the page it opens can never describe different changes.
+
+A run of commits over two lines is not a comparison of what it selects, so only a chain is offered.
+`chainedSpan()` is the rule: a shift-click stops at the first seam, a window will not step over one, and `spanOf()` refuses a request that crosses one, which drops the spine and rebuilds it for the comparison that was asked for.
+The row under a seam is drawn with a break above it, so a selection that stops there reads as the history it stopped at.
 
 ## What the figures are
 

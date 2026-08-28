@@ -434,3 +434,36 @@ describe("a static scan index", () => {
     }
   });
 });
+
+describe("the snapshot entry document", () => {
+  const entry = path.join(import.meta.dirname, "..", "src", "web", "snapshot.html");
+
+  /**
+   * The guard runs as a classic inline script, which is the one thing a file://
+   * document still executes. It is read out of the shipped entry and driven here,
+   * so a rewrite of that document cannot leave the notice unreachable.
+   */
+  async function revealNoticeAt(protocol: string): Promise<boolean> {
+    const html = await readFile(entry, "utf8");
+    const guard = /<script>([\s\S]*?)<\/script>/.exec(html);
+    if (guard === null) throw new Error("the snapshot entry holds no inline guard script");
+    const notice = { hidden: true };
+    const document = {
+      querySelector: (selector: string) => selector === "#slopsplorer-file-url-notice" ? notice : null,
+    };
+    new Function("location", "document", guard[1] as string)({ protocol }, document);
+    return !notice.hidden;
+  }
+
+  it("tells a reader who opened it from a file path that it needs a server", async () => {
+    const html = await readFile(entry, "utf8");
+    expect(html.indexOf("slopsplorer-file-url-notice")).toBeGreaterThan(html.indexOf('<div id="root">'));
+    expect(html).toContain("needs an HTTP server");
+    await expect(revealNoticeAt("file:")).resolves.toBe(true);
+  });
+
+  it("keeps the notice hidden when the bundle is served, so the page draws alone", async () => {
+    await expect(revealNoticeAt("http:")).resolves.toBe(false);
+    await expect(revealNoticeAt("https:")).resolves.toBe(false);
+  });
+});

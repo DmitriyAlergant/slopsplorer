@@ -21,7 +21,7 @@ For a revision comparison, `buildSpine()` also produces the read-only commit ban
 After a successful scan, `writeStaticBundle()` in `src/server/export.ts` prepares the output directory and writes the explorer.
 It builds in a private sibling directory and renames that directory only after every file is ready.
 A failed write therefore leaves the destination empty and ready for another attempt.
-The command states that the complete accepted source will enter the bundle, then prints the absolute output path.
+The command states that the complete accepted source will enter the bundle, says how to serve the result, then prints the absolute output path.
 The export step starts no server and invokes no deployment command.
 
 ## Static data
@@ -58,7 +58,9 @@ A worker that fired its `error` event never answers again, so the runtime reject
 
 The Vite build and the worker use relative URLs.
 The bundle can therefore run at the root of a static host or below a path prefix.
-It needs an HTTP server because browser modules, workers, and data fetches do not run reliably from `file://`.
+It needs an HTTP server because browser modules, workers, and data fetches do not run from `file://`.
+A `file://` document runs no module, so `snapshot.html` carries the notice that says so inside `#root`, and one classic inline script shows it only on that protocol.
+React clears the notice on its first render, so a served page never draws it.
 
 Snapshot capability checks remove remeasure, root editing, comparison picking, agent controls, and skill installation.
 The header names the page as a static snapshot and shows the root name instead of a local path.

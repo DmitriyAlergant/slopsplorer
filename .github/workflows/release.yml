@@ -120,10 +120,19 @@ jobs:
       # The same section the publish job already refused to release without,
       # so the notes on the release page and the changelog in the tagged commit
       # are one text and cannot say different things.
+      #
+      # Two commands rather than a pipe: this step is the second of the two
+      # guards, and a pipe would report the exit status of `tail` instead.
+      # The heading is dropped because the release is named after the tag, and
+      # a heading that links to the page it sits on says nothing twice.
       - name: Take the release notes from the changelog
-        run: ./scripts/changelog-section.sh "${GITHUB_REF_NAME#v}" > release-notes.md
+        run: |
+          ./scripts/changelog-section.sh "${GITHUB_REF_NAME#v}" > changelog-section.md
+          tail -n +2 changelog-section.md > release-notes.md
 
+      # Named, because an unnamed release is drawn under the subject of the
+      # commit the tag points at, which is whatever merged the release.
       - name: Open the GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" --notes-file release-notes.md --verify-tag
+        run: gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file release-notes.md --verify-tag

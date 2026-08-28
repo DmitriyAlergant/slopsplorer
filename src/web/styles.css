@@ -773,6 +773,8 @@ button { cursor: pointer; }
 .spine-row:last-of-type { border-bottom: 0; }
 .spine-row:hover { background: var(--sunk); }
 .spine-row[data-in-span="true"] { background: var(--signal-wash); }
+/* A commit that does not follow the one above it, which a selection stops at. */
+.spine-row[data-breaks-chain="true"] { border-top: 1px dashed var(--rule-firm); }
 .spine-row[data-in-span="true"] .spine-row__subject { color: var(--ink); font-weight: 600; }
 /*
  * The selector covers the row and sits under its cells, so a click anywhere

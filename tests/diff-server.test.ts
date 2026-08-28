@@ -188,7 +188,7 @@ describe("the commits a comparison spans", () => {
 
     // Step onto the first commit of the range, as the band does.
     const step: ComparisonRequest = {
-      kind: "revisionPair", base: range.base, target: range.commits[0]!.sha,
+      kind: "revisionPair", base: range.commits[0]!.parent, target: range.commits[0]!.sha,
     };
     expect((await postCompare(step)).status).toBe(200);
 

@@ -1,5 +1,5 @@
-import type { Aspect, FileKind, Measure, RankMetric, TreeSort, ViewRequest } from "../shared/api.ts";
-import { ASPECTS, FILE_KINDS, MEASURES, RANK_METRICS, TREE_SORTS } from "../shared/api.ts";
+import type { Aspect, Measure, RankMetric, TreeSort, ViewRequest } from "../shared/api.ts";
+import { ASPECTS, MEASURES, RANK_METRICS, TREE_SORTS } from "../shared/api.ts";
 
 // v4 carries the diff aspect, which decides what a figure means as much as the
 // measure does. Older payloads are discarded rather than half-read, which is
@@ -33,8 +33,6 @@ const MIN_TREE_PANEL_RATIO = 0.1;
 const MAX_TREE_PANEL_RATIO = 0.8;
 
 export interface ViewPreferences {
-  kinds: FileKind[];
-  showGenerated: boolean;
   treeSort: TreeSort;
   measure: Measure;
   /** Side of a change the measure describes. Only a diff can act on it. */
@@ -196,9 +194,6 @@ export function readPreferences(storage: PreferenceStorage): ViewPreferences | n
   }
   if (typeof raw !== "object" || raw === null) return null;
   const candidate = raw as Record<string, unknown>;
-  if (!Array.isArray(candidate["kinds"]) || typeof candidate["showGenerated"] !== "boolean") return null;
-  const storedKinds = candidate["kinds"].filter((kind): kind is string => typeof kind === "string");
-  const kinds = FILE_KINDS.filter((kind) => storedKinds.includes(kind));
   const treeSort = TREE_SORTS.find((sort) => sort === candidate["treeSort"]);
   if (treeSort === undefined) return null;
   const measure = MEASURES.find((known) => known === candidate["measure"]);
@@ -207,14 +202,12 @@ export function readPreferences(storage: PreferenceStorage): ViewPreferences | n
   if (aspect === undefined) return null;
   const rankMetric = RANK_METRICS.find((known) => known === candidate["rankMetric"]);
   if (rankMetric === undefined) return null;
-  return { kinds, showGenerated: candidate["showGenerated"], treeSort, measure, aspect, rankMetric };
+  return { treeSort, measure, aspect, rankMetric };
 }
 
 /** Store only durable display choices, leaving navigation and filters linkable. */
 export function writePreferences(storage: PreferenceStorage, request: ViewRequest): void {
   const preferences: ViewPreferences = {
-    kinds: FILE_KINDS.filter((kind) => request.kinds.includes(kind)),
-    showGenerated: request.showGenerated,
     treeSort: request.treeSort,
     measure: request.measure,
     aspect: request.aspect,

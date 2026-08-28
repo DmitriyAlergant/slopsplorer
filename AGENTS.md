@@ -166,7 +166,7 @@ A release is one tag, and `.github/workflows/release.yml` does the rest.
 
 1. Bump `version` in `package.json` and `package-lock.json`.
 2. Rename `## [Unreleased]` to `## [X.Y.Z](https://github.com/DmitriyAlergant/slopsplorer/releases/tag/vX.Y.Z) - YYYY-MM-DD`, and open a fresh `## [Unreleased]` above it.
-3. Run `./scripts/changelog-section.sh X.Y.Z` and read what it prints. That is the release page.
+3. Run `./scripts/changelog-section.sh X.Y.Z` and read what it prints. Everything under the heading is the release page, and the release is named after the tag.
 4. Commit and push the version and the changelog.
 5. Tag that exact commit `vX.Y.Z` and push the tag.
 
