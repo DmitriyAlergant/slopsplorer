@@ -136,8 +136,9 @@ Use the `dev-browser` CLI against the dev server on `http://127.0.0.1:8765`, and
 - Comments explain why, not what. Doc comments on exported symbols and on non-obvious logic only.
 - In Markdown and long comments, one sentence per line. Do not wrap inside a sentence.
 - Relative imports carry the `.ts` / `.tsx` extension. `tsc` rewrites them on emit.
-- Strict TypeScript, including `noUncheckedIndexedAccess` and `exactOptionalPropertyTypes`.
+- Strict TypeScript, including `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, `noUnusedLocals`, and `noUnusedParameters`.
 - Descriptive names. No abbreviations.
+- A modal is a native `<dialog>` driven by `useModalDialog` from `src/web/dialog.ts`. It pushes the open state into the element and guards both calls, because `showModal` on an open dialog throws.
 - Tooltips are CSS, never the native `title` attribute, which cannot be styled, appears on a delay the page does not control, and never appears for a keyboard user.
   Render `Tooltip` from `src/web/components/Tooltip.tsx` as a direct child of the control and spread `tooltipHandlers` onto it.
   The panel is fixed-position and placed on hover, so it escapes a scrolling tree, a table cell, and a panel with hidden overflow.

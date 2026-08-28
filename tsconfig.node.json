@@ -20,6 +20,7 @@
   },
   "include": [
     "src/cli.ts",
+    "src/agents/**/*.ts",
     "src/scanner/**/*.ts",
     "src/server/**/*.ts",
     "src/shared/**/*.ts"

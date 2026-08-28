@@ -31,6 +31,7 @@ src/shared/    api.ts, the wire contract that both sides import
 
 There are two producers of a `ScanIndex` and one consumer of it.
 `scanSourceTree()` measures a tree and `scanDiff()` measures a comparison.
+Both end at `assembleIndex()` in `src/scanner/scan.ts`, which builds the prefix sums and the lookup maps, so neither producer can grow a table the other one lacks.
 Everything downstream reads the index and does not ask which one made it.
 
 `src/cli.ts` parses the command line, runs the first scan, starts the server, and prints a summary.
@@ -161,6 +162,8 @@ Two places keep the request:
 
 - `src/web/urlState.ts` writes the parts of the request that describe what is on screen into the URL, so a view can be sent to another person as a link.
 - `src/web/preferences.ts` keeps the parts that are personal habit, such as the measure and the sorted column, in local storage.
+  A browser can deny storage, and it denies it from the property access as well as from the call, so every read and write goes through `browserStorage()` and the two guarded primitives beside it.
+  A denied read is an absent value and a denied write holds for the visit only, so no caller decides that again.
 
 The page reads in one direction, from top to bottom.
 The filters come first, then the workspace where the user navigates the tree, then the readouts and the proportion bar.
