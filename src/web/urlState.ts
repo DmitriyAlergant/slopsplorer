@@ -6,6 +6,21 @@ import type { ViewPreferences } from "./preferences.ts";
 const RANK_LIMIT = 100;
 
 /**
+ * What the page shows before anybody chooses anything.
+ *
+ * One table for both directions: a default the writer omits and the reader does
+ * not restore is a link that does not survive the trip.
+ */
+const DEFAULT_PREFERENCES: ViewPreferences = {
+  kinds: [...FILE_KINDS],
+  showGenerated: false,
+  treeSort: "name",
+  measure: "tokens",
+  aspect: "net",
+  rankMetric: "tokens",
+};
+
+/**
  * Every folder enclosing `path`, so a deep link opens onto its target.
  *
  * Expansion is derived rather than stored. Persisting it would put a folder
@@ -43,20 +58,22 @@ export function readRequest(search: string, stored: ViewPreferences | null = nul
   const measure = MEASURES.find((candidate) => candidate === params.get("measure"));
   const aspect = ASPECTS.find((candidate) => candidate === params.get("aspect"));
   const fileScope = FILE_SCOPES.find((candidate) => candidate === params.get("files"));
+  // A link carrying preferences of its own states every one it differs on, so
+  // the stored ones must not fill its gaps: the reader of a pasted link has to
+  // see what the sender saw and not their own settings.
+  const preferred = <Field extends keyof ViewPreferences>(field: Field): ViewPreferences[Field] => (
+    embeddedPreferences || stored === null ? DEFAULT_PREFERENCES[field] : stored[field]
+  );
   return {
-    kinds: rawKinds !== null
-      ? rawKinds.split(",").filter(isFileKind)
-      : !embeddedPreferences && stored !== null ? stored.kinds : [...FILE_KINDS],
-    measure: measure ?? (!embeddedPreferences && stored !== null ? stored.measure : "tokens"),
-    aspect: aspect ?? (!embeddedPreferences && stored !== null ? stored.aspect : "net"),
-    showGenerated: params.has("gen")
-      ? params.get("gen") === "1"
-      : !embeddedPreferences && stored !== null ? stored.showGenerated : false,
+    kinds: rawKinds !== null ? rawKinds.split(",").filter(isFileKind) : preferred("kinds"),
+    measure: measure ?? preferred("measure"),
+    aspect: aspect ?? preferred("aspect"),
+    showGenerated: params.has("gen") ? params.get("gen") === "1" : preferred("showGenerated"),
     query: params.get("q") ?? "",
     excludedFolders: params.getAll("x"),
     excludedDirectFiles: params.getAll("xf"),
     expanded: ancestorsOf(selectedPath),
-    treeSort: treeSort ?? (!embeddedPreferences && stored !== null ? stored.treeSort : "name"),
+    treeSort: treeSort ?? preferred("treeSort"),
     drillPath,
     selected: {
       rowKind: insideDrill && params.get("sel") === "files" ? "files" : "folder",
@@ -64,7 +81,7 @@ export function readRequest(search: string, stored: ViewPreferences | null = nul
     },
     fileScope: fileScope ?? "subtree",
     rank: {
-      metric: metric ?? (!embeddedPreferences && stored !== null ? stored.rankMetric : "tokens"),
+      metric: metric ?? preferred("rankMetric"),
       minWeight: Math.max(0, Number(params.get("min")) || 0),
       limit: RANK_LIMIT,
     },
@@ -82,9 +99,12 @@ export function readRequest(search: string, stored: ViewPreferences | null = nul
 export function writeRequest(request: ViewRequest): string {
   const params = new URLSearchParams();
   const preferencesDifferFromDefaults =
-    request.kinds.length !== FILE_KINDS.length || request.showGenerated
-    || request.treeSort !== "name" || request.measure !== "tokens" || request.aspect !== "net"
-    || request.rank.metric !== "tokens";
+    request.kinds.length !== FILE_KINDS.length
+    || request.showGenerated !== DEFAULT_PREFERENCES.showGenerated
+    || request.treeSort !== DEFAULT_PREFERENCES.treeSort
+    || request.measure !== DEFAULT_PREFERENCES.measure
+    || request.aspect !== DEFAULT_PREFERENCES.aspect
+    || request.rank.metric !== DEFAULT_PREFERENCES.rankMetric;
   if (preferencesDifferFromDefaults) params.set("prefs", "1");
   if (request.selected.path) params.set("path", request.selected.path);
   if (request.drillPath) params.set("drill", request.drillPath);
@@ -97,10 +117,10 @@ export function writeRequest(request: ViewRequest): string {
   if (request.query) params.set("q", request.query);
   for (const folder of request.excludedFolders) params.append("x", folder);
   for (const folder of request.excludedDirectFiles) params.append("xf", folder);
-  if (request.treeSort !== "name") params.set("tree", request.treeSort);
-  if (request.measure !== "tokens") params.set("measure", request.measure);
-  if (request.aspect !== "net") params.set("aspect", request.aspect);
-  if (request.rank.metric !== "tokens") params.set("rank", request.rank.metric);
+  if (request.treeSort !== DEFAULT_PREFERENCES.treeSort) params.set("tree", request.treeSort);
+  if (request.measure !== DEFAULT_PREFERENCES.measure) params.set("measure", request.measure);
+  if (request.aspect !== DEFAULT_PREFERENCES.aspect) params.set("aspect", request.aspect);
+  if (request.rank.metric !== DEFAULT_PREFERENCES.rankMetric) params.set("rank", request.rank.metric);
   if (request.rank.minWeight > 0) params.set("min", String(request.rank.minWeight));
   return params.toString();
 }

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ComparisonRequest, DiffMeta, GitRef, RepositoryRefs } from "../../shared/api.ts";
 import { fetchRefs } from "../api.ts";
-import { shortRevision } from "../format.ts";
+import { messageOf, shortRevision } from "../format.ts";
 import { MenuChevron } from "./MenuChevron.tsx";
 import { Tooltip, tooltipHandlers } from "./Tooltip.tsx";
 
@@ -250,9 +250,7 @@ export function ComparisonPicker({ diff, disabled, onCompare }: Props): React.JS
   // Read once, and only when a panel is first needed: a scan never asks.
   useEffect(() => {
     if (openSide === null || refs !== null) return;
-    fetchRefs().then(setRefs, (cause: unknown) => {
-      setRefsError(cause instanceof Error ? cause.message : String(cause));
-    });
+    fetchRefs().then(setRefs, (cause: unknown) => setRefsError(messageOf(cause)));
   }, [openSide, refs]);
 
   useLayoutEffect(() => {
@@ -304,6 +302,20 @@ export function ComparisonPicker({ diff, disabled, onCompare }: Props): React.JS
   const chooseBase = (name: string): void => apply({ ...selection, base: name });
   const chooseTarget = (target: Target): void => apply({ ...selection, target });
 
+  /** What the repository holds, as one side's options. Both sides list the same refs. */
+  const refOptions = (
+    side: Side, isSelected: (name: string) => boolean, choose: (name: string) => void,
+  ): Section[] => refSections.map((section) => ({
+    title: section.title,
+    options: section.entries.map((ref) => ({
+      key: `${side}:${ref.kind}:${ref.name}`,
+      name: ref.name,
+      note: ref.shortSha,
+      selected: isSelected(ref.name),
+      onSelect: () => choose(ref.name),
+    })),
+  }));
+
   const baseSections = (): Section[] => [
     {
       title: "Commit",
@@ -315,16 +327,7 @@ export function ComparisonPicker({ diff, disabled, onCompare }: Props): React.JS
         onSelect: () => chooseBase("HEAD"),
       }],
     },
-    ...refSections.map((section) => ({
-      title: section.title,
-      options: section.entries.map((ref) => ({
-        key: `base:${ref.kind}:${ref.name}`,
-        name: ref.name,
-        note: ref.shortSha,
-        selected: selection.base === ref.name,
-        onSelect: () => chooseBase(ref.name),
-      })),
-    })),
+    ...refOptions("base", (name) => selection.base === name, chooseBase),
   ];
 
   const targetSections = (): Section[] => [
@@ -357,16 +360,11 @@ export function ComparisonPicker({ diff, disabled, onCompare }: Props): React.JS
         onSelect: () => chooseTarget({ kind: "revision", name: "HEAD" }),
       }],
     },
-    ...refSections.map((section) => ({
-      title: section.title,
-      options: section.entries.map((ref) => ({
-        key: `target:${ref.kind}:${ref.name}`,
-        name: ref.name,
-        note: ref.shortSha,
-        selected: targetKey(selection.target) === `revision:${ref.name}`,
-        onSelect: () => chooseTarget({ kind: "revision", name: ref.name }),
-      })),
-    })),
+    ...refOptions(
+      "target",
+      (name) => targetKey(selection.target) === `revision:${name}`,
+      (name) => chooseTarget({ kind: "revision", name }),
+    ),
   ];
 
   // The index has one base, so the other chip has nothing left to choose.

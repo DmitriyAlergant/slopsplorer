@@ -1,6 +1,17 @@
-import type { Aspect, ChangeStatus, ComparisonRequest, Measure, ScanMeta } from "../shared/api.ts";
+import type { Aspect, ChangeStatus, ComparisonRequest, ScanMeta } from "../shared/api.ts";
 
 const integer = new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 });
+
+/**
+ * What a rejected promise says, as text a banner can hold.
+ *
+ * Every failure the page reports arrives as `unknown` from a `catch`, and a
+ * thrown value is not always an `Error`. One reading of it, so no two banners
+ * describe the same fault differently.
+ */
+export function messageOf(cause: unknown): string {
+  return cause instanceof Error ? cause.message : String(cause);
+}
 
 export function count(value: number): string {
   return integer.format(value);

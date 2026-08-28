@@ -1,19 +1,26 @@
 import type { CommitSpine, Measure, SpineEntry } from "../shared/api.ts";
 
-const ADDED_FIELDS: Readonly<Record<Measure, keyof SpineEntry>> = {
-  tokens: "addedTokens", lines: "addedLines", codeLines: "addedCodeLines",
-};
+/** A `SpineEntry` field that holds a figure, which is every one but its identity. */
+type MeasuredSpineField = {
+  [Field in keyof SpineEntry]: SpineEntry[Field] extends number ? Field : never;
+}[keyof SpineEntry];
 
-const REMOVED_FIELDS: Readonly<Record<Measure, keyof SpineEntry>> = {
-  tokens: "removedTokens", lines: "removedLines", codeLines: "removedCodeLines",
+/**
+ * The two fields one measure reads a commit's sides from.
+ *
+ * Every name appears whole, as it does in `SpineEntry` and in `FileRow`, so one
+ * search finds each of them everywhere it matters.
+ */
+const SIDE_FIELDS: Readonly<Record<Measure, { added: MeasuredSpineField; removed: MeasuredSpineField }>> = {
+  tokens: { added: "addedTokens", removed: "removedTokens" },
+  lines: { added: "addedLines", removed: "removedLines" },
+  codeLines: { added: "addedCodeLines", removed: "removedCodeLines" },
 };
 
 /** What one commit added and removed, in the unit the page is counting in. */
 export function sidesOf(entry: SpineEntry, measure: Measure): { added: number; removed: number } {
-  return {
-    added: entry[ADDED_FIELDS[measure]] as number,
-    removed: entry[REMOVED_FIELDS[measure]] as number,
-  };
+  const fields = SIDE_FIELDS[measure];
+  return { added: entry[fields.added], removed: entry[fields.removed] };
 }
 
 /** The heaviest churn in a spine, which is what every bar is drawn against. */

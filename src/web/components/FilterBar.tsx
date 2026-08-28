@@ -32,7 +32,9 @@ const MEASURE_DESCRIPTIONS: Record<Measure, string> = {
  * it. One place owns each, so no two widgets can claim to decide what the page
  * counts.
  */
-export function FilterBar({ request, isDiff, onToggleKind, onToggleGenerated, onQueryChange, onMeasureChange, onAspectChange }: Props): React.JSX.Element {
+export function FilterBar({
+  request, isDiff, onToggleKind, onToggleGenerated, onQueryChange, onMeasureChange, onAspectChange,
+}: Props): React.JSX.Element {
   return (
     <section className="filters" aria-label="Scope filters">
       <label className="search">

@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import type { Aspect, DetailView, FileRow, FileScope, Measure, RankMetric, RowKind, ViewRequest } from "../../shared/api.ts";
-import { ASPECTS, FILE_SCOPES, MEASURES, aspectTotals, measureHeading, weightAbbreviation, weightHeading, weightName } from "../../shared/api.ts";
+import {
+  ASPECTS, FILE_SCOPES, MAX_CARD_COLUMNS, MEASURES, MIN_CARD_COLUMNS, aspectTotals, measureHeading,
+  weightAbbreviation, weightHeading, weightName,
+} from "../../shared/api.ts";
 import { aspectFigure, count, countOf, percent, weightCount } from "../format.ts";
 import { CopyPathButton } from "./CopyPathButton.tsx";
 import { FileTable } from "./FileTable.tsx";
@@ -45,7 +48,6 @@ interface Props {
 const CARD_MIN_WIDTH = 210;
 const CARD_GAP = 8;
 const CARD_PADDING = 40;
-const MAX_COLUMNS = 6;
 
 /** What each scope of the file list is called, and what it holds. */
 const FILE_SCOPE_DETAILS: Record<FileScope, { label: string; description: string }> = {
@@ -63,7 +65,11 @@ const FILE_SCOPE_DETAILS: Record<FileScope, { label: string; description: string
 const THRESHOLD_STEPS: Record<Measure, number> = { tokens: 500, lines: 50, codeLines: 50 };
 
 /** The selected folder: its weight, how its children divide it, and its own files. */
-export function FolderDetail({ detail, files, filesTotal, measure, aspect, isDiff, sort, onSortChange, path, onSelect, directFilesOnly, fileScope, onFileScopeChange, canDrill, onDrill, rank, onRankChange, onOpenSource, onCapacityChange }: Props): React.JSX.Element {
+export function FolderDetail({
+  detail, files, filesTotal, measure, aspect, isDiff, sort, onSortChange, path, onSelect,
+  directFilesOnly, fileScope, onFileScopeChange, canDrill, onDrill, rank, onRankChange,
+  onOpenSource, onCapacityChange,
+}: Props): React.JSX.Element {
   const panelRef = useRef<HTMLElement>(null);
   const [columns, setColumns] = useState(3);
   // What the reader has typed, which is not the threshold: an empty box is a
@@ -81,7 +87,7 @@ export function FolderDetail({ detail, files, filesTotal, measure, aspect, isDif
       const width = entries[0]?.contentRect.width ?? 0;
       const usable = width - CARD_PADDING + CARD_GAP;
       const fitted = Math.floor(usable / (CARD_MIN_WIDTH + CARD_GAP));
-      setColumns(Math.max(1, Math.min(MAX_COLUMNS, fitted)));
+      setColumns(Math.max(MIN_CARD_COLUMNS, Math.min(MAX_CARD_COLUMNS, fitted)));
     });
     observer.observe(node);
     return () => observer.disconnect();

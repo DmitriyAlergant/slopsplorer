@@ -1,9 +1,12 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
+import { useModalDialog } from "../dialog.ts";
 import type { SourceResponse } from "../../shared/api.ts";
 import { fetchSkillSource, fetchSource } from "../api.ts";
-import { count } from "../format.ts";
+import { count, messageOf } from "../format.ts";
 import { highlightSource } from "../highlight.ts";
-import { readChangedLinesOnly, readWrapLines, writeChangedLinesOnly, writeWrapLines } from "../preferences.ts";
+import {
+  browserStorage, readChangedLinesOnly, readWrapLines, writeChangedLinesOnly, writeWrapLines,
+} from "../preferences.ts";
 import { CopyPathButton } from "./CopyPathButton.tsx";
 import { DiffView } from "./DiffView.tsx";
 
@@ -15,22 +18,6 @@ interface Props {
   onClose: () => void;
 }
 
-function changedLinesOnlyFromStorage(): boolean {
-  try {
-    return readChangedLinesOnly(window.localStorage);
-  } catch {
-    return false;
-  }
-}
-
-function wrapLinesFromStorage(): boolean {
-  try {
-    return readWrapLines(window.localStorage);
-  } catch {
-    return false;
-  }
-}
-
 /**
  * Read-only preview of one file, highlighted client-side.
  *
@@ -39,40 +26,34 @@ function wrapLinesFromStorage(): boolean {
  * page cannot support.
  */
 export function SourceDialog({ preview, onClose }: Props): React.JSX.Element {
-  const dialogRef = useRef<HTMLDialogElement>(null);
+  const dialogRef = useModalDialog(preview !== null);
   const [source, setSource] = useState<SourceResponse | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
-  const [changedOnly, setChangedOnly] = useState(changedLinesOnlyFromStorage);
-  const [wrap, setWrap] = useState(wrapLinesFromStorage);
+  const [changedOnly, setChangedOnly] = useState(() => readChangedLinesOnly(browserStorage()));
+  const [wrap, setWrap] = useState(() => readWrapLines(browserStorage()));
 
   useEffect(() => {
-    const dialog = dialogRef.current;
-    if (!dialog) return;
-    if (preview === null) {
-      if (dialog.open) dialog.close();
-      return;
-    }
+    if (preview === null) return;
     setSource(null);
     setFailure(null);
-    if (!dialog.open) dialog.showModal();
     let cancelled = false;
     const loading = preview.kind === "skill" ? fetchSkillSource() : fetchSource(preview.path);
     loading
       .then((loaded) => { if (!cancelled) setSource(loaded); })
-      .catch((cause: unknown) => { if (!cancelled) setFailure(cause instanceof Error ? cause.message : String(cause)); });
+      .catch((cause: unknown) => { if (!cancelled) setFailure(messageOf(cause)); });
     return () => { cancelled = true; };
   }, [preview]);
 
   const toggleChangedOnly = (): void => {
     const changed = !changedOnly;
     setChangedOnly(changed);
-    writeChangedLinesOnly(window.localStorage, changed);
+    writeChangedLinesOnly(browserStorage(), changed);
   };
 
   const toggleWrap = (): void => {
     const wrapped = !wrap;
     setWrap(wrapped);
-    writeWrapLines(window.localStorage, wrapped);
+    writeWrapLines(browserStorage(), wrapped);
   };
 
   // A scanned file names itself before it loads; the skill is named by the server.

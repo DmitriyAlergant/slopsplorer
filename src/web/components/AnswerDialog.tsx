@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
+import { useModalDialog } from "../dialog.ts";
 import type { AskTask } from "../../shared/api.ts";
 import { duration } from "../format.ts";
 import { renderMarkdown } from "../markdown.tsx";
@@ -29,17 +30,10 @@ function describeRun(task: AskTask): string {
  * agent was told is never a thing they have to take on trust.
  */
 export function AnswerDialog({ task, onClose }: Props): React.JSX.Element {
-  const dialogRef = useRef<HTMLDialogElement>(null);
+  const dialogRef = useModalDialog(task !== null);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
-    const dialog = dialogRef.current;
-    if (!dialog) return;
-    if (task === null) {
-      if (dialog.open) dialog.close();
-      return;
-    }
-    if (!dialog.open) dialog.showModal();
     setCopied(false);
   }, [task]);
 
