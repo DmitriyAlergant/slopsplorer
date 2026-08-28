@@ -71,18 +71,29 @@ const FIXTURE_DIRECTORIES: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * ISO 639-1 codes, used to recognise catalogue files named after a language.
+ * ISO 639-1 codes, used to recognise a folder or a file named for a language.
  *
- * A curated list matters here: matching any two-or-three letter stem would
- * misfile `api.json`, `db.yaml`, and `dev.yaml` as translation catalogues.
+ * The whole standard, because the evidence that a name is a locale no longer
+ * rests on this list alone. `isLocaleLevel` asks what the name sits beside, so
+ * `brands/lg.json` stays a brand and `docker-compose/ga.yml` stays a compose
+ * file, both of which a bare list of codes called translations.
  */
 const LANGUAGE_CODES: ReadonlySet<string> = new Set([
-  "af", "am", "ar", "az", "be", "bg", "bn", "bs", "ca", "cs", "cy", "da", "de",
-  "el", "en", "eo", "es", "et", "eu", "fa", "fi", "fil", "fr", "ga", "gl", "he",
-  "hi", "hr", "hu", "hy", "id", "is", "it", "ja", "ka", "kk", "km", "kn", "ko",
-  "lt", "lv", "mk", "ml", "mn", "mr", "ms", "my", "nb", "ne", "nl", "nn", "no",
-  "pa", "pl", "pt", "ro", "ru", "si", "sk", "sl", "sq", "sr", "sv", "sw", "ta",
-  "te", "th", "tr", "uk", "ur", "uz", "vi", "zh",
+  "aa", "ab", "ae", "af", "ak", "am", "an", "ar", "as", "av", "ay", "az", "ba",
+  "be", "bg", "bh", "bi", "bm", "bn", "bo", "br", "bs", "ca", "ce", "ch", "co",
+  "cr", "cs", "cu", "cv", "cy", "da", "de", "dv", "dz", "ee", "el", "en", "eo",
+  "es", "et", "eu", "fa", "ff", "fi", "fil", "fj", "fo", "fr", "fy", "ga", "gd",
+  "gl", "gn", "gu", "gv", "ha", "he", "hi", "ho", "hr", "ht", "hu", "hy", "hz",
+  "ia", "id", "ie", "ig", "ii", "ik", "io", "is", "it", "iu", "ja", "jv", "ka",
+  "kg", "ki", "kj", "kk", "kl", "km", "kn", "ko", "kr", "ks", "ku", "kv", "kw",
+  "ky", "la", "lb", "lg", "li", "ln", "lo", "lt", "lu", "lv", "mg", "mh", "mi",
+  "mk", "ml", "mn", "mr", "ms", "mt", "my", "na", "nb", "nd", "ne", "ng", "nl",
+  "nn", "no", "nr", "nv", "ny", "oc", "oj", "om", "or", "os", "pa", "pi", "pl",
+  "ps", "pt", "qu", "rm", "rn", "ro", "ru", "rw", "sa", "sc", "sd", "se", "sg",
+  "si", "sk", "sl", "sm", "sn", "so", "sq", "sr", "ss", "st", "su", "sv", "sw",
+  "ta", "te", "tg", "th", "ti", "tk", "tl", "tn", "to", "tr", "ts", "tt", "tw",
+  "ty", "ug", "uk", "ur", "uz", "ve", "vi", "wa", "wo", "xh", "yi", "yo", "za",
+  "zh", "zu",
 ]);
 
 /** Whether any member of `candidates` is in `known`. */
@@ -93,28 +104,141 @@ function containsAny(candidates: Iterable<string>, known: ReadonlySet<string>): 
   return false;
 }
 
-/** `en`, `de-DE`, `pt_BR` - a language code with an optional region suffix. */
-const LOCALE_STEM = /^([a-z]{2,3})(?:[-_][a-z]{2,4})?$/;
+/**
+ * ISO 3166-1 alpha-2 regions, plus the scripts that appear where a region does.
+ *
+ * Curated for the same reason the language codes are, and measured: a rule that
+ * took any short suffix read `no_log`, `no_ip`, `no-tty`, and `hi_kumo` as
+ * locales, because `no` and `hi` are languages and the rest is a word.
+ */
+const REGION_CODES: ReadonlySet<string> = new Set([
+  "ad", "ae", "af", "ag", "ai", "al", "am", "ao", "ar", "at", "au", "aw", "az",
+  "ba", "bb", "bd", "be", "bf", "bg", "bh", "bi", "bj", "bm", "bn", "bo", "br",
+  "bs", "bt", "bw", "by", "bz", "ca", "cd", "cf", "cg", "ch", "ci", "cl", "cm",
+  "cn", "co", "cr", "cu", "cv", "cy", "cz", "de", "dj", "dk", "dm", "do", "dz",
+  "ec", "ee", "eg", "er", "es", "et", "fi", "fj", "fm", "fo", "fr", "ga", "gb",
+  "gd", "ge", "gh", "gm", "gn", "gq", "gr", "gt", "gw", "gy", "hk", "hn", "hr",
+  "ht", "hu", "id", "ie", "il", "in", "iq", "ir", "is", "it", "jm", "jo", "jp",
+  "ke", "kg", "kh", "ki", "km", "kn", "kp", "kr", "kw", "ky", "kz", "la", "lb",
+  "lc", "li", "lk", "lr", "ls", "lt", "lu", "lv", "ly", "ma", "mc", "md", "me",
+  "mg", "mh", "mk", "ml", "mm", "mn", "mo", "mr", "mt", "mu", "mv", "mw", "mx",
+  "my", "mz", "na", "ne", "ng", "ni", "nl", "no", "np", "nz", "om", "pa", "pe",
+  "pg", "ph", "pk", "pl", "pr", "ps", "pt", "py", "qa", "ro", "rs", "ru", "rw",
+  "sa", "sb", "sc", "sd", "se", "sg", "si", "sk", "sl", "sm", "sn", "so", "sr",
+  "ss", "sv", "sy", "sz", "td", "tg", "th", "tj", "tm", "tn", "to", "tr", "tt",
+  "tw", "tz", "ua", "ug", "us", "uy", "uz", "ve", "vn", "vu", "ws", "ye", "za",
+  "zm", "zw",
+  "arab", "cyrl", "hans", "hant", "latn",
+]);
 
-function isLocaleStem(stem: string): boolean {
-  const match = LOCALE_STEM.exec(stem);
-  return match !== null && LANGUAGE_CODES.has(match[1]!);
+/** `en`, `de-DE`, `pt_BR`, `sr_Latn` - the shape of a locale name. */
+const LOCALE_NAME = /^([a-z]{2,3})(?:[-_]([a-z]{2,4}))?$/;
+
+/** Whether the name is a language code, with a real region or script if it carries one. */
+function isLocaleName(name: string): boolean {
+  const match = LOCALE_NAME.exec(name);
+  if (match === null || !LANGUAGE_CODES.has(match[1]!)) return false;
+  const region = match[2];
+  return region === undefined || REGION_CODES.has(region);
 }
 
 /**
- * Whether the file sits in one language's folder of a translation tree, as
- * `conf/locale/nl/formats.py` and `Translation/lang/en/validation.php` do.
+ * `zh-cn`, `pt_BR`, `en-US`, `sr_Latn` - a language code carrying a region or
+ * a script, both of them real codes.
  *
- * Everything in such a folder is that language's copy, whatever format it is
- * written in. Both halves are needed. A bare `it/` or `id/` folder is not a
- * locale, and hugo's `docs/content/en/functions/lang/` holds prose about
- * translation rather than a translation, which is why the language code has to
- * be the folder the file is actually in.
+ * This is the one locale name that needs no other evidence. `en` is a name
+ * anything could use, but nothing writes `zh-cn` unless it means Chinese as
+ * written in China.
  */
-function isLocaleDirectory(directories: readonly string[]): boolean {
-  const parent = directories[directories.length - 1];
-  if (parent === undefined || !isLocaleStem(parent)) return false;
-  return containsAny(directories, I18N_DIRECTORIES);
+function isRegionedLocale(name: string): boolean {
+  const match = LOCALE_NAME.exec(name);
+  return match !== null && match[2] !== undefined && isLocaleName(name);
+}
+
+/** Entries that must be language codes before a folder reads as a locale level. */
+const MIN_LOCALE_ENTRIES = 2;
+
+/** The share of a locale level's entries that must be codes the list knows. */
+const LOCALE_LEVEL_SHARE = 0.9;
+
+/**
+ * Whether one folder holds one entry per language.
+ *
+ * Two kinds of evidence, and either is enough. The folder is named for
+ * translation, as `locales/` is. Or its entries say so themselves: nearly all
+ * of them are language codes and every one of them is at least shaped like a
+ * locale, which is what a folder of translated documentation looks like from
+ * the outside.
+ *
+ * The homogeneity is what makes the second test safe. Both halves were
+ * measured. vscode keeps 107 shell completions in one folder, three of which
+ * are `tr`, `nl`, and `sr`; hugo names its comparison functions `Lt.md` and
+ * `Ne.md` beside `Conditional.md`. A folder that is mostly locales holds
+ * nothing else.
+ */
+function isLocaleLevel(directory: string, entries: ReadonlySet<string>): boolean {
+  if (I18N_DIRECTORIES.has(directory.slice(directory.lastIndexOf("/") + 1))) return true;
+  let known = 0;
+  for (const entry of entries) {
+    if (!LOCALE_NAME.test(entry)) return false;
+    if (isLocaleName(entry)) known += 1;
+  }
+  return known >= MIN_LOCALE_ENTRIES && known >= entries.size * LOCALE_LEVEL_SHARE;
+}
+
+/**
+ * The folders of a tree that hold one entry per language.
+ *
+ * A locale name on its own says very little: `en` and `id` are folder names
+ * anything could use. What settles it is what the name sits beside, so this
+ * reads the whole listing once and answers that question for every folder.
+ * Both producers of an index build this from the same view of the tree, so a
+ * scan and a comparison never disagree about a file.
+ */
+export function findLocaleLevels(relativePaths: readonly string[]): ReadonlySet<string> {
+  const entriesByDirectory = new Map<string, Set<string>>();
+  const record = (directory: string, entry: string): void => {
+    const entries = entriesByDirectory.get(directory);
+    if (entries === undefined) entriesByDirectory.set(directory, new Set([entry]));
+    else entries.add(entry);
+  };
+
+  for (const relativePath of relativePaths) {
+    const segments = relativePath.toLowerCase().split("/").filter((segment) => segment && segment !== ".");
+    const name = segments[segments.length - 1];
+    if (name === undefined) continue;
+    const directories = segments.slice(0, -1);
+    for (let depth = 0; depth < directories.length; depth += 1) {
+      record(directories.slice(0, depth).join("/"), directories[depth]!);
+    }
+    const extension = path.posix.extname(name);
+    record(directories.join("/"), name.slice(0, name.length - extension.length));
+  }
+
+  const levels = new Set<string>();
+  for (const [directory, entries] of entriesByDirectory) {
+    if (isLocaleLevel(directory, entries)) levels.add(directory);
+  }
+  return levels;
+}
+
+/**
+ * Whether the file is one language's copy of something.
+ *
+ * A region or a script settles it wherever the name sits, which is what
+ * reaches a documentation site that keeps `content/zh-cn/` beside
+ * `content/en/`. A bare code needs the folder it sits in to be a level of
+ * languages, which is what tells `locales/en.json` from `config/en.json` and
+ * `conf/locale/nl/formats.py` from `src/id/resolver.ts`.
+ */
+function isLocaleCopy(directories: readonly string[], stem: string, localeLevels: ReadonlySet<string>): boolean {
+  if (isRegionedLocale(stem)) return true;
+  for (let depth = 0; depth < directories.length; depth += 1) {
+    const directory = directories[depth]!;
+    if (isRegionedLocale(directory)) return true;
+    if (isLocaleName(directory) && localeLevels.has(directories.slice(0, depth).join("/"))) return true;
+  }
+  return isLocaleName(stem) && localeLevels.has(directories.join("/"));
 }
 
 /**
@@ -182,7 +306,7 @@ function isTestSourceName(name: string): boolean {
  * because `locales/fr_CA.json` and `config/api.json` are one format, and so
  * are a page of prose and a fixture with a `.txt` on the end.
  */
-export function classifyFile(relativePath: string): FileKind {
+export function classifyFile(relativePath: string, localeLevels: ReadonlySet<string>): FileKind {
   const name = path.posix.basename(relativePath);
   const lowercasedName = name.toLowerCase();
   const extension = path.posix.extname(lowercasedName);
@@ -190,9 +314,8 @@ export function classifyFile(relativePath: string): FileKind {
   const directories = path.posix.dirname(relativePath).toLowerCase().split("/").filter((part) => part && part !== ".");
 
   if (extension === ".po" || extension === ".pot") return "i18n";
-  if ((extension === ".json" || extension === ".yaml" || extension === ".yml") && isLocaleStem(stem)) return "i18n";
   if (isTestFileName(lowercasedName)) return "test";
-  if (isLocaleDirectory(directories)) return "i18n";
+  if (isLocaleCopy(directories, stem, localeLevels)) return "i18n";
   if (DATA_NAMES.has(lowercasedName)) return "data";
   if (DATA_EXTENSIONS.has(extension)) return containsAny(directories, I18N_DIRECTORIES) ? "i18n" : "data";
   if (TEXT_EXTENSIONS.has(extension)) return containsAny(directories, FIXTURE_DIRECTORIES) ? "data" : "text";
@@ -287,6 +410,49 @@ const GENERATED_STEM = /[._-](?:generated|autogen)(?:$|[._-])|\.gen$/i;
 const GENERATED_NAMES: ReadonlySet<string> = new Set([
   "package-lock.json", "pnpm-lock.yaml", "yarn.lock", "bun.lockb", "composer.lock",
 ]);
+
+/**
+ * A line that opens or continues a comment, in any language a scan reads.
+ *
+ * The anchor is what makes the marker below safe. Unanchored, `@generated`
+ * also matches TypeORM's `@Generated()` column decorator and a Ruby
+ * `@generated` instance variable, neither of which is a generated file.
+ */
+const COMMENT_LINE = /^\s*(?:\/\/|\/\*|\*|#|--|<!--|;|"""|''')/;
+
+/**
+ * What a generator writes at the top of the file it wrote.
+ *
+ * Every phrasing here was read off a real header: `Code generated by
+ * Microsoft (R) AutoRest Code Generator.`, `AUTOGENERATED BY ...`,
+ * `AUTO-GENERATED by scripts/generate-emoji-data.mjs - DO NOT EDIT`,
+ * `This file is automatically generated by ...`, `@generated`, and Go's
+ * `Code generated by "stringer"; DO NOT EDIT.`.
+ *
+ * `rendered` was measured and left out. It reads like a generator marker, but
+ * across 21 repositories it only ever matched prose about a component being
+ * rendered by something else.
+ */
+const GENERATED_HEADER = /@generated|code generated by|(?:auto[- ]?|automatically )generated(?:\s+by|.{0,80}?do not edit)|do not edit.{0,80}?generated/i;
+
+/** How far into a file the marker may sit. A header is a header. */
+const GENERATED_HEADER_LINES = 8;
+
+/** How much of the head to read, so one minified line cannot cost a scan. */
+const GENERATED_HEADER_CHARS = 2000;
+
+/**
+ * Whether the file says a tool wrote it.
+ *
+ * The path is silent for a whole class of generated code: an SDK whose client
+ * is emitted from a service specification sits in ordinary `src/` folders
+ * under ordinary names, and only the header it carries says what it is. That
+ * is 11% of Azure's JavaScript SDK.
+ */
+export function hasGeneratedHeader(text: string): boolean {
+  const head = text.slice(0, GENERATED_HEADER_CHARS).split("\n", GENERATED_HEADER_LINES);
+  return head.some((line) => COMMENT_LINE.test(line) && GENERATED_HEADER.test(line));
+}
 
 /** Detect generated output from path conventions alone, without reading content. */
 export function isGenerated(relativePath: string): boolean {

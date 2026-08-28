@@ -4,6 +4,23 @@ All notable user-facing changes to Slopsplorer are recorded here.
 
 <!-- towncrier release notes start -->
 
+## [0.5.0](https://github.com/DmitriyAlergant/slopsplorer/releases/tag/v0.5.0) - 2026-08-27
+
+### Features
+
+- A pasted commit, such as `slopsplorer f53f4f9eb`, now compares that commit against its parent instead of against the working tree. A named revision such as `origin/main` or `HEAD~5` still measures from there to the working tree, and `<rev>^!` names one commit whatever points at it. ([b489f28](https://github.com/DmitriyAlergant/slopsplorer/commit/b489f28))
+- `--pr <number>` reviews a pull request: it fetches the change from the remote, so it reaches one whose branch a squash merge deleted, and measures it against the branch it is actually against rather than against the repository default. GitHub and GitLab, through `gh` or `glab`. A pull request URL works as a positional argument. ([b489f28](https://github.com/DmitriyAlergant/slopsplorer/commit/b489f28))
+- A comparison of two commits now draws a band of the commits it spans, above the filters. Click one to read that commit alone, shift-click for a run of them, or step with `[` and `]`. The band states each commit's added, removed, and net weight, leaves generated files out, and links each commit to the forge. ([b489f28](https://github.com/DmitriyAlergant/slopsplorer/commit/b489f28))
+- Ask a question about what you are looking at: if Claude Code, Codex, Cursor, or opencode is installed, the header hands your question to it, with the scan or comparison, the drill, the selection, and the unit you have on screen, and draws the answer on the page; the menu names each tool by its own mark and says whether it reported a sign-in. ([3f134f5](https://github.com/DmitriyAlergant/slopsplorer/commit/3f134f5))
+- The File column of the file list is now sortable, A to Z by path, and its heading stands over the paths it names. ([fe23fb7](https://github.com/DmitriyAlergant/slopsplorer/commit/fe23fb7))
+- The file list of the folder panel has a scope switch: list the files that sit directly in the selected folder, or every file below it. It moves the list alone and changes no total. ([fe23fb7](https://github.com/DmitriyAlergant/slopsplorer/commit/fe23fb7))
+- Flavor detection is more accurate: it reads the JVM, .NET, Pester, and vitest test-naming conventions and the Gradle test source sets, recognises a generated file from the header its generator writes, which reaches emitted SDK clients that no path convention marks, and reads a folder of translations from the languages it holds, so a site that keeps `content/pl` beside `content/zh-cn` reports them as translations rather than as docs. The code and prose inside a `lang` or `translations` folder are no longer filed as catalogues, and a `.txt` or `.md` fixture counts as data rather than as documentation. ([7020935](https://github.com/DmitriyAlergant/slopsplorer/commit/7020935))
+
+### Other Changes
+
+- A comparison whose two sides are the same commit is refused with a message instead of drawing an empty page. ([b489f28](https://github.com/DmitriyAlergant/slopsplorer/commit/b489f28))
+
+
 ## [0.4.2](https://github.com/DmitriyAlergant/slopsplorer/releases/tag/v0.4.2) - 2026-08-27
 
 ### Features

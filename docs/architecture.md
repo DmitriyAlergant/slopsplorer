@@ -50,7 +50,8 @@ A change to it is a change to both sides.
    Larger files are counted in `ScanMeta.skippedLargeFiles` and are left out.
 3. `measureFile()` in `src/scanner/measure.ts` selects the grammar, counts the structure, and splits the lines.
    This is the single place that decides whether a file gets tree-sitter comment spans or the comment-marker table, so the scanner and the corpus test cannot disagree about it.
-4. `classifyFile()` and `refineKindByContent()` in `src/scanner/classify.ts` set the flavor, and `isGenerated()` sets the generated flag.
+4. `classifyFile()` and `refineKindByContent()` in `src/scanner/classify.ts` set the flavor, and `isGenerated()` with `hasGeneratedHeader()` set the generated flag.
+   `classifyFile()` reads the locale levels that `findLocaleLevels()` computes once from the whole listing, so both producers have to hand it the same view of the tree.
 5. The token count comes from `tokenCounter()` in `src/scanner/tokenize.ts`.
 
 Files are read in parallel because reading is limited by the disk.

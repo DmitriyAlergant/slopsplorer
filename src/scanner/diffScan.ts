@@ -1,7 +1,7 @@
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import type { ChangeStatus, DiffLine, DiffMeta, FileRow, ScanMeta } from "../shared/api.ts";
-import { classifyFile, isGenerated, refineKindByContent } from "./classify.ts";
+import { classifyFile, findLocaleLevels, hasGeneratedHeader, isGenerated, refineKindByContent } from "./classify.ts";
 import { GitObjectReader, listChangedFiles, objectSizes, type ChangedFile, type Comparison, type DiffSide } from "./gitdiff.ts";
 import { alignedLines, diffLines } from "./linediff.ts";
 import type { LineBucket } from "./lines.ts";
@@ -10,7 +10,7 @@ import { measureFile, type FileMeasurement } from "./measure.ts";
 import { buildFolders, buildWeightPrefixes, mapWithConcurrency, type ScanIndex, type ScanProgress } from "./scan.ts";
 import { StructureAnalyzer } from "./structure.ts";
 import { tokenCounter, type TokenizerName } from "./tokenize.ts";
-import { acceptSourcePaths } from "./walk.ts";
+import { acceptSourcePaths, listRevisionSourceFiles, listSourceFiles } from "./walk.ts";
 
 export interface DiffScanOptions {
   /** Top of the worktree. It is also the scan root, so paths read the same as in a scan. */
@@ -21,6 +21,21 @@ export interface DiffScanOptions {
   maxFileBytes: number;
   concurrency: number;
   onProgress?: (progress: ScanProgress) => void;
+}
+
+/**
+ * Every source file the side a comparison ends at holds.
+ *
+ * Classification asks what a folder holds, and a comparison only sees the
+ * files a change touched. Listing the after side in full is what lets a scan
+ * and a comparison agree about the flavor of a file they both hold. The index
+ * and the working tree are one checkout, so the walker answers for both.
+ */
+async function listTargetFiles(options: DiffScanOptions): Promise<string[]> {
+  const target = options.comparison.target;
+  if (target.kind === "revision") return listRevisionSourceFiles(options.root, target.rev, options.exclude);
+  const listing = await listSourceFiles(options.root, { allFiles: false, exclude: options.exclude });
+  return listing.relativePaths;
 }
 
 /** Empty content, which is what the missing side of an added or deleted file holds. */
@@ -153,6 +168,7 @@ export async function scanDiff(options: DiffScanOptions): Promise<ScanIndex> {
   const { comparison } = options;
   const changed = await listChangedFiles(options.root, comparison);
   const byPath = new Map(changed.map((entry) => [entry.path, entry]));
+  const localeLevels = findLocaleLevels(await listTargetFiles(options));
   const accepted = acceptSourcePaths(changed.map((entry) => entry.path), options.exclude)
     .map((filePath) => byPath.get(filePath)!);
 
@@ -200,8 +216,9 @@ export async function scanDiff(options: DiffScanOptions): Promise<ScanIndex> {
       const row: FileRow = {
         path: entry.path,
         name,
-        kind: refineKindByContent(classifyFile(entry.path), entry.path, { grammar, ...after.structure }),
-        generated: isGenerated(entry.path),
+        kind: refineKindByContent(classifyFile(entry.path, localeLevels), entry.path, { grammar, ...after.structure }),
+        // The after image, or the before image of a file the change deleted.
+        generated: isGenerated(entry.path) || hasGeneratedHeader(contents.after || contents.before),
         status: entry.status,
         previousPath: entry.status === "renamed" ? entry.basePath : null,
         tokens: countTokens(contents.after),
