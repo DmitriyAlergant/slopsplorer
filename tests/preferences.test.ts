@@ -4,10 +4,12 @@ import {
   readPreferences,
   readTreePanelRatio,
   readWorkspaceHeight,
+  readWrapLines,
   writeChangedLinesOnly,
   writePreferences,
   writeTreePanelRatio,
   writeWorkspaceHeight,
+  writeWrapLines,
   type PreferenceStorage,
 } from "../src/web/preferences.ts";
 import { readRequest } from "../src/web/urlState.ts";
@@ -108,5 +110,14 @@ describe("view preferences", () => {
     expect(readChangedLinesOnly(storage)).toBe(true);
     writeChangedLinesOnly(storage, false);
     expect(readChangedLinesOnly(storage)).toBe(false);
+  });
+
+  it("persists a preview that wraps long lines, and scrolls them sideways until it is asked to", () => {
+    const storage = new MemoryStorage();
+    expect(readWrapLines(storage)).toBe(false);
+    writeWrapLines(storage, true);
+    expect(readWrapLines(storage)).toBe(true);
+    writeWrapLines(storage, false);
+    expect(readWrapLines(storage)).toBe(false);
   });
 });

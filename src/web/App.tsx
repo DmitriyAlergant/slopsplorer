@@ -15,7 +15,7 @@ import {
   writeTreePanelRatio, writeWorkspaceHeight,
 } from "./preferences.ts";
 import { isInsideFolder } from "./displayPath.ts";
-import { comparisonLabel } from "./format.ts";
+import { comparisonLabel, documentTitle } from "./format.ts";
 import { closeTooltip } from "./tooltip.ts";
 import { readRequest, selectionKey, writeRequest } from "./urlState.ts";
 import { AnswerDialog } from "./components/AnswerDialog.tsx";
@@ -177,6 +177,13 @@ export function App(): React.JSX.Element {
       // Accessing localStorage itself can be denied in locked-down contexts.
     }
   }, [request.kinds, request.showGenerated, request.treeSort, request.measure, request.aspect, request.rank.metric]);
+
+  // The tab names what was measured, so two open windows are told apart at a
+  // glance. It follows the response rather than the request, for the same
+  // reason every heading does.
+  useEffect(() => {
+    document.title = documentTitle(view?.meta ?? null);
+  }, [view?.meta]);
 
   useEffect(() => {
     writeTreePanelRatio(window.localStorage, treePanelRatio);

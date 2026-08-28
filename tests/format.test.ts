@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { aspectFigure, comparisonLabel, shortRevision } from "../src/web/format.ts";
+import type { ComparisonRequest, DiffMeta, ScanMeta } from "../src/shared/api.ts";
+import { aspectFigure, comparisonLabel, documentTitle, shortRevision } from "../src/web/format.ts";
 
 const FULL_SHA = "87d1e8b76cece130474a7fcc6093528f3c20cd4c";
 
@@ -34,6 +35,62 @@ describe("comparisonLabel", () => {
       .toBe("origin/main -> 87d1e8b76c");
     expect(comparisonLabel({ kind: "mergeBase", base: "origin/main", target: "dev" }))
       .toBe("origin/main -> dev, from the merge base");
+  });
+});
+
+function meta(rootName: string, request: ComparisonRequest | null): ScanMeta {
+  const diff: DiffMeta | null = request === null ? null : {
+    spec: "spec",
+    request,
+    base: "base",
+    target: "target",
+    filesAdded: 0,
+    filesModified: 0,
+    filesDeleted: 0,
+    filesRenamed: 0,
+    cappedFiles: 0,
+  };
+  return {
+    rootPath: `/src/${rootName}`,
+    rootName,
+    tokenizer: "o200k_base",
+    fileCount: 0,
+    folderCount: 0,
+    scannedAt: new Date().toISOString(),
+    durationMs: 0,
+    fileSource: request === null ? "git-index" : "git-diff",
+    diff,
+    skippedLargeFiles: 0,
+    languages: [],
+  };
+}
+
+describe("documentTitle", () => {
+  it("names the scanned folder", () => {
+    expect(documentTitle(meta("slopsplorer", null))).toBe("slopsplorer - Slopsplorer");
+  });
+
+  it("names the folder and the comparison, and says it is a diff", () => {
+    expect(documentTitle(meta("slopsplorer", { kind: "workingTree" })))
+      .toBe("slopsplorer: HEAD -> working tree - Slopsplorer diff");
+    expect(documentTitle(meta("slopsplorer", { kind: "mergeBase", base: "origin/main", target: "dev" })))
+      .toBe("slopsplorer: origin/main -> dev, from the merge base - Slopsplorer diff");
+  });
+
+  // A pull request is named as the picker names it, because the ref it is
+  // fetched into is not what the reader asked for.
+  it("names a pull request by its number", () => {
+    const request: ComparisonRequest = {
+      kind: "revisionPair",
+      base: "origin/main",
+      target: "refs/slopsplorer/pull/14",
+    };
+    expect(documentTitle(meta("slopsplorer", request)))
+      .toBe("slopsplorer: origin/main -> PR 14 - Slopsplorer diff");
+  });
+
+  it("falls back to the product name before the first response", () => {
+    expect(documentTitle(null)).toBe("Slopsplorer");
   });
 });
 

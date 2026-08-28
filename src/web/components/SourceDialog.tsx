@@ -3,7 +3,7 @@ import type { SourceResponse } from "../../shared/api.ts";
 import { fetchSkillSource, fetchSource } from "../api.ts";
 import { count } from "../format.ts";
 import { highlightSource } from "../highlight.ts";
-import { readChangedLinesOnly, writeChangedLinesOnly } from "../preferences.ts";
+import { readChangedLinesOnly, readWrapLines, writeChangedLinesOnly, writeWrapLines } from "../preferences.ts";
 import { CopyPathButton } from "./CopyPathButton.tsx";
 import { DiffView } from "./DiffView.tsx";
 
@@ -23,6 +23,14 @@ function changedLinesOnlyFromStorage(): boolean {
   }
 }
 
+function wrapLinesFromStorage(): boolean {
+  try {
+    return readWrapLines(window.localStorage);
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Read-only preview of one file, highlighted client-side.
  *
@@ -35,6 +43,7 @@ export function SourceDialog({ preview, onClose }: Props): React.JSX.Element {
   const [source, setSource] = useState<SourceResponse | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   const [changedOnly, setChangedOnly] = useState(changedLinesOnlyFromStorage);
+  const [wrap, setWrap] = useState(wrapLinesFromStorage);
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -60,6 +69,12 @@ export function SourceDialog({ preview, onClose }: Props): React.JSX.Element {
     writeChangedLinesOnly(window.localStorage, changed);
   };
 
+  const toggleWrap = (): void => {
+    const wrapped = !wrap;
+    setWrap(wrapped);
+    writeWrapLines(window.localStorage, wrapped);
+  };
+
   // A scanned file names itself before it loads; the skill is named by the server.
   const filePath = preview?.kind === "file" ? preview.path : null;
   const title = filePath ?? source?.path ?? "";
@@ -77,14 +92,20 @@ export function SourceDialog({ preview, onClose }: Props): React.JSX.Element {
         <div className="viewer__actions">
           {source?.mode === "diff" ? (
             <label className="viewer__toggle" data-on={changedOnly}>
-              <input type="checkbox" checked={changedOnly} onChange={toggleChangedOnly} />
+              <input type="checkbox" role="switch" checked={changedOnly} onChange={toggleChangedOnly} />
               Only changed lines
+            </label>
+          ) : null}
+          {source ? (
+            <label className="viewer__toggle" data-on={wrap}>
+              <input type="checkbox" role="switch" checked={wrap} onChange={toggleWrap} />
+              Wrap lines
             </label>
           ) : null}
           <button type="button" className="button button--quiet" onClick={onClose}>Close</button>
         </div>
       </header>
-      <div className="viewer__body">
+      <div className="viewer__body" data-wrap={wrap}>
         {failure ? <p className="empty">{failure}</p> : null}
         {!failure && !source ? <p className="empty">Loading source</p> : null}
         {source?.mode === "diff" && source.lines.every((line) => line.marker === " ") ? (

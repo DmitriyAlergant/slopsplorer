@@ -155,6 +155,7 @@ A running measurement is identified by its root and, for a comparison, its spec,
 
 `src/web/App.tsx` holds one `ViewRequest` as state and posts it on every change.
 There is no client-side store beyond that request and the last response.
+The browser tab is named from the response by `documentTitle` in `src/web/format.ts`: the scanned folder, and in a comparison what is compared, so two windows are told apart.
 
 Two places keep the request:
 

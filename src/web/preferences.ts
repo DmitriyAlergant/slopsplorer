@@ -9,6 +9,7 @@ const STORAGE_KEY = "slopsplorer.view-preferences.v4";
 const TREE_PANEL_STORAGE_KEY = "slopsplorer.tree-panel-ratio.v1";
 const WORKSPACE_HEIGHT_STORAGE_KEY = "slopsplorer.workspace-height.v1";
 const CHANGED_LINES_ONLY_STORAGE_KEY = "slopsplorer.changed-lines-only.v1";
+const WRAP_LINES_STORAGE_KEY = "slopsplorer.wrap-lines.v1";
 const SPINE_EXPANDED_STORAGE_KEY = "slopsplorer.spine-expanded.v1";
 const SPINE_HEIGHT_STORAGE_KEY = "slopsplorer.spine-height.v1";
 const ASK_AGENT_STORAGE_KEY = "slopsplorer.ask-agent.v1";
@@ -75,6 +76,28 @@ export function readChangedLinesOnly(storage: PreferenceStorage): boolean {
 export function writeChangedLinesOnly(storage: PreferenceStorage, changedOnly: boolean): void {
   try {
     storage.setItem(CHANGED_LINES_ONLY_STORAGE_KEY, String(changedOnly));
+  } catch {
+    // Browsers may deny storage in private or locked-down contexts.
+  }
+}
+
+/**
+ * Whether the preview wraps a long line instead of scrolling sideways.
+ *
+ * Off until asked: a wrapped line breaks the column a reader counts indentation
+ * by, so wrapping is a choice and not a default.
+ */
+export function readWrapLines(storage: PreferenceStorage): boolean {
+  try {
+    return storage.getItem(WRAP_LINES_STORAGE_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+export function writeWrapLines(storage: PreferenceStorage, wrap: boolean): void {
+  try {
+    storage.setItem(WRAP_LINES_STORAGE_KEY, String(wrap));
   } catch {
     // Browsers may deny storage in private or locked-down contexts.
   }
