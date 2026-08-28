@@ -10,6 +10,10 @@ Write yours under Unreleased as you make the change, and rename that heading to 
 
 - The file preview can wrap a long line instead of scrolling it sideways, in a scan and in a comparison. The switch stands in the dialog head beside Only changed lines, and both are drawn as switches.
 
+### Bug Fixes
+
+- The caption over the file list now reads "showing 100 of 128 matches" instead of "matchs", and it breaks between the caption and that count rather than leaving one word on a line of its own.
+
 ## [0.5.0](https://github.com/DmitriyAlergant/slopsplorer/releases/tag/v0.5.0) - 2026-08-27
 
 ### Features

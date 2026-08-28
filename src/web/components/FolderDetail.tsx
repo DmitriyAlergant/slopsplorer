@@ -268,9 +268,12 @@ export function FolderDetail({
             ? isDiff ? "Heaviest changes in this folder" : "Heaviest files in this folder"
             : isDiff ? "Heaviest changes below here" : "Heaviest files below here"}
           {files.length < filesTotal ? (
-            <span className="detail__caption-note">
-              showing {count(files.length)} of {countOf(filesTotal, "match")}
-            </span>
+            <>
+              {" "}
+              <span className="detail__caption-note">
+                showing {count(files.length)} of {countOf(filesTotal, "match")}
+              </span>
+            </>
           ) : null}
         </p>
         <div className="detail__files-controls">
