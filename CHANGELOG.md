@@ -1,8 +1,14 @@
 # Changelog
 
 All notable user-facing changes to Slopsplorer are recorded here.
+Each entry is one sentence written for a user, under `Features`, `Bug Fixes`, `Documentation`, or `Other Changes`.
+Write yours under Unreleased as you make the change, and rename that heading to the version when you cut a release.
 
-<!-- towncrier release notes start -->
+## [Unreleased]
+
+### Features
+
+- The file preview can wrap a long line instead of scrolling it sideways, in a scan and in a comparison. The switch stands in the dialog head beside Only changed lines, and both are drawn as switches.
 
 ## [0.5.0](https://github.com/DmitriyAlergant/slopsplorer/releases/tag/v0.5.0) - 2026-08-27
 

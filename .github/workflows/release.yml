@@ -73,6 +73,12 @@ jobs:
           test "$manifest" = "$tag" \
             || { echo "tag v$tag does not match package.json $manifest"; exit 1; }
 
+      # Before `npm publish`, because a registry version is permanent and a
+      # release whose changelog was never versioned cannot be taken back.
+      - name: Require the changelog to name this version
+        if: github.ref_type == 'tag'
+        run: ./scripts/changelog-section.sh "${GITHUB_REF_NAME#v}" >/dev/null
+
       - run: npm ci --ignore-scripts
       - run: npm run typecheck
       - run: npm test
@@ -111,23 +117,11 @@ jobs:
         with:
           fetch-depth: 0
 
-      # The exact version was checked against PyPI before it was pinned here.
-      # Draft mode preserves the fragments in the tagged commit while emitting
-      # the same release section used to build CHANGELOG.md.
-      - name: Build release notes from Towncrier fragments
-        run: |
-          set -o pipefail
-          python3 -m pip install --disable-pip-version-check \
-            "towncrier==25.8.0" \
-            "click==8.4.2" \
-            "jinja2==3.1.6" \
-            "markupsafe==3.0.3"
-          python3 -m towncrier build \
-            --draft \
-            --version "${GITHUB_REF_NAME#v}" \
-            | sed -n '/^## /,$p' \
-            > release-notes.md
-          test -s release-notes.md
+      # The same section the publish job already refused to release without,
+      # so the notes on the release page and the changelog in the tagged commit
+      # are one text and cannot say different things.
+      - name: Take the release notes from the changelog
+        run: ./scripts/changelog-section.sh "${GITHUB_REF_NAME#v}" > release-notes.md
 
       - name: Open the GitHub release
         env:

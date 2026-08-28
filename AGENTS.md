@@ -155,21 +155,23 @@ Treat an unpinned install as running unreviewed code: check the manifest before 
 
 ## Changelog and releasing
 
-Every user-facing change adds one file under `newsfragments/`, named `<issue-or-commit>.<type>.md`, holding one concise sentence for users.
-Types are `feature`, `bugfix`, `doc`, and `misc`.
-The name becomes a commit link in the changelog, so it must be a real short hash.
-Extend a hash that is all digits by one character, because Towncrier reads an all-digit name as a number and drops its leading zero.
-Two fragments of one type from one commit are `<commit>.<type>.md` and `<commit>.<type>.1.md`.
-Do not edit `CHANGELOG.md` for unreleased work: Towncrier owns it, and the tagged workflow compiles the GitHub release notes from the same fragments.
-A fix to a feature that has not shipped yet needs no fragment of its own.
+Every user-facing change adds one sentence to `CHANGELOG.md`, under the `## [Unreleased]` heading at the top.
+Put it under `### Features`, `### Bug Fixes`, `### Documentation`, or `### Other Changes`, and add the heading if that group is not there yet.
+Write it for a user, in the voice the released sections already use, and not for a reader of the diff.
+A fix to a feature that has not shipped yet is part of that feature and needs no entry of its own.
+An internal change with nothing for a user to read needs no entry at all.
 
 A release is one tag, and `.github/workflows/release.yml` does the rest.
 
 1. Bump `version` in `package.json` and `package-lock.json`.
-2. Run `towncrier build --version X.Y.Z --keep` so the fragments survive into the tagged commit. Towncrier 25.8.0, matching the pin in `release.yml`.
-3. Commit and push the version, changelog, and fragments.
-4. Tag that exact commit `vX.Y.Z` and push the tag. The workflow refuses to publish if the tag and the manifest disagree.
-5. Once it succeeds, delete the consumed fragments on `main`.
+2. Rename `## [Unreleased]` to `## [X.Y.Z](https://github.com/DmitriyAlergant/slopsplorer/releases/tag/vX.Y.Z) - YYYY-MM-DD`, and open a fresh `## [Unreleased]` above it.
+3. Run `./scripts/changelog-section.sh X.Y.Z` and read what it prints. That is the release page.
+4. Commit and push the version and the changelog.
+5. Tag that exact commit `vX.Y.Z` and push the tag.
+
+The workflow refuses to publish when the tag and the manifest disagree, and when `CHANGELOG.md` holds no section for the version or holds an empty one.
+Both checks run before `npm publish`, because a registry version is permanent.
+The release page is then written from the same section, so the notes and the changelog in the tagged commit cannot say different things.
 
 Publishing is npm trusted publishing over OIDC.
 No npm token exists in this repository and none may ever be added: the registry mints a short-lived one for this workflow and signs a provenance attestation with it.
