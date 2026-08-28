@@ -23,7 +23,7 @@ cd vibe-coded-repo
 slopsplorer .
 ```
 
-![Slopsplorer reading its own repository: flavor filters above a source tree and a folder panel that holds the subfolder tiles and the heaviest files, then the headline readouts and the mass ribbon.](https://raw.githubusercontent.com/DmitriyAlergant/slopsplorer/main/docs/screenshot.png)
+![Slopsplorer reading its own repository: a measure switch and flavor filters above a source tree, a folder panel that holds the folder totals, the share cards, and the heaviest files, then the whole-project readouts and the mass ribbon.](https://raw.githubusercontent.com/DmitriyAlergant/slopsplorer/main/docs/screenshot.png)
 
 *Slopsplorer sniffing its own source tree.*
 
