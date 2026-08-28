@@ -10,7 +10,7 @@ import { measureFile, type FileMeasurement } from "./measure.ts";
 import { assembleIndex, buildFolders, mapWithConcurrency, type ScanIndex, type ScanProgress } from "./scan.ts";
 import { StructureAnalyzer } from "./structure.ts";
 import { tokenCounter, type TokenizerName } from "./tokenize.ts";
-import { acceptSourcePaths, listRevisionSourceFiles, listSourceFiles } from "./walk.ts";
+import { acceptSourcePaths, listRevisionFiles, listSourceFiles } from "./walk.ts";
 
 export interface DiffScanOptions {
   /** Top of the worktree. It is also the scan root, so paths read the same as in a scan. */
@@ -31,11 +31,19 @@ export interface DiffScanOptions {
  * and a comparison agree about the flavor of a file they both hold. The index
  * and the working tree are one checkout, so the walker answers for both.
  */
-async function listTargetFiles(options: DiffScanOptions): Promise<string[]> {
+interface TargetFiles {
+  sourcePaths: string[];
+  inventory: string[];
+}
+
+async function listTargetFiles(options: DiffScanOptions): Promise<TargetFiles> {
   const target = options.comparison.target;
-  if (target.kind === "revision") return listRevisionSourceFiles(options.root, target.rev, options.exclude);
+  if (target.kind === "revision") {
+    const inventory = await listRevisionFiles(options.root, target.rev);
+    return { sourcePaths: acceptSourcePaths(inventory, options.exclude), inventory };
+  }
   const listing = await listSourceFiles(options.root, { allFiles: false, exclude: options.exclude });
-  return listing.relativePaths;
+  return { sourcePaths: listing.relativePaths, inventory: listing.inventory };
 }
 
 /** Empty content, which is what the missing side of an added or deleted file holds. */
@@ -100,17 +108,20 @@ function sideSpecs(comparison: Comparison, entry: ChangedFile): { before: string
  */
 async function readSides(
   options: DiffScanOptions, reader: GitObjectReader, sizes: ReadonlyMap<string, number | null>, entry: ChangedFile,
+  worktreeFilePath?: string | null,
 ): Promise<FileContents | null> {
   const read = async (side: DiffSide, filePath: string, exists: boolean): Promise<string | null> => {
     if (!exists) return NOTHING;
     const spec = objectSpec(side, filePath);
     if (spec === null) {
-      const info = await stat(path.join(options.root, filePath)).catch(() => null);
+      if (worktreeFilePath === null) return NOTHING;
+      const absolutePath = worktreeFilePath ?? path.join(options.root, filePath);
+      const info = await stat(absolutePath).catch(() => null);
       // A working-tree file the diff named but the filesystem no longer holds
       // is an empty after-image, which is what deleting it in between means.
       if (info === null || !info.isFile()) return NOTHING;
       if (info.size > options.maxFileBytes) return null;
-      return readFile(path.join(options.root, filePath), "utf8");
+      return readFile(absolutePath, "utf8");
     }
     const size = sizes.get(spec);
     if (size === undefined || size === null) return NOTHING;
@@ -126,6 +137,55 @@ async function readSides(
   return { before: normalizeLineEndings(before), after: normalizeLineEndings(after) };
 }
 
+/** The change entry a measured row came from, for reading its two sides again. */
+function changedFileOf(row: FileRow): ChangedFile {
+  return {
+    path: row.path,
+    basePath: row.previousPath ?? row.path,
+    status: row.status === "unchanged" ? "modified" : row.status,
+  };
+}
+
+/**
+ * Aligns files of one comparison, line by line, by the same aligner their
+ * figures came from rather than by a second `git diff`.
+ *
+ * One producer means the preview and the numbers beside it can never describe
+ * different changes, and it reaches a file Git does not track yet. One aligner
+ * serves every row it was opened for through one size batch and one object
+ * reader, so an exporter walking a whole index does not pay two processes per
+ * file the way a single interactive preview may.
+ */
+export interface DiffAligner {
+  /** Aligned lines, or `null` when either side is over the size ceiling. */
+  align(row: FileRow, worktreeFilePath?: string | null): Promise<DiffLine[] | null>;
+  dispose(): void;
+}
+
+/** Open one aligner for these rows. The caller disposes it. */
+export async function openDiffAligner(options: DiffScanOptions, rows: readonly FileRow[]): Promise<DiffAligner> {
+  const specs: string[] = [];
+  for (const row of rows) {
+    const sides = sideSpecs(options.comparison, changedFileOf(row));
+    if (sides.before !== null) specs.push(sides.before);
+    if (sides.after !== null) specs.push(sides.after);
+  }
+  const measured = await objectSizes(options.root, specs);
+  const sizes = new Map(specs.map((spec, position) => [spec, measured[position] ?? null]));
+
+  const reader = new GitObjectReader(options.root);
+  return {
+    align: async (row, worktreeFilePath) => {
+      const contents = await readSides(options, reader, sizes, changedFileOf(row), worktreeFilePath);
+      if (contents === null) return null;
+      const before = splitLines(contents.before);
+      const after = splitLines(contents.after);
+      return alignedLines(before, after, diffLines(before, after));
+    },
+    dispose: () => reader.dispose(),
+  };
+}
+
 /**
  * One file's change, line by line, aligned by the same aligner its figures
  * came from rather than by a second `git diff`.
@@ -134,25 +194,13 @@ async function readSides(
  * different changes, and it reaches a file Git does not track yet.
  */
 export async function diffOneFile(options: DiffScanOptions, row: FileRow): Promise<DiffLine[]> {
-  const entry: ChangedFile = {
-    path: row.path,
-    basePath: row.previousPath ?? row.path,
-    status: row.status === "unchanged" ? "modified" : row.status,
-  };
-  const specs = sideSpecs(options.comparison, entry);
-  const wanted = [specs.before, specs.after].filter((spec): spec is string => spec !== null);
-  const measured = await objectSizes(options.root, wanted);
-  const sizes = new Map(wanted.map((spec, position) => [spec, measured[position] ?? null]));
-
-  const reader = new GitObjectReader(options.root);
+  const aligner = await openDiffAligner(options, [row]);
   try {
-    const contents = await readSides(options, reader, sizes, entry);
-    if (contents === null) throw new Error(`file is over the per-file size ceiling: ${row.path}`);
-    const before = splitLines(contents.before);
-    const after = splitLines(contents.after);
-    return alignedLines(before, after, diffLines(before, after));
+    const aligned = await aligner.align(row);
+    if (aligned === null) throw new Error(`file is over the per-file size ceiling: ${row.path}`);
+    return aligned;
   } finally {
-    reader.dispose();
+    aligner.dispose();
   }
 }
 
@@ -168,8 +216,10 @@ export async function scanDiff(options: DiffScanOptions): Promise<ScanIndex> {
   const { comparison } = options;
   const changed = await listChangedFiles(options.root, comparison);
   const byPath = new Map(changed.map((entry) => [entry.path, entry]));
-  const localeLevels = findLocaleLevels(await listTargetFiles(options));
-  const accepted = acceptSourcePaths(changed.map((entry) => entry.path), options.exclude)
+  const targetFiles = await listTargetFiles(options);
+  const localeLevels = findLocaleLevels(targetFiles.sourcePaths);
+  const changedPaths = changed.map((entry) => entry.path);
+  const accepted = acceptSourcePaths(changedPaths, options.exclude, targetFiles.inventory)
     .map((filePath) => byPath.get(filePath)!);
 
   const sizeSpecs: string[] = [];

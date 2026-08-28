@@ -227,4 +227,71 @@ describe("diff scan", () => {
   it("sorts files by path, so a subtree stays one slice of the index", () => {
     expect(index.files.map((file) => file.path)).toEqual([...index.files.map((file) => file.path)].sort());
   });
+
+  it("uses only the target revision to decide which export roots exist", async () => {
+    const revisionRoot = await mkdtemp(path.join(os.tmpdir(), "slopsplorer-export-diff-"));
+    const revisionGit = async (...args: string[]): Promise<void> => {
+      await execFileAsync("git", args, { cwd: revisionRoot, maxBuffer: 64 * 1024 * 1024 });
+    };
+    const revisionWrite = async (relativePath: string, contents: string): Promise<void> => {
+      const absolute = path.join(revisionRoot, relativePath);
+      await mkdir(path.dirname(absolute), { recursive: true });
+      await writeFile(absolute, contents, "utf8");
+    };
+    const revisionCommit = async (message: string): Promise<void> => {
+      await revisionGit("add", "-A");
+      await revisionGit(
+        "-c", "user.name=Test", "-c", "user.email=test@example.com",
+        "commit", "--no-gpg-sign", "-m", message,
+      );
+    };
+
+    try {
+      await revisionGit("init", "-q", "-b", "main");
+      await revisionWrite("src/main.ts", "export const main = true;\n");
+      await revisionWrite("site/.slopsplorer-export", "");
+      await revisionWrite("site/assets/app.js", "export const generated = 1;\n");
+      await revisionCommit("base");
+      await revisionWrite("site/assets/app.js", "export const generated = 2;\n");
+      await revisionCommit("change generated bundle");
+
+      const comparison = await resolveComparison(
+        revisionRoot,
+        { kind: "revisionPair", base: "HEAD~1", target: "HEAD" },
+      );
+      const revisionIndex = await scanDiff({
+        root: revisionRoot,
+        comparison,
+        tokenizer: "cl100k_base",
+        exclude: [],
+        maxFileBytes: 2 * 1024 * 1024,
+        concurrency: 2,
+      });
+
+      expect(revisionIndex.files).toEqual([]);
+
+      await rm(path.join(revisionRoot, "site/.slopsplorer-export"));
+      await revisionWrite(".slopsplorer-export", "");
+      await revisionCommit("move export marker to root");
+      await rm(path.join(revisionRoot, ".slopsplorer-export"));
+      await revisionWrite("src/main.ts", "export const main = false;\n");
+      await revisionCommit("remove export marker");
+
+      const markerRemoval = await resolveComparison(
+        revisionRoot,
+        { kind: "revisionPair", base: "HEAD~1", target: "HEAD" },
+      );
+      const visibleIndex = await scanDiff({
+        root: revisionRoot,
+        comparison: markerRemoval,
+        tokenizer: "cl100k_base",
+        exclude: [],
+        maxFileBytes: 2 * 1024 * 1024,
+        concurrency: 2,
+      });
+      expect(visibleIndex.files.map((file) => file.path)).toEqual(["src/main.ts"]);
+    } finally {
+      await rm(revisionRoot, { recursive: true, force: true });
+    }
+  }, SCAN_TIMEOUT_MS);
 });

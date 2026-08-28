@@ -26,19 +26,20 @@ src/scanner/   list files -> classify -> parse and measure -> ScanIndex
 src/server/    ScanIndex + ViewRequest -> buildView -> ViewResponse
 src/agents/    find the installed agents -> run one per question -> its answer
 src/web/       ViewRequest state -> POST /api/view -> render
-src/shared/    api.ts, the wire contract that both sides import
+src/shared/    api.ts, the wire contract; index.ts, the queryable index shape
 ```
 
 There are two producers of a `ScanIndex` and one consumer of it.
 `scanSourceTree()` measures a tree and `scanDiff()` measures a comparison.
-Both end at `assembleIndex()` in `src/scanner/scan.ts`, which builds the prefix sums and the lookup maps, so neither producer can grow a table the other one lacks.
+Both end at `assembleIndex()` in `src/shared/index.ts`, which builds the prefix sums and the lookup maps, so neither producer can grow a table the other one lacks.
 Everything downstream reads the index and does not ask which one made it.
 
 `src/cli.ts` parses the command line, runs the first scan, starts the server, and prints a summary.
 `--dev` starts Vite in middleware mode inside the same process, so the API, the client, and the hot-reload channel use one port.
 
-`src/shared/api.ts` is the only file that both the Node build and the browser build import.
-A change to it is a change to both sides.
+`src/shared/api.ts` is the wire contract that both builds import.
+`src/shared/index.ts` holds `ScanIndex`, its JSON form, and the one pair of functions that assembles and hydrates its derived tables.
+The snapshot worker imports it so the browser and the scanner cannot build different prefix arrays or lookup maps.
 
 ## The scan
 
@@ -84,8 +85,13 @@ The sort is what makes the range correct: any path that starts with `a/b/` sorts
 An earlier version sent the whole file list to the browser and filtered it there.
 That cost about 363 bytes per file, near 7 MiB for a repository of twenty thousand files, and it recomputed folder totals on every keystroke.
 
-Now the client sends a `ViewRequest` that describes what it wants to look at, and `buildView()` in `src/server/aggregate.ts` returns a `ViewResponse` that holds only the rows on screen.
-The browser never receives a file it does not display.
+Now the live client sends a `ViewRequest` that describes what it wants to look at, and `buildView()` in `src/server/aggregate.ts` returns a `ViewResponse` that holds only the rows on screen.
+The live browser never receives a file it does not display.
+
+A static snapshot is the explicit exception.
+It has no Node process, so its Web Worker receives a serialized index and runs the same `buildView()` function in the browser.
+Source text is not in that index and still loads one file at a time.
+For the complete path, read [export.md](./export.md).
 
 `buildView()` runs these passes in order:
 
@@ -128,7 +134,7 @@ A scan has one content per file, so `buildView()` forces the aspect to `after` u
 
 The index is the list of readable files.
 `/api/source` serves a path only if the current scan contains it, then resolves the real path and refuses anything that is outside the scan root, so a symlink added after the scan cannot read another part of the disk.
-Inside a comparison the file has two contents, so the route returns the file as aligned lines instead, built by `diffOneFile()` from the same alignment the file's figures were summed over.
+Inside a comparison the file has two contents, so the route returns the file as aligned lines instead, built by the aligner `openDiffAligner()` opens, from the same alignment the file's figures were summed over.
 It sends every line, changed or not, and the page decides how much of the unchanged text to draw.
 
 The skill ships with the package and not with the scan, so `/api/skill-source` reads it by a fixed name instead of through that allowlist, and the same dialog draws it.

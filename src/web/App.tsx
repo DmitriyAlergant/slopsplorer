@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   AgentTool, Aspect, AskTask, CommitSpine, ComparisonRequest, FileKind, Measure, RankMetric, RowKind,
-  TreeRow, ViewRequest, ViewResponse,
+  SnapshotBacklink, TreeRow, ViewRequest, ViewResponse,
 } from "../shared/api.ts";
 import { ASPECTS, MEASURES, spansRequest } from "../shared/api.ts";
 import {
-  compare, dismissAsk, fetchAgents, fetchAsks, fetchSpine, fetchView, openRoot, rescan, startAsk,
+  compare, dismissAsk, fetchAgents, fetchAsks, openRoot, rescan, startAsk,
 } from "./api.ts";
+import { liveRuntime, type ExplorerRuntime } from "./runtime.ts";
 import {
   DEFAULT_SPINE_HEIGHT, DEFAULT_WORKSPACE_HEIGHT, MAX_WORKSPACE_HEIGHT, MIN_WORKSPACE_HEIGHT,
   browserStorage, readAskAgent, readPreferences, readSpineExpanded, readSpineHeight,
@@ -65,7 +66,13 @@ function withSubtreeCollapsed(expanded: readonly string[], root: string): string
   return expanded.filter((path) => path === root || !isInsideFolder(path, root));
 }
 
-export function App(): React.JSX.Element {
+interface Props {
+  runtime?: ExplorerRuntime;
+  backlink?: SnapshotBacklink | null;
+}
+
+export function App({ runtime = liveRuntime, backlink = null }: Props = {}): React.JSX.Element {
+  const staticSnapshot = runtime.kind === "snapshot";
   const [request, setRequest] = useState<ViewRequest>(requestFromLocation);
   const [view, setView] = useState<ViewResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -154,7 +161,7 @@ export function App(): React.JSX.Element {
     const controller = new AbortController();
     const timer = setTimeout(() => {
       setBusy(true);
-      fetchView(request, controller.signal)
+      runtime.fetchView(request, controller.signal)
         .then((next) => {
           setView(next);
           setError(null);
@@ -171,7 +178,7 @@ export function App(): React.JSX.Element {
       clearTimeout(timer);
       controller.abort();
     };
-  }, [request]);
+  }, [request, runtime]);
 
   /**
    * What this host can ask, and what it was already asked.
@@ -182,6 +189,7 @@ export function App(): React.JSX.Element {
    * page was closed.
    */
   useEffect(() => {
+    if (staticSnapshot) return;
     let cancelled = false;
     const fail = (cause: unknown): void => {
       if (!cancelled) setError(messageOf(cause));
@@ -189,7 +197,7 @@ export function App(): React.JSX.Element {
     fetchAgents().then((found) => { if (!cancelled) setAgents(found.agents); }, fail);
     fetchAsks().then((held) => { if (!cancelled) setTasks(held.tasks); }, fail);
     return () => { cancelled = true; };
-  }, []);
+  }, [staticSnapshot]);
 
   // Only while something runs: a dock of finished asks has nothing to learn.
   const asksRunning = tasks.some((task) => task.state === "running");
@@ -244,7 +252,7 @@ export function App(): React.JSX.Element {
       // range the page has already left.
       setSpine(null);
       setSpineLoading(true);
-      fetchSpine()
+      runtime.fetchSpine()
         .then((next) => {
           if (!cancelled) setSpine(next);
         })
@@ -262,7 +270,7 @@ export function App(): React.JSX.Element {
     };
     // The spec names the open comparison, which is the only thing that can
     // move the page out of the range the held spine covers.
-  }, [diffSpec]);
+  }, [diffSpec, runtime]);
 
   const handleRescan = useCallback(() => {
     setRescanning(true);
@@ -561,7 +569,9 @@ export function App(): React.JSX.Element {
       <main className="app app--error">
         <h1 className="wordmark">Slopsplorer</h1>
         <p className="error-detail">{error}</p>
-        <p className="error-hint">The scan server is not responding. Restart it and reload this page.</p>
+        <p className="error-hint">
+          {staticSnapshot ? "The static snapshot could not be loaded." : "The scan server is not responding. Restart it and reload this page."}
+        </p>
       </main>
     );
   }
@@ -591,6 +601,8 @@ export function App(): React.JSX.Element {
     <main className="app" data-busy={busy || scanning}>
       <InstrumentBar
         meta={view?.meta ?? null}
+        staticSnapshot={staticSnapshot}
+        backlink={backlink}
         rescanning={rescanning}
         scanning={scanning}
         onRescan={handleRescan}
@@ -612,7 +624,7 @@ export function App(): React.JSX.Element {
           spine={spine}
           measure={view.measure}
           request={view.meta.diff.request}
-          disabled={busy || scanning}
+          disabled={staticSnapshot || busy || scanning}
           expanded={spineExpanded}
           onExpandedChange={toggleSpineExpanded}
           onSelect={handleSpan}
@@ -705,11 +717,13 @@ export function App(): React.JSX.Element {
         onSelect={select}
       />
 
-      <p className="colophon">
-        <button type="button" className="link" onClick={() => setSkillOpen(true)}>
-          Install the agent skill
-        </button>
-      </p>
+      {staticSnapshot ? null : (
+        <p className="colophon">
+          <button type="button" className="link" onClick={() => setSkillOpen(true)}>
+            Install the agent skill
+          </button>
+        </p>
+      )}
 
       <AskDock
         tasks={tasks}
@@ -733,12 +747,14 @@ export function App(): React.JSX.Element {
         onClose={() => setOpenAnswerId(null)}
       />
 
-      <SourceDialog preview={preview} onClose={() => setPreview(null)} />
-      <SkillInstallDialog
-        open={skillOpen}
-        onClose={() => setSkillOpen(false)}
-        onPreviewSkill={() => setPreview({ kind: "skill" })}
-      />
+      <SourceDialog preview={preview} onClose={() => setPreview(null)} loadSource={runtime.fetchSource} />
+      {staticSnapshot ? null : (
+        <SkillInstallDialog
+          open={skillOpen}
+          onClose={() => setSkillOpen(false)}
+          onPreviewSkill={() => setPreview({ kind: "skill" })}
+        />
+      )}
       {reaiming ? (
         <div className="progress-modal" role="dialog" aria-modal="true" aria-labelledby="reaim-title">
           <div className="progress-modal__card">

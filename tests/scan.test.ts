@@ -1,11 +1,15 @@
+import { execFile } from "node:child_process";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { promisify } from "node:util";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { scanSourceTree, type ScanIndex, type ScanProgress } from "../src/scanner/scan.ts";
 import { TOKENIZERS, type TokenizerName } from "../src/scanner/tokenize.ts";
+import { STATIC_EXPORT_MARKER } from "../src/scanner/walk.ts";
 
 const SCAN_TIMEOUT_MS = 60_000;
+const execFileAsync = promisify(execFile);
 
 async function makeTree(files: Record<string, string>): Promise<string> {
   const root = await mkdtemp(path.join(os.tmpdir(), "slopsplorer-scan-"));
@@ -112,6 +116,41 @@ describe("scanning a source tree", () => {
     ]);
     expect(index.meta.fileCount).toBe(6);
   });
+
+  it("leaves a static export out of every later scan", async () => {
+    const exportedRoot = await makeTree({
+      "src/main.ts": "export const main = true;\n",
+      [`site/${STATIC_EXPORT_MARKER}`]: "",
+      "site/assets/app.js": "export const bundled = true;\n",
+      "site/data/index.json": "{}\n",
+    });
+    try {
+      await expect(scan(exportedRoot, true)).resolves.toMatchObject({
+        files: [{ path: "src/main.ts" }],
+        meta: { fileCount: 1 },
+      });
+    } finally {
+      await rm(exportedRoot, { recursive: true, force: true });
+    }
+  }, SCAN_TIMEOUT_MS);
+
+  it("finds an export marker even when a Git ignore rule hides dotfiles", async () => {
+    const exportedRoot = await makeTree({
+      ".gitignore": ".*\n",
+      "src/main.ts": "export const main = true;\n",
+      [`site/${STATIC_EXPORT_MARKER}`]: "",
+      "site/assets/app.js": "export const bundled = true;\n",
+    });
+    try {
+      await execFileAsync("git", ["init", "-q"], { cwd: exportedRoot });
+      await expect(scan(exportedRoot, false)).resolves.toMatchObject({
+        files: [{ path: "src/main.ts" }],
+        meta: { fileCount: 1 },
+      });
+    } finally {
+      await rm(exportedRoot, { recursive: true, force: true });
+    }
+  }, SCAN_TIMEOUT_MS);
 
   it("keeps sibling folders whose names share a prefix as siblings instead of nesting one inside the other", () => {
     // Regression: a bare `startsWith` check made `chainlit-datalayer` look like

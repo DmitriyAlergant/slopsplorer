@@ -1,6 +1,6 @@
 import { execFile, spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { promisify } from "node:util";
-import type { ComparisonRequest, GitRef, RepositoryRefs } from "../shared/api.ts";
+import type { ComparisonRequest, GitRef, RepositoryRefs, SnapshotBacklink } from "../shared/api.ts";
 
 const execFileAsync = promisify(execFile);
 
@@ -406,7 +406,21 @@ export interface PullRequestLocation {
   project: Project | null;
 }
 
-const PULL_REQUEST_URL = /^https?:\/\/([^/]+)\/(.+?)\/(?:-\/)?(?:pull|merge_requests)\/(\d+)(?:[/?#].*)?$/;
+const PULL_REQUEST_URL = /^https?:\/\/([^/]+)\/(.+?)\/(?:-\/)?(pull|merge_requests)\/(\d+)(?:[/?#].*)?$/;
+
+interface PullRequestPage {
+  location: PullRequestLocation;
+  route: "pull" | "merge_requests";
+}
+
+function parsePullRequestPage(argument: string): PullRequestPage | null {
+  const match = PULL_REQUEST_URL.exec(argument);
+  if (match === null) return null;
+  return {
+    location: { number: Number(match[4]), project: projectAt(match[1]!, match[2]!) },
+    route: match[3] === "merge_requests" ? "merge_requests" : "pull",
+  };
+}
 
 function trimProjectPath(rawPath: string): string {
   return rawPath.replace(/\.git$/, "").replace(/^\/+|\/+$/g, "");
@@ -424,9 +438,17 @@ function projectAt(host: string, rawPath: string): Project {
  * number and the project are everything either of them has to say.
  */
 export function parsePullRequestUrl(argument: string): PullRequestLocation | null {
-  const match = PULL_REQUEST_URL.exec(argument);
-  if (match === null) return null;
-  return { number: Number(match[3]), project: projectAt(match[1]!, match[2]!) };
+  return parsePullRequestPage(argument)?.location ?? null;
+}
+
+/** Keep a full review-page URL for the static snapshot that it names. */
+export function pullRequestBacklink(argument: string): SnapshotBacklink | null {
+  const page = parsePullRequestPage(argument);
+  if (page === null) return null;
+  return {
+    label: page.route === "merge_requests" ? `MR !${page.location.number}` : `PR #${page.location.number}`,
+    url: argument,
+  };
 }
 
 /** Host and project of a remote URL, in either shape Git accepts. */

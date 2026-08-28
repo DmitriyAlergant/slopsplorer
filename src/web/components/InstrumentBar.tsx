@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { AgentTool, ComparisonRequest, FileSource, ScanMeta } from "../../shared/api.ts";
+import type { AgentTool, ComparisonRequest, FileSource, ScanMeta, SnapshotBacklink } from "../../shared/api.ts";
 import { countOf, since } from "../format.ts";
 import { AgentPicker } from "./AgentPicker.tsx";
 import { ComparisonPicker } from "./ComparisonPicker.tsx";
@@ -7,6 +7,10 @@ import { Tooltip, tooltipHandlers } from "./Tooltip.tsx";
 
 interface Props {
   meta: ScanMeta | null;
+  /** A frozen public artifact has no source-machine operations. */
+  staticSnapshot?: boolean;
+  /** Review page that supplied the comparison, when one was named by URL. */
+  backlink?: SnapshotBacklink | null;
   rescanning: boolean;
   /** A measurement is running, so nothing may start another one. */
   scanning: boolean;
@@ -30,7 +34,8 @@ const FILE_SOURCE_LABELS: Readonly<Record<FileSource, string>> = {
 
 /** The fixed readout strip: what was measured, how, and how long ago. */
 export function InstrumentBar({
-  meta, rescanning, scanning, onRescan, onOpen, onCompare, agents, agentId, onChooseAgent, onAsk,
+  meta, staticSnapshot = false, backlink = null, rescanning, scanning,
+  onRescan, onOpen, onCompare, agents, agentId, onChooseAgent, onAsk,
 }: Props): React.JSX.Element {
   const [editingPath, setEditingPath] = useState(false);
   const [pathValue, setPathValue] = useState(meta?.rootPath ?? "");
@@ -65,19 +70,44 @@ export function InstrumentBar({
 
   return (
     <header className="instrument">
-      <img className="instrument__mark" src="/hero.jpg" alt="" width={59} height={64} />
+      <img
+        className="instrument__mark"
+        src={staticSnapshot ? "./hero.jpg" : "/hero.jpg"}
+        alt=""
+        width={59}
+        height={64}
+      />
 
       <div className="instrument__identity">
         <div className="instrument__title">
           {/* The wordmark says which of the two questions the page answers,
               because every figure below it means something different in each. */}
           <h1 className="wordmark">{diff ? "Slopsplorer diff" : "Slopsplorer"}</h1>
+          {staticSnapshot ? <span className="instrument__snapshot">Static snapshot</span> : null}
+          {staticSnapshot && backlink ? (
+            <a
+              className="instrument__backlink"
+              href={backlink.url}
+              target="_blank"
+              rel="noreferrer"
+              aria-label={`Open ${backlink.label}`}
+            >
+              <span>{backlink.label}</span>
+              <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
+                <path d="M6 3h7v7M13 3 6 10M11 9v4H3V5h4" />
+              </svg>
+            </a>
+          ) : null}
           {/* What is compared outranks every other fact in the strip, so it
               sits beside the wordmark rather than among them. */}
-          {diff ? <ComparisonPicker diff={diff} disabled={scanning} onCompare={onCompare} /> : null}
+          {diff ? (
+            staticSnapshot
+              ? <span className="instrument__comparison">{diff.base} &rarr; {diff.target}</span>
+              : <ComparisonPicker diff={diff} disabled={scanning} onCompare={onCompare} />
+          ) : null}
           {/* Measuring again is the same act on either side of what it re-reads,
               so it stays beside what it would re-read rather than across the bar. */}
-          <button
+          {staticSnapshot ? null : <button
             type="button"
             className="instrument__remeasure"
             onClick={onRescan}
@@ -105,12 +135,14 @@ export function InstrumentBar({
             <Tooltip compact>
               {rescanning ? (diff ? "Comparing" : "Rescanning") : (diff ? "Recompare" : "Rescan")}
             </Tooltip>
-          </button>
+          </button>}
         </div>
 
         {/* A comparison belongs to one repository, so only a scan can be
             re-aimed at another folder. */}
-        {diff ? (
+        {staticSnapshot ? (
+          <p className="instrument__root">{meta?.rootName ?? "Static source tree"}</p>
+        ) : diff ? (
           <p className="instrument__root">{meta ? meta.rootPath : ""}</p>
         ) : editingPath ? (
           <form className="instrument__path-form" onSubmit={submitPath}>

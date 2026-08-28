@@ -16,6 +16,7 @@ export type Preview = { kind: "file"; path: string } | { kind: "skill" };
 interface Props {
   preview: Preview | null;
   onClose: () => void;
+  loadSource?: (path: string) => Promise<SourceResponse>;
 }
 
 /**
@@ -25,7 +26,7 @@ interface Props {
  * drawn by {@link DiffView}. Showing the after-image alone would be a claim the
  * page cannot support.
  */
-export function SourceDialog({ preview, onClose }: Props): React.JSX.Element {
+export function SourceDialog({ preview, onClose, loadSource = fetchSource }: Props): React.JSX.Element {
   const dialogRef = useModalDialog(preview !== null);
   const [source, setSource] = useState<SourceResponse | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
@@ -37,12 +38,12 @@ export function SourceDialog({ preview, onClose }: Props): React.JSX.Element {
     setSource(null);
     setFailure(null);
     let cancelled = false;
-    const loading = preview.kind === "skill" ? fetchSkillSource() : fetchSource(preview.path);
+    const loading = preview.kind === "skill" ? fetchSkillSource() : loadSource(preview.path);
     loading
       .then((loaded) => { if (!cancelled) setSource(loaded); })
       .catch((cause: unknown) => { if (!cancelled) setFailure(messageOf(cause)); });
     return () => { cancelled = true; };
-  }, [preview]);
+  }, [loadSource, preview]);
 
   const toggleChangedOnly = (): void => {
     const changed = !changedOnly;

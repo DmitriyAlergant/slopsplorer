@@ -6,6 +6,10 @@ Write yours under Unreleased as you make the change, and rename that heading to 
 
 ## [Unreleased]
 
+### Features
+
+- `--export <dir>` writes a portable static explorer with filters, rankings, source or diff previews, a read-only commit band, and a backlink when a full GitHub or GitLab review URL names the comparison, then prints its path and exits.
+
 ## [0.5.1](https://github.com/DmitriyAlergant/slopsplorer/releases/tag/v0.5.1) - 2026-08-28
 
 ### Features
