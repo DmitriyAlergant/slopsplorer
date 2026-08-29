@@ -45,7 +45,7 @@ function request(overrides: Partial<ViewRequest> = {}): ViewRequest {
     showGenerated: true,
     expanded: ["", "grown", "shrunk"],
     treeSort: "weight",
-    rank: { metric: "churn" satisfies RankMetric, minWeight: 0, limit: 100 },
+    rank: { metric: "churn" satisfies RankMetric, minWeight: 0, limit: 100, offset: 0 },
     ...overrides,
   });
 }
@@ -136,14 +136,14 @@ describe("aggregating a diff", () => {
   });
 
   it("orders by magnitude in net, so the largest deletion is not sorted last", () => {
-    const view = buildView(diffIndex, request({ aspect: "net", rank: { metric: "net", minWeight: 0, limit: 100 } }));
+    const view = buildView(diffIndex, request({ aspect: "net", rank: { metric: "net", minWeight: 0, limit: 100, offset: 0 } }));
     expect(view.ranked.map((file) => file.path)).toEqual(["shrunk/module.ts", "grown/module.ts"]);
     const children = view.tree.filter((row) => row.depth === 1 && row.rowKind === "folder");
     expect(children.map((row) => row.name)).toEqual(["shrunk", "grown"]);
   });
 
   it("floors the ranking on magnitude, so a threshold does not silently drop deletions", () => {
-    const view = buildView(diffIndex, request({ aspect: "net", rank: { metric: "net", minWeight: 32, limit: 100 } }));
+    const view = buildView(diffIndex, request({ aspect: "net", rank: { metric: "net", minWeight: 32, limit: 100, offset: 0 } }));
     expect(view.ranked.map((file) => file.path)).toEqual(["shrunk/module.ts"]);
   });
 
@@ -193,16 +193,16 @@ describe("aggregating a scan the same way", () => {
    * heading instead of under nothing.
    */
   it("clamps a sorted column the open index cannot draw, and echoes what it used", () => {
-    expect(buildView(scanIndex, request({ rank: { metric: "churn", minWeight: 0, limit: 100 } })).rankMetric)
+    expect(buildView(scanIndex, request({ rank: { metric: "churn", minWeight: 0, limit: 100, offset: 0 } })).rankMetric)
       .toBe("tokens");
-    expect(buildView(diffIndex, request({ rank: { metric: "commentLines", minWeight: 0, limit: 100 } })).rankMetric)
+    expect(buildView(diffIndex, request({ rank: { metric: "commentLines", minWeight: 0, limit: 100, offset: 0 } })).rankMetric)
       .toBe("net");
-    expect(buildView(diffIndex, request({ rank: { metric: "functions", minWeight: 0, limit: 100 } })).rankMetric)
+    expect(buildView(diffIndex, request({ rank: { metric: "functions", minWeight: 0, limit: 100, offset: 0 } })).rankMetric)
       .toBe("functions");
     // The file column stands in both modes, so neither clamps a name sort away.
-    expect(buildView(scanIndex, request({ rank: { metric: "name", minWeight: 0, limit: 100 } })).rankMetric)
+    expect(buildView(scanIndex, request({ rank: { metric: "name", minWeight: 0, limit: 100, offset: 0 } })).rankMetric)
       .toBe("name");
-    expect(buildView(diffIndex, request({ rank: { metric: "name", minWeight: 0, limit: 100 } })).rankMetric)
+    expect(buildView(diffIndex, request({ rank: { metric: "name", minWeight: 0, limit: 100, offset: 0 } })).rankMetric)
       .toBe("name");
   });
 });

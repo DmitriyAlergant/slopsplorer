@@ -13,10 +13,12 @@ import { Tooltip, tooltipHandlers } from "./Tooltip.tsx";
 
 interface Props {
   detail: DetailView | null;
-  /** The selection's files, heaviest first, already cut to the threshold and the limit. */
+  /** One page of the selection's files, in the active rank order. */
   files: readonly FileRow[];
-  /** How many files matched before the limit, so a curtailed list can say so. */
+  /** How many files match across all pages. */
   filesTotal: number;
+  /** Offset of the page the server returned. */
+  filesOffset: number;
   /** The measure the figures are in, taken from the response rather than the pending request. */
   measure: Measure;
   /** The side of the change the figures describe. */
@@ -68,7 +70,7 @@ const THRESHOLD_STEPS: Record<Measure, number> = { tokens: 500, lines: 50, codeL
 
 /** The selected folder: its weight, how its children divide it, and its own files. */
 export function FolderDetail({
-  detail, files, filesTotal, measure, aspect, isDiff, sort, onSortChange, path, onSelect,
+  detail, files, filesTotal, filesOffset, measure, aspect, isDiff, sort, onSortChange, path, onSelect,
   directFilesOnly, fileScope, onFileScopeChange, canDrill, onDrill, rank, onRankChange,
   onOpenSource, onOpenListed, onCapacityChange,
 }: Props): React.JSX.Element {
@@ -111,6 +113,8 @@ export function FolderDetail({
   // A `.` selection is a folder's own files already, so the panel is narrowed
   // to them whatever the switch says, and the switch is not drawn.
   const listsFolderOnly = directFilesOnly || fileScope === "folder";
+  const hasPreviousPage = filesOffset > 0;
+  const hasNextPage = filesOffset + files.length < filesTotal;
 
   return (
     <section ref={panelRef} className="panel detail" aria-label="Folder detail">
@@ -269,11 +273,11 @@ export function FolderDetail({
           {listsFolderOnly
             ? isDiff ? "Heaviest changes in this folder" : "Heaviest files in this folder"
             : isDiff ? "Heaviest changes below here" : "Heaviest files below here"}
-          {files.length < filesTotal ? (
+          {filesTotal > rank.limit ? (
             <>
               {" "}
               <span className="detail__caption-note">
-                showing {count(files.length)} of {countOf(filesTotal, "match")}
+                showing {count(filesOffset + 1)}-{count(filesOffset + files.length)} of {countOf(filesTotal, "match")}
               </span>
             </>
           ) : null}
@@ -285,19 +289,46 @@ export function FolderDetail({
           <button
             type="button"
             className="button button--tiny"
-            onClick={() => { if (files.length > 0) onOpenListed(); }}
+            onClick={() => { if (filesTotal > 0) onOpenListed(); }}
             // `aria-disabled` rather than `disabled`: a disabled button gets no
             // mouse events, and the tooltip is what says why it is inert.
-            aria-disabled={files.length === 0}
+            aria-disabled={filesTotal === 0}
             {...tooltipHandlers}
           >
             Read all
             <Tooltip>
-              {files.length === 0
+              {filesTotal === 0
                 ? "No files are listed to read"
-                : `Open all ${count(files.length)} listed files in one scrolling preview, in path order`}
+                : `Open all ${count(filesTotal)} matching files in one scrolling preview, in path order`}
             </Tooltip>
           </button>
+          {filesTotal > rank.limit ? (
+            <div className="detail__pager" role="group" aria-label="File table pages">
+              <button
+                type="button"
+                className="button button--tiny detail__page"
+                aria-label="Previous file page"
+                aria-disabled={!hasPreviousPage}
+                onClick={() => { if (hasPreviousPage) onRankChange({ offset: filesOffset - rank.limit }); }}
+                {...tooltipHandlers}
+              >
+                &lt;
+                <Tooltip compact>Previous {count(rank.limit)} files</Tooltip>
+              </button>
+              <span>{count(Math.floor(filesOffset / rank.limit) + 1)} / {count(Math.ceil(filesTotal / rank.limit))}</span>
+              <button
+                type="button"
+                className="button button--tiny detail__page"
+                aria-label="Next file page"
+                aria-disabled={!hasNextPage}
+                onClick={() => { if (hasNextPage) onRankChange({ offset: filesOffset + rank.limit }); }}
+                {...tooltipHandlers}
+              >
+                &gt;
+                <Tooltip compact>Next {count(rank.limit)} files</Tooltip>
+              </button>
+            </div>
+          ) : null}
           {/* Not drawn for a `.` row: that selection is the folder's own files,
               and a switch offering the subtree would contradict every figure
               above it. */}
@@ -327,7 +358,7 @@ export function FolderDetail({
               value={thresholdDraft ?? String(rank.minWeight)}
               onChange={(event) => {
                 setThresholdDraft(event.target.value);
-                onRankChange({ minWeight: Math.max(0, Number(event.target.value) || 0) });
+                onRankChange({ minWeight: Math.max(0, Number(event.target.value) || 0), offset: 0 });
               }}
               // Leaving the box gives it back to the threshold, so anything the
               // reader left half-typed reads as the number the table was cut by.

@@ -75,7 +75,7 @@ describe("a static scan index", () => {
           kinds: ["code", "test", "text", "i18n", "data", "other"],
           measure,
           aspect,
-          rank: { metric: aspect, minWeight: 0, limit: 100 },
+          rank: { metric: aspect, minWeight: 0, limit: 100, offset: 0 },
           expanded: [""],
         });
         expect(buildView(hydrated, request)).toEqual({ ...buildView(diffIndex, request), meta: published.meta });
@@ -92,7 +92,7 @@ describe("a static scan index", () => {
       parseViewRequest({
         kinds: ["code", "test"], showGenerated: true, measure: "lines", treeSort: "weight",
         drillPath: "src", selected: { rowKind: "files", path: "src" }, fileScope: "folder",
-        excludedDirectFiles: ["tests"], rank: { metric: "name", minWeight: 0, limit: 10 },
+        excludedDirectFiles: ["tests"], rank: { metric: "name", minWeight: 0, limit: 10, offset: 0 },
       }),
     ];
 

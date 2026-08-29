@@ -1,7 +1,7 @@
 import type {
   AgentsResponse, AskListResponse, AskRequest, AskTask, CommitSpine, CompareRequest, ComparisonRequest,
-  DismissAskRequest, OpenRootRequest, RepositoryRefs, SkillInstallResponse, SourceResponse, ViewRequest,
-  ViewResponse,
+  DismissAskRequest, FileListResponse, OpenRootRequest, RepositoryRefs, SkillInstallResponse, SourceResponse,
+  ViewRequest, ViewResponse,
 } from "../shared/api.ts";
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
@@ -35,6 +35,11 @@ function postJson<T>(url: string, body: unknown, signal?: AbortSignal): Promise<
 /** Ask the server to aggregate the current scope. */
 export function fetchView(view: ViewRequest, signal?: AbortSignal): Promise<ViewResponse> {
   return postJson<ViewResponse>("/api/view", view, signal);
+}
+
+/** Load every file matched by the panel for the Read-all preview. */
+export function fetchFileList(view: ViewRequest, signal?: AbortSignal): Promise<FileListResponse> {
+  return postJson<FileListResponse>("/api/files", view, signal);
 }
 
 /** Re-read the source tree from disk, then aggregate the current scope. */

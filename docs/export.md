@@ -51,7 +51,8 @@ The bundle contains no host policy or deployment metadata.
 
 `App` receives an `ExplorerRuntime`.
 The live runtime calls the HTTP routes.
-The snapshot runtime sends view and source requests to `snapshotWorker.ts`, over the message types the worker module exports, so the two sides of the wire cannot drift apart.
+The snapshot runtime sends view, file-list, and source requests to `snapshotWorker.ts`.
+The worker module exports the message types, so the two sides of the wire cannot drift apart.
 The worker keeps full-index work away from React and returns the same `ViewResponse` the HTTP server returns.
 It remembers only a successful index load, so a fetch that failed once is retried by the next request.
 A worker that fired its `error` event never answers again, so the runtime rejects every later request at once instead of leaving the page waiting.

@@ -1,8 +1,10 @@
 /// <reference lib="webworker" />
 
-import type { CommitSpine, SnapshotSourceRecord, SourceResponse, ViewRequest, ViewResponse } from "../shared/api.ts";
+import type {
+  CommitSpine, FileListResponse, SnapshotSourceRecord, SourceResponse, ViewRequest, ViewResponse,
+} from "../shared/api.ts";
 import { hydrateScanIndex, type ScanIndex, type SerializedScanIndex } from "../shared/index.ts";
-import { buildView, parseViewRequest } from "../server/aggregate.ts";
+import { buildFileList, buildView, parseViewRequest } from "../server/aggregate.ts";
 
 /**
  * The one message protocol between `snapshotRuntime.ts` and this worker.
@@ -12,13 +14,14 @@ import { buildView, parseViewRequest } from "../server/aggregate.ts";
  */
 export type SnapshotRequestBody =
   | { kind: "view"; view: ViewRequest }
+  | { kind: "files"; view: ViewRequest }
   | { kind: "source"; path: string }
   | { kind: "spine" };
 
 export type SnapshotRequest = SnapshotRequestBody & { id: number };
 
 export type SnapshotResponse =
-  | { id: number; ok: true; value: ViewResponse | SourceResponse | CommitSpine | null }
+  | { id: number; ok: true; value: ViewResponse | FileListResponse | SourceResponse | CommitSpine | null }
   | { id: number; ok: false; error: string };
 
 async function fetchJson<T>(url: string): Promise<T> {
@@ -42,10 +45,13 @@ function loadOnce<T>(load: () => Promise<T>): () => Promise<T> {
 const loadIndex = loadOnce(() => fetchJson<SerializedScanIndex>("../data/index.json").then(hydrateScanIndex));
 const loadSpine = loadOnce(() => fetchJson<CommitSpine | null>("../data/spine.json"));
 
-async function answer(request: SnapshotRequest): Promise<ViewResponse | SourceResponse | CommitSpine | null> {
+async function answer(
+  request: SnapshotRequest,
+): Promise<ViewResponse | FileListResponse | SourceResponse | CommitSpine | null> {
   if (request.kind === "spine") return loadSpine();
   const hydrated: ScanIndex = await loadIndex();
   if (request.kind === "view") return buildView(hydrated, parseViewRequest(request.view));
+  if (request.kind === "files") return buildFileList(hydrated, parseViewRequest(request.view));
   const fileIndex = hydrated.fileIndexByPath.get(request.path);
   if (fileIndex === undefined) throw new Error("file is not part of this static snapshot");
   const record = await fetchJson<SnapshotSourceRecord>(`../data/sources/${fileIndex}.json`);

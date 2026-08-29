@@ -1,6 +1,6 @@
 import type {
   Aspect, DetailView, FileKind, FileRow, FileScope, Flavor, FlavorSlice, FolderCard, Measure, PathCrumb,
-  MeasuredMetric, RankMetric, RowKind, SummaryView, TreeRow, ViewRequest, ViewResponse, WeightField,
+  FileListResponse, MeasuredMetric, RankMetric, RowKind, SummaryView, TreeRow, ViewRequest, ViewResponse, WeightField,
 } from "../shared/api.ts";
 import {
   ASPECTS, FILE_KINDS, FILE_SCOPES, MAX_CARD_COLUMNS, MEASURES, MIN_CARD_COLUMNS, RANK_METRICS,
@@ -589,9 +589,9 @@ function byMetric(metric: RankMetric, measure: Measure, fields: ActiveFields): F
  * row selects for the whole panel. Because descendants are contiguous in the
  * path-sorted array, the subtree is a range rather than a scan of the project.
  */
-function rankFiles(
+function matchingFiles(
   index: ScanIndex, request: ViewRequest, aggregation: Aggregation, fields: ActiveFields,
-): { rows: FileRow[]; total: number } {
+): FileRow[] {
   const folder = index.folderByPath.get(request.selected.path) ?? index.folderByPath.get("")!;
   const directFilesOnly = request.selected.rowKind === "files" || request.fileScope === "folder";
   const matches: FileRow[] = [];
@@ -612,9 +612,72 @@ function rankFiles(
   // must not decide which files a curtailed list holds. It orders the survivors.
   const sortsByName = request.rank.metric === "name";
   matches.sort(sortsByName ? byWeight(fields) : byMetric(request.rank.metric, request.measure, fields));
-  const rows = matches.slice(0, Math.max(0, request.rank.limit));
-  if (sortsByName) rows.sort(byPath);
-  return { rows, total: matches.length };
+  return matches;
+}
+
+function rankFiles(
+  index: ScanIndex, request: ViewRequest, aggregation: Aggregation, fields: ActiveFields,
+): { rows: FileRow[]; total: number; offset: number } {
+  const matches = matchingFiles(index, request, aggregation, fields);
+  const limit = request.rank.limit;
+  const requestedPage = Math.floor(request.rank.offset / limit) * limit;
+  const lastPage = matches.length === 0 ? 0 : Math.floor((matches.length - 1) / limit) * limit;
+  const offset = Math.min(requestedPage, lastPage);
+  const rows = matches.slice(offset, offset + limit);
+  if (request.rank.metric === "name") rows.sort(byPath);
+  return { rows, total: matches.length, offset };
+}
+
+interface PreparedView {
+  scopeRoot: FolderNode;
+  scopePrefix: string;
+  modeRequest: ViewRequest;
+  aspect: Aspect;
+  rankMetric: RankMetric;
+  fields: ActiveFields;
+  exclusions: ExclusionState;
+  aggregation: Aggregation;
+}
+
+/** Resolve the mode and scope once for the table page and the complete list. */
+function prepareView(index: ScanIndex, request: ViewRequest): PreparedView {
+  const projectRoot = index.folderByPath.get("")!;
+  const scopeRoot = index.folderByPath.get(request.drillPath) ?? projectRoot;
+  const selectedFolder = index.folderByPath.get(request.selected.path);
+  const scopePrefix = scopeRoot.path ? `${scopeRoot.path}/` : "";
+  const selectionInsideScope = selectedFolder !== undefined && (
+    selectedFolder.path === scopeRoot.path || scopePrefix === "" || selectedFolder.path.startsWith(scopePrefix)
+  );
+  const effectiveRequest: ViewRequest = selectionInsideScope
+    ? request
+    : { ...request, selected: { rowKind: "folder", path: scopeRoot.path } };
+  const aspect: Aspect = index.meta.diff !== null ? request.aspect : "after";
+  const rankMetric = sortMetricsFor(index.meta.diff !== null).includes(request.rank.metric)
+    ? request.rank.metric
+    : defaultRankMetric(index.meta.diff !== null);
+  const fields = resolveFields(request.measure, aspect);
+  const modeRequest: ViewRequest = {
+    ...effectiveRequest,
+    aspect,
+    rank: { ...effectiveRequest.rank, metric: rankMetric },
+  };
+  const exclusions = computeExclusions(index, request);
+  return {
+    scopeRoot,
+    scopePrefix,
+    modeRequest,
+    aspect,
+    rankMetric,
+    fields,
+    exclusions,
+    aggregation: aggregate(index, request, exclusions, fields),
+  };
+}
+
+/** Build the complete file selection only when the reader invokes Read all. */
+export function buildFileList(index: ScanIndex, request: ViewRequest): FileListResponse {
+  const { modeRequest, aggregation, fields } = prepareView(index, request);
+  return { rows: matchingFiles(index, modeRequest, aggregation, fields) };
 }
 
 /**
@@ -668,28 +731,9 @@ function buildSummary(
 
 /** Build every surface the client renders, for one scope request. */
 export function buildView(index: ScanIndex, request: ViewRequest): ViewResponse {
-  const projectRoot = index.folderByPath.get("")!;
-  const scopeRoot = index.folderByPath.get(request.drillPath) ?? projectRoot;
-  const selectedFolder = index.folderByPath.get(request.selected.path);
-  const scopePrefix = scopeRoot.path ? `${scopeRoot.path}/` : "";
-  const selectionInsideScope = selectedFolder !== undefined && (
-    selectedFolder.path === scopeRoot.path || scopePrefix === "" || selectedFolder.path.startsWith(scopePrefix)
-  );
-  const effectiveRequest: ViewRequest = selectionInsideScope
-    ? request
-    : { ...request, selected: { rowKind: "folder", path: scopeRoot.path } };
-  // A scan has one content per file, so only the after-image aspect means
-  // anything there. Clamping here is what keeps a pasted link from asking a
-  // scan for churn and getting a page of zeroes.
-  const isDiff = index.meta.diff !== null;
-  const aspect: Aspect = isDiff ? request.aspect : "after";
-  const rankMetric = sortMetricsFor(isDiff).includes(request.rank.metric)
-    ? request.rank.metric
-    : defaultRankMetric(isDiff);
-  const fields = resolveFields(request.measure, aspect);
-  const modeRequest: ViewRequest = { ...effectiveRequest, aspect, rank: { ...effectiveRequest.rank, metric: rankMetric } };
-  const exclusions = computeExclusions(index, request);
-  const aggregation = aggregate(index, request, exclusions, fields);
+  const {
+    scopeRoot, scopePrefix, modeRequest, aspect, rankMetric, fields, exclusions, aggregation,
+  } = prepareView(index, request);
   // The whole tree, unfiltered, which the ribbon states as `project`.
   const baseline = unfilteredWeight(index, "", fields.baseline);
   const scopeBaseline = unfilteredWeight(index, scopeRoot.path, fields.baseline);
@@ -718,6 +762,7 @@ export function buildView(index: ScanIndex, request: ViewRequest): ViewResponse 
     ),
     ranked: ranked.rows,
     rankedTotal: ranked.total,
+    rankedOffset: ranked.offset,
     expandableFolderPaths: index.folders
       .filter((folder) => (
         folder.path === scopeRoot.path || scopePrefix === "" || folder.path.startsWith(scopePrefix)
@@ -757,7 +802,10 @@ export function parseViewRequest(body: unknown): ViewRequest {
     rank: {
       metric,
       minWeight: Number.isFinite(rank["minWeight"]) ? Math.max(0, Number(rank["minWeight"])) : 0,
-      limit: Number.isFinite(rank["limit"]) ? Math.min(1000, Math.max(1, Number(rank["limit"]))) : 100,
+      limit: Number.isFinite(rank["limit"])
+        ? Math.min(1000, Math.max(1, Math.trunc(Number(rank["limit"]))))
+        : 100,
+      offset: Number.isFinite(rank["offset"]) ? Math.max(0, Math.trunc(Number(rank["offset"]))) : 0,
     },
     cardColumns: Number.isFinite(raw["cardColumns"])
       ? Math.min(MAX_CARD_COLUMNS, Math.max(MIN_CARD_COLUMNS, Math.trunc(Number(raw["cardColumns"]))))

@@ -1448,6 +1448,12 @@ button { cursor: pointer; }
 /* The two controls of the file list share the right of its strip: what the rows
    are, and the floor under them. */
 .detail__files-controls { display: flex; flex: none; align-items: center; gap: 14px; }
+.detail__pager {
+  display: flex; align-items: center; gap: 5px;
+  color: var(--ink-faint);
+  font-family: var(--font-mono); font-size: 10px; font-variant-numeric: tabular-nums;
+}
+.detail__page { min-width: 26px; padding-inline: 7px; }
 /* Sized for a strip inside a panel rather than for the filter bar it borrows. */
 .switch--compact .switch__option { padding: 4px 9px; font-size: 11px; }
 .detail__threshold { display: flex; flex: none; align-items: center; gap: 8px; }

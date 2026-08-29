@@ -21,6 +21,7 @@ Write yours under Unreleased as you make the change, and rename that heading to 
 
 ### Bug Fixes
 
+- `Read all` now opens every matching file instead of only the current 100-row table page, and compact previous and next controls make all table pages available.
 - Flavor filters now start with all flavors on and generated files off on every visit instead of restoring the last selection.
 - Choosing one commit in the band now draws that commit alone on a branch that has taken `main` in with a merge. It used to compare from the commit listed above it, which for a commit the merge brought in sits on the other line of history, so one commit of a pull request drew the whole branch. A run of commits stops at such a seam, and the band draws the seam.
 

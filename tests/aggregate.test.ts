@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { FileKind, TreeRow, ViewRequest, ViewResponse } from "../src/shared/api.ts";
 import { scanSourceTree, type ScanIndex } from "../src/scanner/scan.ts";
-import { buildView, parseViewRequest } from "../src/server/aggregate.ts";
+import { buildFileList, buildView, parseViewRequest } from "../src/server/aggregate.ts";
 
 const SCAN_TIMEOUT_MS = 60_000;
 
@@ -108,7 +108,7 @@ function request(overrides: Partial<ViewRequest> = {}): ViewRequest {
     treeSort: "name",
     drillPath: "",
     selected: { rowKind: "folder", path: "" },
-    rank: { metric: "tokens", minWeight: 0, limit: 100 },
+    rank: { metric: "tokens", minWeight: 0, limit: 100, offset: 0 },
     measure: "tokens",
     ...overrides,
   });
@@ -287,10 +287,10 @@ describe("search", () => {
 
 describe("file ranking", () => {
   it("ranks by the chosen metric, so a comment-heavy file can top the list a token ranking would bury", () => {
-    const byTokens = buildView(index, request({ rank: { metric: "tokens", minWeight: 0, limit: 100 } }));
+    const byTokens = buildView(index, request({ rank: { metric: "tokens", minWeight: 0, limit: 100, offset: 0 } }));
     expect(byTokens.ranked[0]!.path).toBe("src/main.ts");
 
-    const byComments = buildView(index, request({ rank: { metric: "commentLines", minWeight: 0, limit: 100 } }));
+    const byComments = buildView(index, request({ rank: { metric: "commentLines", minWeight: 0, limit: 100, offset: 0 } }));
     expect(byComments.ranked[0]!.path).toBe("src/util.ts");
     expect(byComments.ranked[0]!.commentLines).toBe(10);
   });
@@ -298,35 +298,43 @@ describe("file ranking", () => {
   it("drops files below the token floor so a long tail of tiny files does not crowd out the real weight", () => {
     const helper = index.files.find((file) => file.path === "src/deep/helper.ts")!;
     const view = buildView(index, request({
-      rank: { metric: "tokens", minWeight: helper.tokens + 1, limit: 100 },
+      rank: { metric: "tokens", minWeight: helper.tokens + 1, limit: 100, offset: 0 },
     }));
     expect(view.ranked.map((file) => file.path)).not.toContain("src/deep/helper.ts");
     expect(view.ranked.map((file) => file.path)).toContain("src/main.ts");
     expect(view.rankedTotal).toBe(view.ranked.length);
   });
 
-  it("truncates the list but still reports how many files matched, so the count is not a lie", () => {
-    const view = buildView(index, request({ rank: { metric: "tokens", minWeight: 0, limit: 2 } }));
+  it("returns one table page and reports how many files match across all pages", () => {
+    const view = buildView(index, request({ rank: { metric: "tokens", minWeight: 0, limit: 2, offset: 0 } }));
     expect(view.ranked).toHaveLength(2);
     expect(view.rankedTotal).toBe(5);
+  });
+
+  it("pages the table without constraining the complete list used by Read all", () => {
+    const paged = request({ rank: { metric: "tokens", minWeight: 0, limit: 2, offset: 2 } });
+    const view = buildView(index, paged);
+    expect(view.ranked).toHaveLength(2);
+    expect(view.rankedOffset).toBe(2);
+    expect(buildFileList(index, paged).rows).toHaveLength(5);
   });
 
   it("orders a folder's own files by the same column the subtree list uses", () => {
     const byTokens = buildView(index, request({
       selected: { rowKind: "files", path: "src" },
-      rank: { metric: "tokens", minWeight: 0, limit: 100 },
+      rank: { metric: "tokens", minWeight: 0, limit: 100, offset: 0 },
     }));
     expect(byTokens.ranked.map((file) => file.path)).toEqual(["src/main.ts", "src/util.ts"]);
 
     const byComments = buildView(index, request({
       selected: { rowKind: "files", path: "src" },
-      rank: { metric: "commentLines", minWeight: 0, limit: 100 },
+      rank: { metric: "commentLines", minWeight: 0, limit: 100, offset: 0 },
     }));
     expect(byComments.ranked.map((file) => file.path)).toEqual(["src/util.ts", "src/main.ts"]);
   });
 
   it("orders by file name A to Z, so a reader who knows the path can find the row", () => {
-    const view = buildView(index, request({ rank: { metric: "name", minWeight: 0, limit: 100 } }));
+    const view = buildView(index, request({ rank: { metric: "name", minWeight: 0, limit: 100, offset: 0 } }));
     expect(view.ranked.map((file) => file.path)).toEqual([
       "README.md", "src/deep/helper.ts", "src/main.ts", "src/util.ts", "tests/main.test.ts",
     ]);
@@ -334,8 +342,8 @@ describe("file ranking", () => {
   });
 
   it("cuts a name-sorted list by weight, so ordering the rows A to Z cannot bury the heavy ones", () => {
-    const byTokens = buildView(index, request({ rank: { metric: "tokens", minWeight: 0, limit: 2 } }));
-    const byName = buildView(index, request({ rank: { metric: "name", minWeight: 0, limit: 2 } }));
+    const byTokens = buildView(index, request({ rank: { metric: "tokens", minWeight: 0, limit: 2, offset: 0 } }));
+    const byName = buildView(index, request({ rank: { metric: "name", minWeight: 0, limit: 2, offset: 0 } }));
     expect(byName.ranked.map((file) => file.path))
       .toEqual(byTokens.ranked.map((file) => file.path).sort());
     expect(byName.rankedTotal).toBe(5);
@@ -376,7 +384,7 @@ describe("request parsing", () => {
     expect(parsed.drillPath).toBe("");
     expect(parsed.selected).toEqual({ rowKind: "folder", path: "" });
     expect(parsed.measure).toBe("tokens");
-    expect(parsed.rank).toEqual({ metric: "tokens", minWeight: 0, limit: 100 });
+    expect(parsed.rank).toEqual({ metric: "tokens", minWeight: 0, limit: 100, offset: 0 });
     expect(() => buildView(index, parsed)).not.toThrow();
   });
 
@@ -425,6 +433,8 @@ describe("request parsing", () => {
     expect(parseViewRequest({ rank: { limit: Number.NaN } }).rank.limit).toBe(100);
     expect(parseViewRequest({ rank: { limit: "many" } }).rank.limit).toBe(100);
     expect(parseViewRequest({ rank: { minWeight: -42 } }).rank.minWeight).toBe(0);
+    expect(parseViewRequest({ rank: { offset: -5 } }).rank.offset).toBe(0);
+    expect(parseViewRequest({ rank: { offset: 2.9 } }).rank.offset).toBe(2);
   });
 });
 
@@ -479,7 +489,7 @@ describe("primary measure", () => {
     const helper = index.files.find((file) => file.path === "src/deep/helper.ts")!;
     const view = buildView(index, request({
       measure: "lines",
-      rank: { metric: "lines", minWeight: helper.lines + 1, limit: 100 },
+      rank: { metric: "lines", minWeight: helper.lines + 1, limit: 100, offset: 0 },
     }));
 
     expect(helper.lines).toBeLessThan(helper.tokens);

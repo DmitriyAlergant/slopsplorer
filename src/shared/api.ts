@@ -587,7 +587,7 @@ export interface ViewRequest {
    * `minWeight` is a floor on the magnitude in the active measure and aspect,
    * not always in tokens.
    */
-  rank: { metric: RankMetric; minWeight: number; limit: number };
+  rank: { metric: RankMetric; minWeight: number; limit: number; offset: number };
   /**
    * How many tiles fit across the panel at its current width.
    *
@@ -624,10 +624,17 @@ export interface ViewResponse {
    * folder tiles, so the tiles and the rows divide one subject between them.
    */
   ranked: FileRow[];
-  /** Total matches before `rank.limit` was applied. */
+  /** Total matches across all table pages. */
   rankedTotal: number;
+  /** Offset of the returned page after it was clamped to a valid page. */
+  rankedOffset: number;
   /** Every folder the current filters leave visible, so the client can expand all. */
   expandableFolderPaths: string[];
+}
+
+/** The complete matching selection loaded only when the reader asks to read it. */
+export interface FileListResponse {
+  rows: FileRow[];
 }
 
 /** Replace the scan root while retaining the caller's display preferences. */

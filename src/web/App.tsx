@@ -102,6 +102,7 @@ export function App({ runtime = liveRuntime, backlink = null }: Props = {}): Rea
   );
   const requestRef = useRef(request);
   requestRef.current = request;
+  const displayedRequestRef = useRef(request);
   const spineRef = useRef(spine);
   spineRef.current = spine;
   const lastSelectionRef = useRef(selectionKey(request));
@@ -163,6 +164,7 @@ export function App({ runtime = liveRuntime, backlink = null }: Props = {}): Rea
       setBusy(true);
       runtime.fetchView(request, controller.signal)
         .then((next) => {
+          displayedRequestRef.current = request;
           setView(next);
           setError(null);
         })
@@ -222,15 +224,27 @@ export function App({ runtime = liveRuntime, backlink = null }: Props = {}): Rea
   useEffect(closeTooltip, [view]);
 
   const patch = useCallback((change: Partial<ViewRequest>) => {
-    setRequest((previous) => ({ ...previous, ...change }));
+    const resetsPage = Object.keys(change).some((field) => ![
+      "expanded", "treeSort", "cardColumns",
+    ].includes(field));
+    setRequest((previous) => ({
+      ...previous,
+      ...change,
+      ...(resetsPage ? { rank: { ...previous.rank, offset: 0 } } : {}),
+    }));
   }, []);
 
   // A scan and a diff draw different columns, so a stored or linked sort can
   // name one the open index has not got. The server clamps it and echoes what
   // it used; adopting that is what keeps the caret under a real heading.
   useEffect(() => {
-    if (!view || view.rankMetric === requestRef.current.rank.metric) return;
-    setRequest((previous) => ({ ...previous, rank: { ...previous.rank, metric: view.rankMetric } }));
+    if (!view) return;
+    const current = requestRef.current.rank;
+    if (view.rankMetric === current.metric && view.rankedOffset === current.offset) return;
+    setRequest((previous) => ({
+      ...previous,
+      rank: { ...previous.rank, metric: view.rankMetric, offset: view.rankedOffset },
+    }));
   }, [view]);
 
   /**
@@ -276,6 +290,7 @@ export function App({ runtime = liveRuntime, backlink = null }: Props = {}): Rea
     setRescanning(true);
     rescan(requestRef.current)
       .then((next) => {
+        displayedRequestRef.current = requestRef.current;
         setView(next);
         setError(null);
       })
@@ -333,22 +348,20 @@ export function App({ runtime = liveRuntime, backlink = null }: Props = {}): Rea
   /**
    * Read the panel's whole file list end to end, in path order.
    *
-   * The rows are the ones the panel lists, so the two views of the selection
-   * hold the same files and only the order and the depth differ. They are taken
-   * from the response rather than named again, because a fresh list would be
-   * the answer to a later question than the one the reader is looking at.
+   * The modal holds the request that produced the visible page.
+   * It uses that request to load all matches, independent of the table offset.
    */
   const openListedFiles = useCallback(() => {
     if (view === null || view.ranked.length === 0) return;
     setPreview({
       kind: "files",
-      title: request.selected.path || view.meta.rootName,
-      rows: view.ranked,
+      title: displayedRequestRef.current.selected.path || view.meta.rootName,
+      request: displayedRequestRef.current,
       total: view.rankedTotal,
       measure: view.measure,
       isDiff: view.meta.diff !== null,
     });
-  }, [view, request.selected.path]);
+  }, [view]);
 
   /**
    * Aim the page at a new index, and reset what only the old one could mean.
@@ -373,6 +386,7 @@ export function App({ runtime = liveRuntime, backlink = null }: Props = {}): Rea
     };
     start(nextRequest)
       .then((next) => {
+        displayedRequestRef.current = nextRequest;
         setRequest(nextRequest);
         setView(next);
         setPreview(null);
@@ -413,6 +427,7 @@ export function App({ runtime = liveRuntime, backlink = null }: Props = {}): Rea
       kinds: previous.kinds.includes(kind)
         ? previous.kinds.filter((candidate) => candidate !== kind)
         : [...previous.kinds, kind],
+      rank: { ...previous.rank, offset: 0 },
     }));
   }, []);
 
@@ -441,6 +456,7 @@ export function App({ runtime = liveRuntime, backlink = null }: Props = {}): Rea
         drillPath: insideDrill ? previous.drillPath : "",
         selected: { rowKind, path },
         expanded: [...ancestors],
+        rank: { ...previous.rank, offset: 0 },
       };
     });
   }, []);
@@ -451,6 +467,7 @@ export function App({ runtime = liveRuntime, backlink = null }: Props = {}): Rea
       drillPath: path,
       selected: { rowKind: "folder", path },
       expanded: [path],
+      rank: { ...previous.rank, offset: 0 },
     }));
   }, []);
 
@@ -470,6 +487,7 @@ export function App({ runtime = liveRuntime, backlink = null }: Props = {}): Rea
           ...previous,
           excludedFolders: previous.excludedFolders.filter((candidate) => !inSubtree(candidate)),
           excludedDirectFiles: previous.excludedDirectFiles.filter((candidate) => !inSubtree(candidate)),
+          rank: { ...previous.rank, offset: 0 },
         };
       }
       if (row.disabled) return previous;
@@ -477,6 +495,7 @@ export function App({ runtime = liveRuntime, backlink = null }: Props = {}): Rea
         ...previous,
         excludedFolders: [...previous.excludedFolders.filter((candidate) => !inSubtree(candidate)), row.path],
         excludedDirectFiles: previous.excludedDirectFiles.filter((candidate) => !inSubtree(candidate)),
+        rank: { ...previous.rank, offset: 0 },
       };
     });
   }, []);
@@ -487,6 +506,7 @@ export function App({ runtime = liveRuntime, backlink = null }: Props = {}): Rea
       excludedDirectFiles: previous.excludedDirectFiles.includes(row.path)
         ? previous.excludedDirectFiles.filter((candidate) => candidate !== row.path)
         : [...previous.excludedDirectFiles, row.path],
+      rank: { ...previous.rank, offset: 0 },
     }));
   }, []);
 
@@ -496,7 +516,11 @@ export function App({ runtime = liveRuntime, backlink = null }: Props = {}): Rea
   }, []);
 
   const setRank = useCallback((change: Partial<ViewRequest["rank"]>) => {
-    setRequest((previous) => ({ ...previous, rank: { ...previous.rank, ...change } }));
+    const changesList = Object.keys(change).some((field) => field !== "offset");
+    setRequest((previous) => ({
+      ...previous,
+      rank: { ...previous.rank, ...change, ...(changesList ? { offset: 0 } : {}) },
+    }));
   }, []);
 
   /**
@@ -524,6 +548,7 @@ export function App({ runtime = liveRuntime, backlink = null }: Props = {}): Rea
           ...previous.rank,
           metric: followsMeasure ? measure : previous.rank.metric,
           minWeight: 0,
+          offset: 0,
         },
       };
     });
@@ -552,6 +577,7 @@ export function App({ runtime = liveRuntime, backlink = null }: Props = {}): Rea
           ...previous.rank,
           metric,
           minWeight: measureChanges || aspectChanges ? 0 : previous.rank.minWeight,
+          offset: 0,
         },
       };
     });
@@ -579,6 +605,7 @@ export function App({ runtime = liveRuntime, backlink = null }: Props = {}): Rea
           ...previous.rank,
           metric: followsAspect ? aspect : previous.rank.metric,
           minWeight: 0,
+          offset: 0,
         },
       };
     });
@@ -697,6 +724,7 @@ export function App({ runtime = liveRuntime, backlink = null }: Props = {}): Rea
           detail={view?.detail ?? null}
           files={view?.ranked ?? []}
           filesTotal={view?.rankedTotal ?? 0}
+          filesOffset={view?.rankedOffset ?? 0}
           measure={view?.measure ?? request.measure}
           aspect={aspect}
           isDiff={isDiff}
@@ -768,7 +796,12 @@ export function App({ runtime = liveRuntime, backlink = null }: Props = {}): Rea
         onClose={() => setOpenAnswerId(null)}
       />
 
-      <SourceDialog preview={preview} onClose={() => setPreview(null)} loadSource={runtime.fetchSource} />
+      <SourceDialog
+        preview={preview}
+        onClose={() => setPreview(null)}
+        loadSource={runtime.fetchSource}
+        loadFileList={runtime.fetchFileList}
+      />
       {staticSnapshot ? null : (
         <SkillInstallDialog
           open={skillOpen}

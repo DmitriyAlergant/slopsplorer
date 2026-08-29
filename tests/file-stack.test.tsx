@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { FileRow } from "../src/shared/api.ts";
+import { parseViewRequest } from "../src/server/aggregate.ts";
 import { FileStack, inPathOrder } from "../src/web/components/FileStack.tsx";
 import { SourceDialog } from "../src/web/components/SourceDialog.tsx";
 
@@ -33,6 +34,8 @@ const RANKED: FileRow[] = [
 ];
 
 const loadSource = (): Promise<never> => new Promise(() => undefined);
+const loadFileList = async () => ({ rows: RANKED });
+const request = parseViewRequest({ kinds: ["code"] });
 
 describe("reading a whole selection", () => {
   it("orders the files by path whatever order they were ranked in", () => {
@@ -82,9 +85,10 @@ describe("the preview dialog of a whole selection", () => {
   it("counts the files it holds and says they are in path order", () => {
     const html = renderToStaticMarkup(
       <SourceDialog
-        preview={{ kind: "files", title: "src/web", rows: RANKED, total: 3, measure: "tokens", isDiff: false }}
+        preview={{ kind: "files", title: "src/web", request, total: 3, measure: "tokens", isDiff: false }}
         onClose={() => undefined}
         loadSource={loadSource}
+        loadFileList={loadFileList}
       />,
     );
     expect(html).toContain("3 files, in path order");
@@ -92,15 +96,16 @@ describe("the preview dialog of a whole selection", () => {
     expect(html).not.toContain("Only changed lines");
   });
 
-  it("says how much of the panel's list it holds when the list was curtailed", () => {
+  it("states the complete match count before the modal loads its own list", () => {
     const html = renderToStaticMarkup(
       <SourceDialog
-        preview={{ kind: "files", title: "src", rows: RANKED, total: 348, measure: "tokens", isDiff: true }}
+        preview={{ kind: "files", title: "src", request, total: 348, measure: "tokens", isDiff: true }}
         onClose={() => undefined}
         loadSource={loadSource}
+        loadFileList={loadFileList}
       />,
     );
-    expect(html).toContain("3 of 348 matches, in path order");
+    expect(html).toContain("348 files, in path order");
     expect(html).toContain("Only changed lines");
   });
 });

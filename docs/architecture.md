@@ -101,8 +101,9 @@ For the complete path, read [export.md](./export.md).
 
 ## The wire contract
 
-`ViewRequest` carries the flavor switches, the search text, the checkbox exclusions, the expanded folders, the drill path, the selection, the file list scope, the sorted column, the measure, and the aspect.
-`ViewResponse` carries the tree rows, the folder panel, its ranked files, the headline figures, and the scan metadata.
+`ViewRequest` carries the flavor switches, the search text, the checkbox exclusions, the expanded folders, the drill path, and the selection.
+It also carries the file scope, the sorted column, the table offset, the measure, and the aspect.
+`ViewResponse` carries the tree rows, the folder panel, one ranked file page, the headline figures, and the scan metadata.
 
 The measured quantity on the wire is always `weight`, never `tokens`.
 `ViewResponse` repeats the measure, the aspect, and the sorted column it used, so a label in the client cannot describe one unit while the numbers beside it are in another unit and a newer request is still in flight.
@@ -119,6 +120,7 @@ A scan has one content per file, so `buildView()` forces the aspect to `after` u
 | Route | Purpose |
 | --- | --- |
 | `POST /api/view` | Aggregate the current index for one `ViewRequest`. |
+| `POST /api/files` | Return all files that match one `ViewRequest` for `Read all`. |
 | `POST /api/rescan` | Scan the same root again. Concurrent calls share one scan. |
 | `POST /api/open` | Replace the root with another absolute directory and scan it. |
 | `POST /api/compare` | Replace the comparison, keeping the repository, and measure it again. |
@@ -196,12 +198,18 @@ The strip above the ranked table holds the two controls that belong to the rows 
 It moves the table alone: the tiles, the folder head, and the tree all keep describing the whole selection, so a reader can ask what one folder holds without leaving the subtree the panel is about.
 A `.` selection is a folder's own files already, so the switch is not drawn there and `rankFiles()` treats that selection as the narrow scope whatever the field says.
 
-The list is read in two ways.
+The table shows at most 100 files on one page.
+Compact previous and next controls request the other pages from the same ranked list.
+
+The matching list is read in two ways.
 Clicking one file opens it alone in `SourceDialog`.
-`Read all`, in the strip above the table, opens every file the table lists in one scrolling dialog, drawn by `FileStack`.
-That view is always in path order: a ranking would put two files of one folder at opposite ends of a long scroll, and reading a whole selection is a walk of the tree.
-It holds the rows it was opened with, so the list cannot change under a reader while the page behind it answers a later request, and its head says how many of the panel's matches it holds.
-One file is fetched when the reader comes near it, and a file the reader folded away is not fetched at all, so the browser still receives the text one file at a time.
+`Read all`, in the strip above the table, opens every matching file in one scrolling dialog, drawn by `FileStack`.
+The modal requests the complete list through `ExplorerRuntime.fetchFileList`, independent of the open table page.
+The modal always sorts the files by path.
+A rank order can separate files from the same folder, but a path order keeps them together.
+It holds the `ViewRequest` it was opened with, so a later page request cannot change the modal's selection.
+The modal fetches one file when the reader comes near it.
+The modal does not fetch the source of a file that the reader folds.
 `FilePreview` draws the body in both dialogs, so a file cannot read one way alone and another way among its neighbours.
 
 The scope strip under the workspace draws the same columns as the folder head, in the same order, and one is read the same way in both places.

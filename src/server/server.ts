@@ -19,7 +19,7 @@ import type {
   OpenRootRequest, SkillInstallResponse, SourceResponse,
 } from "../shared/api.ts";
 import { spansRequest } from "../shared/api.ts";
-import { buildView, parseViewRequest } from "./aggregate.ts";
+import { buildFileList, buildView, parseViewRequest } from "./aggregate.ts";
 import { composeBrief } from "./brief.ts";
 import { readIndexedSource, SourceReadError } from "./source.ts";
 
@@ -534,6 +534,11 @@ export function createSlopsplorerServer(options: SlopsplorerServerOptions): Slop
       case "/api/view": {
         requireMethod(request, "POST");
         sendJson(response, 200, buildView(scanState.index, parseViewRequest(await readJsonBody(request))));
+        return;
+      }
+      case "/api/files": {
+        requireMethod(request, "POST");
+        sendJson(response, 200, buildFileList(scanState.index, parseViewRequest(await readJsonBody(request))));
         return;
       }
       case "/api/rescan": {
