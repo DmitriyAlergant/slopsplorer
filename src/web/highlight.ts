@@ -38,7 +38,7 @@ const BY_EXTENSION: ReadonlyMap<string, string> = new Map([
   ["json", "json"], ["jsonc", "json"],
   ["yaml", "yaml"], ["yml", "yaml"], ["toml", "ini"],
   ["md", "markdown"], ["mdx", "markdown"],
-  ["html", "xml"], ["xml", "xml"], ["vue", "xml"], ["svelte", "xml"],
+  ["htm", "xml"], ["html", "xml"], ["xhtml", "xml"], ["xml", "xml"], ["vue", "xml"], ["svelte", "xml"],
   ["sql", "sql"],
 ]);
 

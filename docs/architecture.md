@@ -15,7 +15,7 @@ A fifth part runs the coding agents the host already has, so the page can hand a
 The client never computes a total.
 It sends the scope it wants to see, and it draws the numbers that come back.
 
-For the rules that decide what each file is, read [classification.md](./classification.md).
+For the rules that decide what each file is, read [scanning-and-classification.md](./scanning-and-classification.md).
 For the questions the page can hand to a local agent, read [ask.md](./ask.md).
 For commands, conventions, and release steps, read [AGENTS.md](../AGENTS.md).
 
