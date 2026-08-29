@@ -40,6 +40,8 @@ interface Props {
   rank: ViewRequest["rank"];
   onRankChange: (change: Partial<ViewRequest["rank"]>) => void;
   onOpenSource: (path: string) => void;
+  /** Opens every listed file in one scrolling preview, in path order. */
+  onOpenListed: () => void;
   /** Reports how many tiles fit across the panel, so the server can plan the grid. */
   onCapacityChange: (cardColumns: number) => void;
 }
@@ -68,7 +70,7 @@ const THRESHOLD_STEPS: Record<Measure, number> = { tokens: 500, lines: 50, codeL
 export function FolderDetail({
   detail, files, filesTotal, measure, aspect, isDiff, sort, onSortChange, path, onSelect,
   directFilesOnly, fileScope, onFileScopeChange, canDrill, onDrill, rank, onRankChange,
-  onOpenSource, onCapacityChange,
+  onOpenSource, onOpenListed, onCapacityChange,
 }: Props): React.JSX.Element {
   const panelRef = useRef<HTMLElement>(null);
   const [columns, setColumns] = useState(3);
@@ -277,6 +279,25 @@ export function FolderDetail({
           ) : null}
         </p>
         <div className="detail__files-controls">
+          {/* The rows end to end, which is the other way to read the same list.
+              Always drawn, muted with nothing to read, because a control that
+              came and went would move the two beside it. */}
+          <button
+            type="button"
+            className="button button--tiny"
+            onClick={() => { if (files.length > 0) onOpenListed(); }}
+            // `aria-disabled` rather than `disabled`: a disabled button gets no
+            // mouse events, and the tooltip is what says why it is inert.
+            aria-disabled={files.length === 0}
+            {...tooltipHandlers}
+          >
+            Read all
+            <Tooltip>
+              {files.length === 0
+                ? "No files are listed to read"
+                : `Open all ${count(files.length)} listed files in one scrolling preview, in path order`}
+            </Tooltip>
+          </button>
           {/* Not drawn for a `.` row: that selection is the folder's own files,
               and a switch offering the subtree would contradict every figure
               above it. */}

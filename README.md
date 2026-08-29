@@ -95,6 +95,8 @@ Renames are followed rather than counted twice.
 *Slopsplorer comparing a release tag against the working tree.*
 
 Click a file for its diff, whole, with the unchanged runs folded.
+`Read all`, above the file table, opens every file the table lists in one scrolling page, in path order, so a change reads end to end like a review.
+Each file there folds away on its own, and the same switch hides the unchanged lines across all of them.
 
 ![Slopsplorer's file comparison for src/shared/api.ts: two line-number columns, removed lines in red, added lines in green, and a fold strip for seven unchanged lines above.](https://raw.githubusercontent.com/DmitriyAlergant/slopsplorer/main/docs/screenshot-file-comparison.png)
 

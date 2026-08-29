@@ -39,7 +39,7 @@ The worker runs `buildView()` from `src/server/aggregate.ts`, so a live view and
 `data/sources/<index>.json` holds one `SnapshotSourceRecord` for each path-sorted file: a `SourceResponse`, or the `{ error }` refusal the live route would send for that file.
 A refusal reaches the record instead of stopping the export, so one unreadable file, such as a symlink out of the scan root, never blocks the bundle.
 The file index is stable and needs no path encoding.
-The page fetches one response only when the reader opens that file.
+The page fetches one response only when the reader opens that file, or when a stack of files scrolls to it.
 `openSourceReader()` in `src/server/source.ts` owns the 512 KiB ceiling, the real-path boundary, and diff alignment for the server and the exporter.
 A reader is opened for the rows it will serve: the exporter opens one over the whole index, so a comparison shares one size batch and one `git cat-file` process across every preview, and the live source route opens one for the single requested row, so an interactive preview measures one file rather than the whole comparison.
 

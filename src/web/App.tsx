@@ -331,6 +331,26 @@ export function App({ runtime = liveRuntime, backlink = null }: Props = {}): Rea
   }, []);
 
   /**
+   * Read the panel's whole file list end to end, in path order.
+   *
+   * The rows are the ones the panel lists, so the two views of the selection
+   * hold the same files and only the order and the depth differ. They are taken
+   * from the response rather than named again, because a fresh list would be
+   * the answer to a later question than the one the reader is looking at.
+   */
+  const openListedFiles = useCallback(() => {
+    if (view === null || view.ranked.length === 0) return;
+    setPreview({
+      kind: "files",
+      title: request.selected.path || view.meta.rootName,
+      rows: view.ranked,
+      total: view.rankedTotal,
+      measure: view.measure,
+      isDiff: view.meta.diff !== null,
+    });
+  }, [view, request.selected.path]);
+
+  /**
    * Aim the page at a new index, and reset what only the old one could mean.
    *
    * Another folder and another comparison both replace the file list, so an
@@ -692,6 +712,7 @@ export function App({ runtime = liveRuntime, backlink = null }: Props = {}): Rea
           rank={request.rank}
           onRankChange={setRank}
           onOpenSource={openFile}
+          onOpenListed={openListedFiles}
           onCapacityChange={setCardColumns}
         />
       </div>

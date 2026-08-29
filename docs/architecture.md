@@ -196,6 +196,14 @@ The strip above the ranked table holds the two controls that belong to the rows 
 It moves the table alone: the tiles, the folder head, and the tree all keep describing the whole selection, so a reader can ask what one folder holds without leaving the subtree the panel is about.
 A `.` selection is a folder's own files already, so the switch is not drawn there and `rankFiles()` treats that selection as the narrow scope whatever the field says.
 
+The list is read in two ways.
+Clicking one file opens it alone in `SourceDialog`.
+`Read all`, in the strip above the table, opens every file the table lists in one scrolling dialog, drawn by `FileStack`.
+That view is always in path order: a ranking would put two files of one folder at opposite ends of a long scroll, and reading a whole selection is a walk of the tree.
+It holds the rows it was opened with, so the list cannot change under a reader while the page behind it answers a later request, and its head says how many of the panel's matches it holds.
+One file is fetched when the reader comes near it, and a file the reader folded away is not fetched at all, so the browser still receives the text one file at a time.
+`FilePreview` draws the body in both dialogs, so a file cannot read one way alone and another way among its neighbours.
+
 The scope strip under the workspace draws the same columns as the folder head, in the same order, and one is read the same way in both places.
 Only the subject differs: the folder head describes the selection, and the strip describes the whole drill scope.
 The two figures no other panel can state - how much of the project the scope and the filters keep, and how much of that is comment - stand to the right of the columns rather than among them.
