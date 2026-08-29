@@ -2,7 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { FileRow } from "../src/shared/api.ts";
 import { parseViewRequest } from "../src/server/aggregate.ts";
-import { FileStack, inPathOrder } from "../src/web/components/FileStack.tsx";
+import { FileStack, alignNextFileAfterCollapse, inPathOrder } from "../src/web/components/FileStack.tsx";
 import { SourceDialog } from "../src/web/components/SourceDialog.tsx";
 
 function row(path: string, figures: Partial<FileRow> = {}): FileRow {
@@ -38,6 +38,15 @@ const loadFileList = async () => ({ rows: RANKED });
 const request = parseViewRequest({ kinds: ["code"] });
 
 describe("reading a whole selection", () => {
+  it("moves the next file header to the collapsed header's viewport position", () => {
+    const scroll = { scrollTop: 420 };
+    const nextHeader = { getBoundingClientRect: () => ({ top: 608 }) };
+
+    alignNextFileAfterCollapse(scroll, 560, nextHeader);
+
+    expect(scroll.scrollTop).toBe(468);
+  });
+
   it("orders the files by path whatever order they were ranked in", () => {
     expect(inPathOrder(RANKED).map((file) => file.path)).toEqual([
       "src/cli.ts", "src/web/api.ts", "src/web/App.tsx",

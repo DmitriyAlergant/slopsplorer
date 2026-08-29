@@ -210,6 +210,8 @@ A rank order can separate files from the same folder, but a path order keeps the
 It holds the `ViewRequest` it was opened with, so a later page request cannot change the modal's selection.
 The modal fetches one file when the reader comes near it.
 The modal does not fetch the source of a file that the reader folds.
+When the reader folds an open file, `FileStack` moves the next file header to the same viewport position.
+This keeps the next fold control under the pointer and moves the earlier folded headers up by one row instead of snapping the stack to the top.
 `FilePreview` draws the body in both dialogs, so a file cannot read one way alone and another way among its neighbours.
 
 The scope strip under the workspace draws the same columns as the folder head, in the same order, and one is read the same way in both places.

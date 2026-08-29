@@ -10,6 +10,23 @@ import { Tooltip, tooltipHandlers } from "./Tooltip.tsx";
 /** How far outside the viewport a file starts loading, so scrolling meets it ready. */
 const LOAD_MARGIN = "600px 0px";
 
+interface VerticalScrollPosition {
+  scrollTop: number;
+}
+
+interface PositionedElement {
+  getBoundingClientRect: () => { top: number };
+}
+
+/** Keep the next file header where the collapsed file's header stood. */
+export function alignNextFileAfterCollapse(
+  scroll: VerticalScrollPosition,
+  collapsedHeaderTop: number,
+  nextHeader: PositionedElement,
+): void {
+  scroll.scrollTop += nextHeader.getBoundingClientRect().top - collapsedHeaderTop;
+}
+
 interface StackProps {
   /** The files the folder panel lists, in whatever order it ranked them. */
   rows: readonly FileRow[];
@@ -98,6 +115,23 @@ function StackedFile({ row, measure, isDiff, changedOnly, loadSource }: FileProp
   const added = aspectFigure("added", row[weightField(measure, "added")]);
   const removed = aspectFigure("removed", row[weightField(measure, "removed")]);
 
+  const toggleOpen = (): void => {
+    if (!open) {
+      setOpen(true);
+      return;
+    }
+
+    const section = sectionRef.current;
+    const currentHeader = section?.querySelector<HTMLElement>(".stack__head");
+    const nextHeader = section?.nextElementSibling?.querySelector<HTMLElement>(".stack__head");
+    const scroll = section?.closest<HTMLElement>(".viewer__body");
+    const collapsedHeaderTop = currentHeader?.getBoundingClientRect().top;
+    setOpen(false);
+    if (scroll && collapsedHeaderTop !== undefined && nextHeader) {
+      requestAnimationFrame(() => alignNextFileAfterCollapse(scroll, collapsedHeaderTop, nextHeader));
+    }
+  };
+
   return (
     <section className="stack__file" ref={sectionRef} aria-label={row.path}>
       {/* Sticky, because a flat list of files answers "which file am I reading"
@@ -121,7 +155,7 @@ function StackedFile({ row, measure, isDiff, changedOnly, loadSource }: FileProp
             className="stack__disclose"
             aria-expanded={open}
             aria-controls={bodyId}
-            onClick={() => setOpen(!open)}
+            onClick={toggleOpen}
           >
             <Chevron open={open} />
             {row.path}
