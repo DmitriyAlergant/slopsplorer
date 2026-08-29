@@ -105,6 +105,11 @@ Indexing by a validated whole name, as `file[measure]` does, keeps that. Assembl
 BE PICKY ABOUT THE UI. This product is a page someone reads.
 Alignment, spacing, and two panels agreeing about the same number are part of the work, not polish for later.
 
+KEEP THE SNAPSHOT AT PARITY. A new capability of the page has to work in a static export as well as against the server.
+Read the index through `ExplorerRuntime`, so the live routes and the snapshot worker both serve it, and open an exported bundle before you call the work done.
+The exemptions are the ones a frozen index cannot serve, and [docs/export.md](docs/export.md) names them: a snapshot cannot rescan, open another folder, change the comparison, step to another span in the commit band, install the skill, or ask a local agent.
+Anything outside that list is a parity break and not a trade-off to accept quietly.
+
 CONSULT AND MAINTAIN THE DOCS. `docs/` is written by agents for agents: how the thing works under the hood, so a cold reader does not re-derive it by grepping.
   - Update the doc when behavior changes substantially, and edit the existing one rather than adding a near-duplicate.
   - Current state only. History lives in git.

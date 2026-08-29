@@ -271,6 +271,10 @@ One aligner serves every row it was opened for through one size batch and one ob
 One producer means the preview and the numbers beside it can never describe different changes, and it reaches an untracked file, which `git diff` cannot show at all.
 `tests/linediff.test.ts` reads each side back out of one alignment over a random corpus and requires the two files again.
 
+`Read all` above the file table opens the whole list instead of one file, in path order, as `FileStack` draws it.
+Each file keeps its own head, which states the Git letter and both sides of its change, and folds the file away.
+The two dialog switches move the whole stack, so a comparison of fifty files reads as one page.
+
 The route sends the file whole, unchanged lines included, because hunks answer a question the reader did not ask.
 A gutter holds the number on each side, so a reader can see where a passage sits and how far apart two changes are.
 `Only changed lines` in the dialog head hides every line further than three from a change, and a band counts what it hid.

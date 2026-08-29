@@ -1,7 +1,7 @@
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import type { ChangeStatus, DiffLine, DiffMeta, FileRow, ScanMeta } from "../shared/api.ts";
-import { classifyFile, findLocaleLevels, hasGeneratedHeader, isGenerated, refineKindByContent } from "./classify.ts";
+import { classifyFile, findLocaleLevels, hasGeneratedContent, isGenerated, refineKindByContent } from "./classify.ts";
 import { GitObjectReader, listChangedFiles, objectSizes, type ChangedFile, type Comparison, type DiffSide } from "./gitdiff.ts";
 import { alignedLines, diffLines } from "./linediff.ts";
 import type { LineBucket } from "./lines.ts";
@@ -268,7 +268,7 @@ export async function scanDiff(options: DiffScanOptions): Promise<ScanIndex> {
         name,
         kind: refineKindByContent(classifyFile(entry.path, localeLevels), entry.path, { grammar, ...after.structure }),
         // The after image, or the before image of a file the change deleted.
-        generated: isGenerated(entry.path) || hasGeneratedHeader(contents.after || contents.before),
+        generated: isGenerated(entry.path) || hasGeneratedContent(entry.path, contents.after || contents.before),
         status: entry.status,
         previousPath: entry.status === "renamed" ? entry.basePath : null,
         tokens: countTokens(contents.after),

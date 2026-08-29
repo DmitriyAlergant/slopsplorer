@@ -3,6 +3,7 @@ import type { Aspect, Measure, TreeRow, TreeSort } from "../../shared/api.ts";
 import { weightHeading } from "../../shared/api.ts";
 import { isInsideFolder } from "../displayPath.ts";
 import { count, sideCount, weightCount } from "../format.ts";
+import { Chevron } from "./Chevron.tsx";
 import { DrillBreadcrumbs } from "./DrillBreadcrumbs.tsx";
 import { SortCaret } from "./SortCaret.tsx";
 import { Tooltip, tooltipHandlers } from "./Tooltip.tsx";
@@ -33,15 +34,6 @@ interface Props {
 
 /** Gap a band figure keeps from the name beside it before it gives the pixels up. */
 const FIGURE_CLEARANCE = 8;
-
-/** Drawn rather than typed: the Unicode triangles render far too small to hit. */
-function Chevron({ open }: { open: boolean }): React.JSX.Element {
-  return (
-    <svg className="chevron" data-open={open} viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
-      <path d="M6 3.5L10.5 8L6 12.5" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
 
 /** Native checkboxes cannot express "partially selected" from markup alone. */
 function ScopeCheckbox({ row, onChange }: { row: TreeRow; onChange: () => void }): React.JSX.Element {

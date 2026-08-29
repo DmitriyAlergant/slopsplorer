@@ -52,7 +52,7 @@ The snapshot worker imports it so the browser and the scanner cannot build diffe
    Larger files are counted in `ScanMeta.skippedLargeFiles` and are left out.
 3. `measureFile()` in `src/scanner/measure.ts` selects the grammar, counts the structure, and splits the lines.
    This is the single place that decides whether a file gets tree-sitter comment spans or the comment-marker table, so the scanner and the corpus test cannot disagree about it.
-4. `classifyFile()` and `refineKindByContent()` in `src/scanner/classify.ts` set the flavor, and `isGenerated()` with `hasGeneratedHeader()` set the generated flag.
+4. `classifyFile()` and `refineKindByContent()` in `src/scanner/classify.ts` set the flavor, and `isGenerated()` with `hasGeneratedContent()` set the generated flag.
    `classifyFile()` reads the locale levels that `findLocaleLevels()` computes once from the whole listing, so both producers have to hand it the same view of the tree.
 5. The token count comes from `tokenCounter()` in `src/scanner/tokenize.ts`.
 
@@ -195,6 +195,14 @@ The strip above the ranked table holds the two controls that belong to the rows 
 `subtree` lists every file under the selected folder, and `folder` lists only the files that sit directly in it.
 It moves the table alone: the tiles, the folder head, and the tree all keep describing the whole selection, so a reader can ask what one folder holds without leaving the subtree the panel is about.
 A `.` selection is a folder's own files already, so the switch is not drawn there and `rankFiles()` treats that selection as the narrow scope whatever the field says.
+
+The list is read in two ways.
+Clicking one file opens it alone in `SourceDialog`.
+`Read all`, in the strip above the table, opens every file the table lists in one scrolling dialog, drawn by `FileStack`.
+That view is always in path order: a ranking would put two files of one folder at opposite ends of a long scroll, and reading a whole selection is a walk of the tree.
+It holds the rows it was opened with, so the list cannot change under a reader while the page behind it answers a later request, and its head says how many of the panel's matches it holds.
+One file is fetched when the reader comes near it, and a file the reader folded away is not fetched at all, so the browser still receives the text one file at a time.
+`FilePreview` draws the body in both dialogs, so a file cannot read one way alone and another way among its neighbours.
 
 The scope strip under the workspace draws the same columns as the folder head, in the same order, and one is read the same way in both places.
 Only the subject differs: the folder head describes the selection, and the strip describes the whole drill scope.

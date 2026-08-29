@@ -8,7 +8,13 @@ Write yours under Unreleased as you make the change, and rename that heading to 
 
 ### Features
 
+- `Read all`, above the file table, opens every file the table lists in one scrolling preview, always in path order, so a change reads end to end instead of one file at a time. Each file folds away on its own, and the whole selection reads the same way in a static export.
 - `--export <dir>` writes a portable static explorer with filters, rankings, source or diff previews, a read-only commit band, and a backlink when a full GitHub or GitLab review URL names the comparison, then prints its path and exits. Serve the folder over HTTP to read it: a browser loads no module, worker, or data file from a `file://` address, and the page says so when opened that way.
+
+### Other Changes
+
+- Stylesheets are now Other rather than Code, beside the HTML they dress. Neither holds logic to reason about, so hiding Other now takes presentation off the map in one switch.
+- Compiled JavaScript and CSS is now recognised as generated wherever it was committed, not only under `dist/`. A bundler's content hash in the name, a source map comment, and minified line shape each mark a file, so a React, Vite, or SvelteKit build under `build/`, `out/`, `public/`, or `static/` no longer counts as code somebody wrote.
 
 ### Bug Fixes
 

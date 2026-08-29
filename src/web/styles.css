@@ -459,8 +459,10 @@ button { cursor: pointer; }
   font-size: 12.5px;
   transition: border-color 120ms ease, color 120ms ease;
 }
-.button:hover:not(:disabled) { border-color: var(--signal); color: var(--signal); }
+.button:hover:not(:disabled):not([aria-disabled="true"]) { border-color: var(--signal); color: var(--signal); }
 .button:disabled { opacity: 0.5; cursor: progress; }
+/* Inert but focusable, so it can still carry the tooltip that says why. */
+.button[aria-disabled="true"] { color: var(--ink-faint); cursor: default; }
 .button--tiny { padding: 3px 8px; font-size: 11px; }
 /* Declared after `.button`, which it shares specificity with and must outrank. */
 .button--primary {
@@ -1776,6 +1778,54 @@ button { cursor: pointer; }
   border-top: 1px solid var(--rule);
   color: var(--ink-faint); font-size: 11.5px;
 }
+
+/*
+ * The panel's whole file list read end to end: one section for each file, in
+ * path order, each one fetched when the reader comes near it.
+ */
+.stack__file { border-top: 1px solid var(--rule-firm); }
+.stack__file:first-child { border-top: none; }
+/*
+ * Sticky, because a flat list of files answers which file is being read only
+ * while its name is on screen. The code scrolls under it, so it is opaque and
+ * it sits above the diff's own sticky gutter, which is one layer below.
+ */
+.stack__head {
+  position: sticky; top: 0; z-index: 2;
+  display: flex; align-items: center; gap: 8px;
+  padding: 9px 20px;
+  border-bottom: 1px solid var(--rule);
+  background: var(--sunk);
+}
+.stack__path {
+  margin: 0; min-width: 0;
+  font-family: var(--font-mono); font-size: 12px; font-weight: 600;
+}
+/* The name is the control that folds the file, so it takes no frame of its own. */
+.stack__disclose {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  text-align: left; word-break: break-all;
+  transition: color 120ms ease;
+}
+.stack__disclose:hover { color: var(--signal); }
+.stack__disclose .chevron { flex: none; color: var(--ink-faint); }
+.stack__disclose:hover .chevron { color: var(--signal); }
+.stack__figures {
+  display: flex; flex: none; gap: 10px; margin-left: auto;
+  font-family: var(--font-mono); font-size: 11.5px; color: var(--ink-soft);
+}
+.stack__figures [data-sign="positive"] { color: var(--status-added); }
+.stack__figures [data-sign="negative"] { color: var(--status-deleted); }
+.stack__figures [data-sign="zero"] { color: var(--ink-faint); }
+.stack__unit { color: var(--ink-faint); }
+/*
+ * A file that has not arrived still holds room, so the list does not come into
+ * view all at once and the reader does not scroll past an empty column.
+ */
+.stack__body[data-pending="true"] { min-height: 220px; }
 
 /*
  * A compared file is drawn one row at a time: two line numbers, the marker,
