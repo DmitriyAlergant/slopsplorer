@@ -12,11 +12,11 @@ import { scanDiff } from "../scanner/diffScan.ts";
 import type { DiffScanOptions } from "../scanner/diffScan.ts";
 import { GitError, listRefs, resolveComparison, verifyComparisonRequest } from "../scanner/gitdiff.ts";
 import { buildSpine } from "../scanner/spine.ts";
-import { scanSourceTree } from "../scanner/scan.ts";
-import type { ScanIndex, ScanOptions } from "../scanner/scan.ts";
+import { scanReviewSide, scanSourceTree } from "../scanner/scan.ts";
+import type { ReviewSideScanOptions, ScanIndex, ScanOptions } from "../scanner/scan.ts";
 import type {
   AgentsResponse, AskListResponse, AskRequest, CommitSpine, CompareRequest, ComparisonRequest,
-  OpenRootRequest, SkillInstallResponse, SourceResponse,
+  OpenRootRequest, ReviewMode, ReviewModeRequest, SkillInstallResponse, SourceResponse,
 } from "../shared/api.ts";
 import { spansRequest } from "../shared/api.ts";
 import { buildFileList, buildView, parseViewRequest } from "./aggregate.ts";
@@ -113,7 +113,8 @@ function parseComparisonRequest(raw: unknown): ComparisonRequest {
  */
 export type IndexProducer =
   | { kind: "scan"; options: ScanOptions }
-  | { kind: "diff"; options: DiffScanOptions };
+  | { kind: "diff"; options: DiffScanOptions }
+  | { kind: "reviewSide"; options: ReviewSideScanOptions };
 
 export interface SlopsplorerServerOptions {
   /** The index the server starts with, so the CLI can report the scan before listening. */
@@ -402,9 +403,18 @@ export function createSlopsplorerServer(options: SlopsplorerServerOptions): Slop
    * with the first one's figures.
    */
   function producerLabel(producer: IndexProducer): string {
-    return producer.kind === "diff"
-      ? `${producer.options.root} (${producer.options.comparison.spec})`
-      : producer.options.root;
+    if (producer.kind === "scan") return producer.options.root;
+    const mode = producer.kind === "diff" ? "diff" : producer.options.side;
+    return `${producer.options.root} (${producer.options.comparison.spec}, ${mode})`;
+  }
+
+  function diffOptionsOf(producer: IndexProducer): DiffScanOptions | null {
+    if (producer.kind === "diff") return producer.options;
+    if (producer.kind === "reviewSide") {
+      const { side: _side, ...options } = producer.options;
+      return options;
+    }
+    return null;
   }
 
   /** Replace the complete state only after a scan succeeds. */
@@ -414,7 +424,11 @@ export function createSlopsplorerServer(options: SlopsplorerServerOptions): Slop
       if (scanInFlight.label === label) return scanInFlight.promise;
       throw new ConflictError(`already scanning ${scanInFlight.label}`);
     }
-    const measuring = producer.kind === "diff" ? scanDiff(producer.options) : scanSourceTree(producer.options);
+    const measuring = producer.kind === "diff"
+      ? scanDiff(producer.options)
+      : producer.kind === "reviewSide"
+        ? scanReviewSide(producer.options)
+        : scanSourceTree(producer.options);
     const running = measuring.then((next) => {
       scanState = { index: next, producer };
       if (producer.kind === "scan") heldSpine = null;
@@ -442,16 +456,17 @@ export function createSlopsplorerServer(options: SlopsplorerServerOptions): Slop
    * built once and held.
    */
   function spineOf(producer: IndexProducer): Promise<CommitSpine | null> {
-    if (producer.kind !== "diff") {
+    const options = diffOptionsOf(producer);
+    if (options === null) {
       throw new BadRequestError("the open index is a scan, so it spans no commits");
     }
-    const open = producer.options.comparison.request;
+    const open = options.comparison.request;
     if (heldSpine !== null && spansRequest(heldSpine, open)) return Promise.resolve(heldSpine);
 
-    const spec = producer.options.comparison.spec;
+    const spec = options.comparison.spec;
     if (spineInFlight !== null && spineInFlight.spec === spec) return spineInFlight.promise;
 
-    const building = buildSpine(producer.options, open).then((built) => {
+    const building = buildSpine(options, open).then((built) => {
       heldSpine = built;
       return built;
     });
@@ -495,6 +510,15 @@ export function createSlopsplorerServer(options: SlopsplorerServerOptions): Slop
     return { comparison: parseComparisonRequest(candidate.comparison), view: parseViewRequest(candidate.view) };
   }
 
+  function parseReviewModeRequest(body: unknown): ReviewModeRequest {
+    if (typeof body !== "object" || body === null) throw new BadRequestError("request body must be an object");
+    const candidate = body as { mode?: unknown; view?: unknown };
+    const modes: readonly ReviewMode[] = ["before", "diff", "after"];
+    const mode = modes.find((value) => value === candidate.mode);
+    if (mode === undefined) throw new BadRequestError("`mode` must be before, diff, or after");
+    return { mode, view: parseViewRequest(candidate.view) };
+  }
+
   /**
    * Read an ask out of an untrusted body.
    *
@@ -521,7 +545,9 @@ export function createSlopsplorerServer(options: SlopsplorerServerOptions): Slop
     try {
       const producer = state.producer.kind === "diff"
         ? { kind: "diff" as const, options: state.producer.options }
-        : { kind: "scan" as const, root: state.producer.options.root };
+        : state.producer.kind === "reviewSide"
+          ? { kind: "review" as const, options: state.producer.options }
+          : { kind: "scan" as const, root: state.producer.options.root };
       sendJson(response, 200, await readIndexedSource(state.index, producer, requestedPath));
     } catch (cause) {
       if (!(cause instanceof SourceReadError)) throw cause;
@@ -566,16 +592,31 @@ export function createSlopsplorerServer(options: SlopsplorerServerOptions): Slop
         sendJson(response, 200, buildView(opened, openRequest.view));
         return;
       }
+      case "/api/review-mode": {
+        requireMethod(request, "POST");
+        const reviewRequest = parseReviewModeRequest(await readJsonBody(request));
+        const diffOptions = diffOptionsOf(scanState.producer);
+        if (diffOptions === null) {
+          throw new BadRequestError("the open index is a scan, so it has no review views");
+        }
+        const producer: IndexProducer = reviewRequest.mode === "diff"
+          ? { kind: "diff", options: diffOptions }
+          : { kind: "reviewSide", options: { ...diffOptions, side: reviewRequest.mode } };
+        const reviewed = await runScan(producer);
+        sendJson(response, 200, buildView(reviewed, reviewRequest.view));
+        return;
+      }
       case "/api/compare": {
         requireMethod(request, "POST");
         const compareRequest = parseCompareRequest(await readJsonBody(request));
         const previous = scanState.producer;
         // Only a comparison can be recompared: a scan has no repository the
         // page could name a second revision against.
-        if (previous.kind !== "diff") {
+        const previousDiff = diffOptionsOf(previous);
+        if (previousDiff === null) {
           throw new BadRequestError("the open index is a scan, so there is nothing to compare against");
         }
-        const root = previous.options.root;
+        const root = previousDiff.root;
         let comparison;
         try {
           await verifyComparisonRequest(root, compareRequest.comparison);
@@ -586,7 +627,7 @@ export function createSlopsplorerServer(options: SlopsplorerServerOptions): Slop
           if (!(cause instanceof GitError)) throw cause;
           throw new BadRequestError(cause.message);
         }
-        const compared = await runScan({ kind: "diff", options: { ...previous.options, comparison } });
+        const compared = await runScan({ kind: "diff", options: { ...previousDiff, comparison } });
         sendJson(response, 200, buildView(compared, compareRequest.view));
         return;
       }
@@ -597,10 +638,11 @@ export function createSlopsplorerServer(options: SlopsplorerServerOptions): Slop
       }
       case "/api/refs": {
         // Only a comparison has a repository, and only the picker asks.
-        if (scanState.producer.kind !== "diff") {
+        const diffOptions = diffOptionsOf(scanState.producer);
+        if (diffOptions === null) {
           throw new BadRequestError("the open index is a scan, so it has no repository to list refs from");
         }
-        sendJson(response, 200, await listRefs(scanState.producer.options.root));
+        sendJson(response, 200, await listRefs(diffOptions.root));
         return;
       }
       case "/api/source": {

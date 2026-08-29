@@ -509,7 +509,7 @@ export interface SummaryView {
 }
 
 /** Where a scan's file list came from. A diff never runs a walk. */
-export type FileSource = "git-index" | "walk-gitignore" | "walk-all" | "git-diff";
+export type FileSource = "git-index" | "git-tree" | "walk-gitignore" | "walk-all" | "git-diff";
 
 /** What a diff compared, resolved once and echoed on every response. */
 export interface DiffMeta {
@@ -529,6 +529,22 @@ export interface DiffMeta {
   cappedFiles: number;
 }
 
+/** Which full-repository image or change the review page is drawing. */
+export type ReviewMode = "before" | "diff" | "after";
+
+/** The comparison that a repository-image view can return to. */
+export interface ReviewMeta {
+  mode: ReviewMode;
+  /** How the comparison was named on the command line. */
+  spec: string;
+  /** What was asked for, so changing the view never loses the comparison. */
+  request: ComparisonRequest;
+  /** Human label for the before side, such as a short commit or "HEAD". */
+  base: string;
+  /** Human label for the after side, such as "working tree" or a short commit. */
+  target: string;
+}
+
 export interface ScanMeta {
   rootPath: string;
   rootName: string;
@@ -542,6 +558,8 @@ export interface ScanMeta {
   fileSource: FileSource;
   /** What was compared, or `null` when the index is a plain scan. */
   diff: DiffMeta | null;
+  /** Review navigation, or `null` when this scan did not come from a comparison. */
+  review: ReviewMeta | null;
   /** Files skipped for exceeding the per-file byte ceiling. */
   skippedLargeFiles: number;
   /** Grammars that produced structure metrics in this scan. */
@@ -856,6 +874,12 @@ export interface RepositoryRefs {
 /** Replace the active comparison, keeping the repository and the preferences. */
 export interface CompareRequest {
   comparison: ComparisonRequest;
+  view: ViewRequest;
+}
+
+/** Rescan one view of the active review. */
+export interface ReviewModeRequest {
+  mode: ReviewMode;
   view: ViewRequest;
 }
 

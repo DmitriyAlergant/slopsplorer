@@ -29,8 +29,8 @@ src/web/       ViewRequest state -> POST /api/view -> render
 src/shared/    api.ts, the wire contract; index.ts, the queryable index shape
 ```
 
-There are two producers of a `ScanIndex` and one consumer of it.
-`scanSourceTree()` measures a tree and `scanDiff()` measures a comparison.
+There are three paths to a `ScanIndex` and one consumer of it.
+`scanSourceTree()` measures the working tree, `scanReviewSide()` measures one complete side of a comparison, and `scanDiff()` measures the change between two sides.
 Both end at `assembleIndex()` in `src/shared/index.ts`, which builds the prefix sums and the lookup maps, so neither producer can grow a table the other one lacks.
 Everything downstream reads the index and does not ask which one made it.
 
@@ -65,6 +65,8 @@ There is no filesystem watcher. A new index is built at startup and again when t
 `scanDiff()` in `src/scanner/diffScan.ts` builds the same structure from a revision pair.
 It shares steps 3 to 5 with the scan, and it shares the acceptance rule in `acceptSourcePaths()`, so the two producers cannot disagree about what a source file is.
 `ScanMeta.diff` is `null` for a scan and describes the comparison for a diff, and it is the only thing that tells the aggregator and the client which mode they are in.
+`ScanMeta.review` is navigation context only.
+It keeps the comparison and the active Before / Diff / After choice while a repository-side scan has no diff figures.
 
 ## Why the files are sorted by path
 
@@ -124,6 +126,7 @@ A scan has one content per file, so `buildView()` forces the aspect to `after` u
 | `POST /api/rescan` | Scan the same root again. Concurrent calls share one scan. |
 | `POST /api/open` | Replace the root with another absolute directory and scan it. |
 | `POST /api/compare` | Replace the comparison, keeping the repository, and measure it again. |
+| `POST /api/review-mode` | Rescan the diff or one complete side of the active comparison. |
 | `GET /api/refs` | Return the branches, remote branches, and tags the comparison picker offers. |
 | `GET /api/source` | Return one file for the source dialog: its text in a scan, its aligned lines in a comparison. |
 | `GET /api/skill-install` | Return the command that installs the bundled agent skill, written for the shell of the host platform. |
@@ -152,13 +155,13 @@ On a failure the command line asks `lsof` who holds each busy port and prints a 
 A directory is not a comparison, so keeping the old one would leave the page reporting churn for a tree nobody compared.
 
 `/api/compare` answers only when the open index is a comparison.
-A scan has no repository against which the page could name a revision, so a scan is refused with 400.
+A repository-side review keeps that comparison, but a plain scan has no repository against which the page could name a revision, so a plain scan is refused with 400.
 It takes a `ComparisonRequest` and verifies it with `verifyComparisonRequest()`, the same check the command line runs.
 `/api/refs` is refused for a scan for the same reason.
 
 A rescan replaces the state only after it succeeds.
 A failed scan leaves the previous index in place, so the page keeps working.
-A running measurement is identified by its root and, for a comparison, its spec, so a second comparison of the same repository cannot join the first one and get the wrong figures back.
+A running measurement is identified by its root, comparison spec, and review mode, so two views of the same repository cannot join and get the wrong figures back.
 
 ## The client
 

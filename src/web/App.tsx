@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   AgentTool, Aspect, AskTask, CommitSpine, ComparisonRequest, FileKind, Measure, RankMetric, RowKind,
-  SnapshotBacklink, TreeRow, ViewRequest, ViewResponse,
+  ReviewMode, SnapshotBacklink, TreeRow, ViewRequest, ViewResponse,
 } from "../shared/api.ts";
 import { ASPECTS, MEASURES, spansRequest } from "../shared/api.ts";
 import {
-  compare, dismissAsk, fetchAgents, fetchAsks, openRoot, rescan, startAsk,
+  compare, dismissAsk, fetchAgents, fetchAsks, openRoot, rescan, startAsk, switchReviewMode,
 } from "./api.ts";
 import { liveRuntime, type ExplorerRuntime } from "./runtime.ts";
 import {
@@ -80,6 +80,7 @@ export function App({ runtime = liveRuntime, backlink = null }: Props = {}): Rea
   const [rescanning, setRescanning] = useState(false);
   const [openingRoot, setOpeningRoot] = useState<string | null>(null);
   const [comparingLabel, setComparingLabel] = useState<string | null>(null);
+  const [reviewModeTarget, setReviewModeTarget] = useState<ReviewMode | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [skillOpen, setSkillOpen] = useState(false);
   const [agents, setAgents] = useState<readonly AgentTool[]>([]);
@@ -406,6 +407,12 @@ export function App({ runtime = liveRuntime, backlink = null }: Props = {}): Rea
     reaim((view) => compare(comparison, view), () => setComparingLabel(null), keepPlace);
   }, [reaim]);
 
+  const handleReviewMode = useCallback((mode: ReviewMode) => {
+    if (view?.meta.review?.mode === mode) return;
+    setReviewModeTarget(mode);
+    reaim((request) => switchReviewMode(mode, request), () => setReviewModeTarget(null));
+  }, [reaim, view?.meta.review?.mode]);
+
   /** Walking the band never leaves the range, so it never loses the reader's place. */
   const handleSpan = useCallback((comparison: ComparisonRequest) => {
     handleCompare(comparison, true);
@@ -626,7 +633,7 @@ export function App({ runtime = liveRuntime, backlink = null }: Props = {}): Rea
   // Taken from the response rather than the pending request, so a heading
   // never claims a mode the numbers beside it are not in.
   const isDiff = view?.meta.diff != null;
-  const scanning = rescanning || openingRoot !== null || comparingLabel !== null;
+  const scanning = rescanning || openingRoot !== null || comparingLabel !== null || reviewModeTarget !== null;
   // Re-aiming replaces the whole data model, so the stale page stays covered
   // until the new figures arrive.
   const reaiming = openingRoot !== null
@@ -641,6 +648,14 @@ export function App({ runtime = liveRuntime, backlink = null }: Props = {}): Rea
         subject: comparingLabel,
         hint: "Reading both sides and measuring the change. A wide comparison can take a moment.",
       }
+      : reviewModeTarget !== null
+        ? {
+          title: reviewModeTarget === "diff" ? "Opening diff" : `Opening ${reviewModeTarget} view`,
+          subject: view?.meta.review?.spec ?? view?.meta.rootPath ?? "Repository",
+          hint: reviewModeTarget === "diff"
+            ? "Rescanning and measuring the change."
+            : "Rescanning and measuring the complete repository image.",
+        }
       : null;
   const aspect = view?.aspect ?? request.aspect;
 
@@ -655,6 +670,7 @@ export function App({ runtime = liveRuntime, backlink = null }: Props = {}): Rea
         onRescan={handleRescan}
         onOpen={handleOpen}
         onCompare={handleCompare}
+        onReviewMode={handleReviewMode}
         agents={agents}
         agentId={chosenAgentId ?? ""}
         onChooseAgent={chooseAgent}

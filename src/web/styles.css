@@ -300,6 +300,8 @@ button { cursor: pointer; }
 }
 .instrument__remeasure:hover:not(:disabled) { border-color: var(--signal); color: var(--signal); }
 .instrument__remeasure:disabled { color: var(--ink-faint); cursor: progress; }
+.instrument__review-switch { flex: none; }
+.instrument__review-switch .switch__option:disabled { cursor: progress; }
 /* One measurement is running, and the icon says so by turning. */
 .spinning { animation: spin 1.1s linear infinite; transform-origin: 50% 50%; }
 @keyframes spin { to { transform: rotate(360deg); } }

@@ -1,12 +1,13 @@
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
-import type { FileRow, ScanMeta } from "../shared/api.ts";
+import type { FileRow, FileSource, ReviewMeta, ScanMeta } from "../shared/api.ts";
 import { assembleIndex, type FolderNode, type ScanIndex } from "../shared/index.ts";
 import { classifyFile, findLocaleLevels, hasGeneratedContent, isGenerated, refineKindByContent } from "./classify.ts";
+import { GitObjectReader, objectSizes, type Comparison, type DiffSide } from "./gitdiff.ts";
 import { measureFile } from "./measure.ts";
 import { StructureAnalyzer } from "./structure.ts";
 import { tokenCounter, type TokenizerName } from "./tokenize.ts";
-import { listSourceFiles } from "./walk.ts";
+import { acceptSourcePaths, listIndexFiles, listRevisionFiles, listSourceFiles } from "./walk.ts";
 
 export { assembleIndex, type FolderNode, type ScanIndex } from "../shared/index.ts";
 
@@ -24,6 +25,17 @@ export interface ScanOptions {
   /** Files read concurrently. Reading is IO-bound. Measuring is not. */
   concurrency: number;
   /** Called as file measurement advances. */
+  onProgress?: (progress: ScanProgress) => void;
+}
+
+export interface ReviewSideScanOptions {
+  root: string;
+  comparison: Comparison;
+  side: "before" | "after";
+  tokenizer: TokenizerName;
+  exclude: readonly string[];
+  maxFileBytes: number;
+  concurrency: number;
   onProgress?: (progress: ScanProgress) => void;
 }
 
@@ -89,12 +101,23 @@ export async function mapWithConcurrency<In, Out>(
 }
 
 /** Measure every accepted file under `root` and build the queryable index. */
-export async function scanSourceTree(options: ScanOptions): Promise<ScanIndex> {
+interface ScanFileRead {
+  text: string | null;
+  oversized: boolean;
+}
+
+interface ListedScan {
+  relativePaths: string[];
+  fileSource: FileSource;
+  review: ReviewMeta | null;
+  read(relativePath: string): Promise<ScanFileRead>;
+  dispose(): void;
+}
+
+/** Measure a complete source-file listing, independent of where its bytes live. */
+async function measureListedScan(options: ScanOptions, listing: ListedScan): Promise<ScanIndex> {
   const startedAt = Date.now();
-  const { relativePaths, gitTracked, respectsGitignore } = await listSourceFiles(options.root, {
-    allFiles: options.allFiles,
-    exclude: options.exclude,
-  });
+  const { relativePaths } = listing;
 
   const localeLevels = findLocaleLevels(relativePaths);
   const countTokens = tokenCounter(options.tokenizer);
@@ -107,20 +130,10 @@ export async function scanSourceTree(options: ScanOptions): Promise<ScanIndex> {
   let languages: string[];
   try {
     measured = await mapWithConcurrency(relativePaths, options.concurrency, async (relativePath) => {
-      const absolutePath = path.join(options.root, relativePath);
-      let text: string;
-      try {
-        const info = await stat(absolutePath);
-        if (!info.isFile()) return null;
-        if (info.size > options.maxFileBytes) {
-          skippedLargeFiles += 1;
-          return null;
-        }
-        text = await readFile(absolutePath, "utf8");
-      } catch {
-        // The file disappeared or is unreadable between listing and measuring.
-        return null;
-      }
+      const loaded = await listing.read(relativePath);
+      if (loaded.oversized) skippedLargeFiles += 1;
+      if (loaded.text === null) return null;
+      const text = loaded.text;
 
       const name = path.posix.basename(relativePath);
       const { grammar, structure, lines: lineMetrics } = await measureFile(analyzer, name, text);
@@ -148,6 +161,7 @@ export async function scanSourceTree(options: ScanOptions): Promise<ScanIndex> {
     languages = analyzer.usedGrammars;
   } finally {
     analyzer.dispose();
+    listing.dispose();
   }
 
   const files = measured.filter((row): row is FileRow => row !== null);
@@ -163,13 +177,90 @@ export async function scanSourceTree(options: ScanOptions): Promise<ScanIndex> {
     folderCount: folders.length,
     scannedAt: new Date().toISOString(),
     durationMs: Date.now() - startedAt,
-    fileSource: gitTracked ? "git-index" : respectsGitignore ? "walk-gitignore" : "walk-all",
+    fileSource: listing.fileSource,
     diff: null,
+    review: listing.review,
     skippedLargeFiles,
     languages,
   };
 
   return assembleIndex(meta, files, folders);
+}
+
+/** Measure every accepted file under `root` and build the queryable index. */
+export async function scanSourceTree(options: ScanOptions): Promise<ScanIndex> {
+  const files = await listSourceFiles(options.root, {
+    allFiles: options.allFiles,
+    exclude: options.exclude,
+  });
+  return measureListedScan(options, {
+    relativePaths: files.relativePaths,
+    fileSource: files.gitTracked ? "git-index" : files.respectsGitignore ? "walk-gitignore" : "walk-all",
+    review: null,
+    read: async (relativePath) => {
+      try {
+        const absolutePath = path.join(options.root, relativePath);
+        const info = await stat(absolutePath);
+        if (!info.isFile()) return { text: null, oversized: false };
+        if (info.size > options.maxFileBytes) return { text: null, oversized: true };
+        return { text: await readFile(absolutePath, "utf8"), oversized: false };
+      } catch {
+        // The file disappeared or is unreadable between listing and measuring.
+        return { text: null, oversized: false };
+      }
+    },
+    dispose: () => undefined,
+  });
+}
+
+function reviewMeta(options: ReviewSideScanOptions): ReviewMeta {
+  return {
+    mode: options.side,
+    spec: options.comparison.spec,
+    request: options.comparison.request,
+    base: options.comparison.baseLabel,
+    target: options.comparison.targetLabel,
+  };
+}
+
+function sideOf(options: ReviewSideScanOptions): DiffSide {
+  return options.side === "before" ? options.comparison.base : options.comparison.target;
+}
+
+function sideObjectSpec(side: DiffSide, relativePath: string): string | null {
+  if (side.kind === "worktree") return null;
+  return side.kind === "index" ? `:${relativePath}` : `${side.rev}:${relativePath}`;
+}
+
+/** Measure one complete side of a comparison without changing the worktree. */
+export async function scanReviewSide(options: ReviewSideScanOptions): Promise<ScanIndex> {
+  const side = sideOf(options);
+  if (side.kind === "worktree") {
+    const scanned = await scanSourceTree({ ...options, allFiles: false });
+    return assembleIndex({ ...scanned.meta, review: reviewMeta(options) }, scanned.files, scanned.folders);
+  }
+
+  const inventory = side.kind === "index"
+    ? await listIndexFiles(options.root)
+    : await listRevisionFiles(options.root, side.rev);
+  const relativePaths = acceptSourcePaths(inventory, options.exclude, inventory);
+  const specs = relativePaths.map((relativePath) => sideObjectSpec(side, relativePath)!);
+  const sizes = await objectSizes(options.root, specs);
+  const sizeByPath = new Map(relativePaths.map((relativePath, index) => [relativePath, sizes[index] ?? null]));
+  const reader = new GitObjectReader(options.root);
+  return measureListedScan({ ...options, allFiles: false }, {
+    relativePaths,
+    fileSource: side.kind === "index" ? "git-index" : "git-tree",
+    review: reviewMeta(options),
+    read: async (relativePath) => {
+      const size = sizeByPath.get(relativePath);
+      if (size === undefined || size === null) return { text: null, oversized: false };
+      if (size > options.maxFileBytes) return { text: null, oversized: true };
+      const buffer = await reader.read(sideObjectSpec(side, relativePath)!);
+      return { text: buffer?.toString("utf8") ?? null, oversized: false };
+    },
+    dispose: () => reader.dispose(),
+  });
 }
 
 /** Derive the folder hierarchy, including folders that only contain other folders. */

@@ -8,6 +8,7 @@ Write yours under Unreleased as you make the change, and rename that heading to 
 
 ### Features
 
+- Diff reviews can now rescan the complete repository before or after a change and return to the diff from one header control, without checking out either revision.
 - Scans now include extensionless `README`, `CHANGELOG`, `CHANGES`, `CITATION`, `CONTRIBUTING`, `COPYING`, `LICENSE`, and `LICENCE` files as Docs, plus `.htm` and `.xhtml` files as Other.
 - Flavor detection now recognizes legacy language aliases and locale names that contain both a script and a region, such as `zh-Hant-TW`.
 - Generated-file detection now recognizes .NET designer and SpecFlow output, Yarn Plug'n'Play files, generator header warnings, and HTML generator metadata.

@@ -127,6 +127,16 @@ describe("opening a scan root", () => {
 
     const refsResponse = await fetch(`${serverUrl}/api/refs`);
     expect(refsResponse.status).toBe(400);
+
+    const reviewResponse = await fetch(`${serverUrl}/api/review-mode`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode: "before", view: {} }),
+    });
+    expect(reviewResponse.status).toBe(400);
+    await expect(reviewResponse.json()).resolves.toEqual({
+      error: "the open index is a scan, so it has no review views",
+    });
   });
 });
 

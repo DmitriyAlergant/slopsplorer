@@ -285,6 +285,7 @@ type FileSourceName = ScanIndex["meta"]["fileSource"];
 
 const FILE_SOURCE_LABELS: Readonly<Record<FileSourceName, string>> = {
   "git-index": "git ls-files",
+  "git-tree": "git tree",
   "walk-gitignore": "filesystem walk, .gitignore applied",
   "walk-all": "filesystem walk, all files",
   "git-diff": "git diff",

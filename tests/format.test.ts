@@ -73,6 +73,13 @@ function meta(rootName: string, request: ComparisonRequest | null): ScanMeta {
     durationMs: 0,
     fileSource: request === null ? "git-index" : "git-diff",
     diff,
+    review: diff === null ? null : {
+      mode: "diff",
+      spec: diff.spec,
+      request: diff.request,
+      base: diff.base,
+      target: diff.target,
+    },
     skippedLargeFiles: 0,
     languages: [],
   };

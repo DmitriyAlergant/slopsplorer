@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { ComparisonRequest, DiffMeta, GitRef, RepositoryRefs } from "../../shared/api.ts";
+import type { ComparisonRequest, GitRef, RepositoryRefs, ReviewMeta } from "../../shared/api.ts";
 import { fetchRefs } from "../api.ts";
 import { messageOf, shortRevision } from "../format.ts";
 import { MenuChevron } from "./MenuChevron.tsx";
 import { Tooltip, tooltipHandlers } from "./Tooltip.tsx";
 
 interface Props {
-  diff: DiffMeta;
+  comparison: ReviewMeta;
   /** A measurement is running, so a new one cannot start. */
   disabled: boolean;
   onCompare: (comparison: ComparisonRequest) => void;
@@ -227,7 +227,7 @@ function RefPanel({ side, sections, error, onTypedRevision, mergeBase }: {
  * once, so nothing here is half-chosen and the chips always read as what the
  * page below them is drawing.
  */
-export function ComparisonPicker({ diff, disabled, onCompare }: Props): React.JSX.Element {
+export function ComparisonPicker({ comparison, disabled, onCompare }: Props): React.JSX.Element {
   const [openSide, setOpenSide] = useState<Side | null>(null);
   const [refs, setRefs] = useState<RepositoryRefs | null>(null);
   const [refsError, setRefsError] = useState<string | null>(null);
@@ -239,7 +239,7 @@ export function ComparisonPicker({ diff, disabled, onCompare }: Props): React.JS
     [],
   );
 
-  const selection = selectionOf(diff.request);
+  const selection = selectionOf(comparison.request);
 
   /** Choosing measures at once, and choosing what is already drawn only closes. */
   const apply = (next: Selection): void => {
@@ -406,7 +406,7 @@ export function ComparisonPicker({ diff, disabled, onCompare }: Props): React.JS
         baseSettled
           ? "the index is always compared against HEAD"
           : selection.fromMergeBase
-            ? `${diff.base} - click to compare from something else`
+            ? `${comparison.base} - click to compare from something else`
             : `${selection.base} - click to compare from something else`,
         baseSettled,
         // What "from" means, in Git's own notation, because a merge base moves

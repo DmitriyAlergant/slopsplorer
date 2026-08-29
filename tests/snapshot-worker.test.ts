@@ -35,6 +35,7 @@ const META: ScanMeta = {
   durationMs: 5,
   fileSource: "git-index",
   diff: null,
+  review: null,
   skippedLargeFiles: 0,
   languages: [],
 };

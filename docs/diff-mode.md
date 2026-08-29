@@ -109,6 +109,27 @@ A revision the repository does not hold is answered with 400 and the message fro
 A new comparison replaces the file list, so the client clears the exclusions, the drill, and the selection before it asks.
 `tests/diff-server.test.ts` covers the route and the ref list.
 
+## Reading the repository around a change
+
+The Before / Diff / After switch in `InstrumentBar` changes the question without losing the comparison.
+Diff measures only the paths the change touched.
+Before and After measure every accepted source file in that side of the repository, so a reviewer can see where the change sits in the complete tree and return to the change itself.
+
+Every choice rescans.
+`POST /api/review-mode` keeps the active `Comparison` and installs either its diff producer or a `reviewSide` producer.
+`ScanMeta.review` keeps the comparison and the active choice visible while `ScanMeta.diff` stays `null` in a repository view.
+The diff remains the only mode that reports churn.
+
+`scanReviewSide()` in `src/scanner/scan.ts` reads a revision without checking it out.
+`listRevisionFiles()` asks `git ls-tree` for the complete path list, and `GitObjectReader` asks `git cat-file --batch` for each `<revision>:<path>` blob.
+The index uses `git ls-files --cached` and `:<path>` blobs.
+A working-tree side uses the normal filesystem scan, because uncommitted and untracked files have no Git object.
+`openSourceReader()` uses the same source for a file preview, so the full-tree figures and the text beside them describe one repository image.
+
+Opening another folder leaves the review and installs a plain scan.
+Changing the comparison from a repository-side view measures the new diff first.
+A static snapshot offers none of these choices because each one needs a new index.
+
 ## The file list
 
 `git diff --name-status -z -M <base> <target>` gives the changed paths, the status letter, and the rename pairs.

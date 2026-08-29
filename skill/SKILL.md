@@ -70,6 +70,7 @@ slopsplorer --pr 619           # a pull request
 ```
 
 A comparison of two commits also draws a band of the commits it spans, so the user can read one commit at a time.
+The Before / Diff / After control rescans either complete repository image and returns to the change without checking out a revision.
 
 It serves on <http://127.0.0.1:8765> and runs until stopped, so start it in the background and give the user the URL.
 Outside a terminal the user is watching, pass `--no-open` so it does not try to launch a browser.

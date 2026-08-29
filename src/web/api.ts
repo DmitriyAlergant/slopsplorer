@@ -1,7 +1,7 @@
 import type {
   AgentsResponse, AskListResponse, AskRequest, AskTask, CommitSpine, CompareRequest, ComparisonRequest,
   DismissAskRequest, FileListResponse, OpenRootRequest, RepositoryRefs, SkillInstallResponse, SourceResponse,
-  ViewRequest, ViewResponse,
+  ReviewMode, ReviewModeRequest, ViewRequest, ViewResponse,
 } from "../shared/api.ts";
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
@@ -57,6 +57,12 @@ export function openRoot(root: string, view: ViewRequest): Promise<ViewResponse>
 export function compare(comparison: ComparisonRequest, view: ViewRequest): Promise<ViewResponse> {
   const body: CompareRequest = { comparison, view };
   return postJson<ViewResponse>("/api/compare", body);
+}
+
+/** Rescan the change or one complete repository image in the active review. */
+export function switchReviewMode(mode: ReviewMode, view: ViewRequest): Promise<ViewResponse> {
+  const body: ReviewModeRequest = { mode, view };
+  return postJson<ViewResponse>("/api/review-mode", body);
 }
 
 /** Branches, remote branches, and tags the comparison picker offers. */

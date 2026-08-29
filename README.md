@@ -78,6 +78,9 @@ The band answers to no filter, because it is the frame the review happens inside
 Generated files stay out of it, so one regenerated lockfile cannot flatten every other commit.
 It opens shut, and shut it still says where you are and still steps.
 
+The Before / Diff / After control in the header rescans the complete repository on either side of the change, then returns to the diff without losing the comparison.
+Commit and index views come straight from Git's object database, with no checkout, while a working-tree view includes uncommitted and untracked files from disk.
+
 A switch beside the unit picks which side of the change every figure describes:
 
 | Aspect | Means |

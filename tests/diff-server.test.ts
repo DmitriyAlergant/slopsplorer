@@ -44,6 +44,14 @@ async function postCompare(comparison: unknown): Promise<Response> {
   });
 }
 
+async function postReviewMode(mode: unknown): Promise<Response> {
+  return fetch(`${serverUrl}/api/review-mode`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ mode, view: { kinds: ["code", "test", "text", "i18n", "data", "other"] } }),
+  });
+}
+
 async function activeMeta(): Promise<ScanMeta> {
   const response = await fetch(`${serverUrl}/api/health`);
   return ((await response.json()) as { meta: ScanMeta }).meta;
@@ -128,6 +136,77 @@ describe("what the picker can offer", () => {
     const refs = await response.json() as RepositoryRefs;
     expect(refs.headBranch).toBe("main");
     expect(refs.refs).toEqual([{ name: "main", kind: "branch", shortSha: refs.headSha }]);
+  });
+}, SCAN_TIMEOUT_MS);
+
+describe("reviewing either repository image", () => {
+  it("rescans the complete before and after trees, then returns to the diff", async () => {
+    expect((await postCompare({ kind: "revisionPair", base: "HEAD~1", target: "HEAD" })).status).toBe(200);
+
+    const beforeResponse = await postReviewMode("before");
+    expect(beforeResponse.status).toBe(200);
+    const before = await beforeResponse.json() as ViewResponse;
+    expect(before.meta.diff).toBeNull();
+    expect(before.meta.review).toMatchObject({ mode: "before", base: expect.any(String), target: expect.any(String) });
+    expect(before.meta.fileSource).toBe("git-tree");
+    expect(before.ranked.map((file) => file.path)).toEqual(["src/first.ts"]);
+
+    const beforeSource = await fetch(`${serverUrl}/api/source?path=src/first.ts`);
+    expect(beforeSource.status).toBe(200);
+    await expect(beforeSource.json()).resolves.toMatchObject({
+      mode: "source",
+      content: "export const first = 1;\n",
+    });
+
+    const afterResponse = await postReviewMode("after");
+    expect(afterResponse.status).toBe(200);
+    const after = await afterResponse.json() as ViewResponse;
+    expect(after.meta.diff).toBeNull();
+    expect(after.meta.review?.mode).toBe("after");
+    expect(after.ranked.map((file) => file.path)).toEqual(["src/first.ts", "src/second.ts"]);
+
+    const diffResponse = await postReviewMode("diff");
+    expect(diffResponse.status).toBe(200);
+    const diff = await diffResponse.json() as ViewResponse;
+    expect(diff.meta.diff?.spec).toBe("HEAD~1..HEAD");
+    expect(diff.meta.review?.mode).toBe("diff");
+    expect(diff.ranked.map((file) => file.path)).toEqual(["src/second.ts"]);
+  });
+
+  it("reads the working tree as the after repository image", async () => {
+    expect((await postCompare({ kind: "workingTree" })).status).toBe(200);
+    const response = await postReviewMode("after");
+    expect(response.status).toBe(200);
+    const view = await response.json() as ViewResponse;
+    expect(view.meta.review?.mode).toBe("after");
+    expect(view.ranked.map((file) => file.path)).toContain("src/scratch.ts");
+  });
+
+  it("reads the staged after image from the index instead of the working tree", async () => {
+    await write("src/staged.ts", "export const staged = 1;\n");
+    await git("add", "src/staged.ts");
+    await write("src/staged.ts", "export const staged = 2;\n");
+    try {
+      expect((await postCompare({ kind: "staged" })).status).toBe(200);
+      expect((await postReviewMode("after")).status).toBe(200);
+      const response = await fetch(`${serverUrl}/api/source?path=src/staged.ts`);
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toMatchObject({
+        mode: "source",
+        content: "export const staged = 1;\n",
+      });
+    } finally {
+      await git("reset", "--", "src/staged.ts");
+      await rm(path.join(root, "src/staged.ts"));
+    }
+  });
+
+  it("rejects an unknown view without replacing the active one", async () => {
+    const before = await activeMeta();
+    const response = await postReviewMode("sideways");
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ error: "`mode` must be before, diff, or after" });
+    expect((await activeMeta()).review).toEqual(before.review);
   });
 }, SCAN_TIMEOUT_MS);
 

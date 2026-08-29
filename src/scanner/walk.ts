@@ -36,6 +36,16 @@ async function listGitFiles(root: string): Promise<string[]> {
   return [...new Set(stdout.split("\0").filter(Boolean))];
 }
 
+/** Every path in the stage-zero index, without working-tree-only files. */
+export async function listIndexFiles(root: string): Promise<string[]> {
+  const { stdout } = await execFileAsync(
+    "git",
+    ["ls-files", "-z", "--cached", "--", "."],
+    { cwd: root, maxBuffer: 256 * 1024 * 1024, encoding: "utf8" },
+  );
+  return [...new Set(stdout.split("\0").filter(Boolean))];
+}
+
 /** Ignored export markers, which the ordinary Git listing intentionally omits. */
 async function listIgnoredGitExportMarkers(root: string): Promise<string[]> {
   const { stdout } = await execFileAsync(
