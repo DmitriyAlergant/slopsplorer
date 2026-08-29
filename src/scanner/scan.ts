@@ -2,7 +2,7 @@ import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import type { FileRow, ScanMeta } from "../shared/api.ts";
 import { assembleIndex, type FolderNode, type ScanIndex } from "../shared/index.ts";
-import { classifyFile, findLocaleLevels, hasGeneratedHeader, isGenerated, refineKindByContent } from "./classify.ts";
+import { classifyFile, findLocaleLevels, hasGeneratedContent, isGenerated, refineKindByContent } from "./classify.ts";
 import { measureFile } from "./measure.ts";
 import { StructureAnalyzer } from "./structure.ts";
 import { tokenCounter, type TokenizerName } from "./tokenize.ts";
@@ -128,7 +128,7 @@ export async function scanSourceTree(options: ScanOptions): Promise<ScanIndex> {
         path: relativePath,
         name,
         kind: refineKindByContent(classifyFile(relativePath, localeLevels), relativePath, { grammar, ...structure }),
-        generated: isGenerated(relativePath) || hasGeneratedHeader(text),
+        generated: isGenerated(relativePath) || hasGeneratedContent(relativePath, text),
         ...UNCHANGED_FILE_FIELDS,
         tokens: countTokens(text),
         lines: lineMetrics.lines,

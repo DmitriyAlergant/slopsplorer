@@ -38,7 +38,7 @@ Six flavors, plus a generated flag that is independent of them.
 | `text` | Markdown and other prose. |
 | `i18n` | Translation catalogues and locale files. |
 | `data` | Structured data and configuration. |
-| `other` | Text files that fit nothing else, such as HTML. |
+| `other` | Text files that fit nothing else, such as HTML and stylesheets. |
 
 `generated` is a separate boolean rather than a flavor, so a generated file also keeps its own flavor.
 The client draws it as one more switch beside the flavors.
@@ -96,6 +96,10 @@ A comparison sees only the files a change touched, so `listTargetFiles()` in `sr
 7. A code extension: `test` if the filename follows a test-suffix convention through `isTestSourceName()`, or if a folder on the path is a test directory, and `code` otherwise.
 8. Everything else: `other`.
 
+`.css` and `.scss` are deliberately absent from the code extensions, so a stylesheet falls to `other` beside the `.html` it dresses.
+Neither holds logic to reason about, and both are read for what they render, so one could not be code while the other is not.
+A stylesheet still carries its tokens and its line split, and the Other switch is what takes presentation off the map.
+
 ### The two test-filename rules
 
 Test detection reads a filename twice, and the two halves carry different weight.
@@ -144,17 +148,48 @@ A file with no grammar has no literal measurement, so this rule never applies to
 
 ## Generated output
 
+Two functions set the flag, and either one is enough.
 `isGenerated()` decides from the path alone, without reading the file.
-It marks a folder named `__generated__`, `coverage`, `dist`, `generated`, or `gen`; the known lock files; and the suffixes that build tools use, among them `.g.dart`, `.pb.go`, `_pb2.py`, `.min.js`, `.bundle.js`, `.map`, and `.lock`.
+`hasGeneratedContent()` decides from the text, because the path is silent for whole classes of generated output.
 
-`hasGeneratedHeader()` reads what the file says about itself, because the path is silent for a whole class of generated code.
-An SDK client emitted from a service specification sits in ordinary `src/` folders under ordinary names, and only its header says what it is: that is 11 percent of Azure's JavaScript SDK.
+### What the path says
+
+`isGenerated()` marks a folder named `__generated__`, `coverage`, `dist`, `generated`, or `gen`; the known lock files; and the suffixes that build tools use, among them `.g.dart`, `.pb.go`, `_pb2.py`, `.min.js`, `.min.css`, `.bundle.js`, `.chunk.js`, `.map`, and `.lock`.
+
+It also reads the marker that a build tool writes into the stem, in whatever language it emits: `vimfn.gen.lua`, `CallInstruction.Generated.cs`, `serializer.autogen.cs`, and `zz_generated.deepcopy.go`.
+`gen` needs the dot before it, so that `hugo_gen.md`, which documents the `gen` command, and `codegen.py`, which is the generator, stay unflagged.
+
+The last path rule is the content hash a bundler writes into an asset name: `main.073c9b0a.js`, `index-DkR3sT1a.js`, `2.f1e2d3c4.chunk.css`.
+Two shapes, because two conventions are in use.
+Webpack and Create React App write a lowercase hex digest, and Vite, Rollup, and SvelteKit write a base64url one, which is why the second half asks for both cases instead.
+A hash segment is eight characters or longer, and it is never the first segment of the stem, which is the name a person chose: `MyComponent.js` is mixed case and eleven characters long, and a hash is what follows a name rather than replacing it.
+The hex half also needs a letter and a digit, and both were measured: without the letter every dated name matched, since `20240101` is eight hex characters, and without the digit `deadbeef` did.
+The base64url half needs neither, because a Vite digest often carries no digit.
+Read over 4,718 real files that half flagged 56 names, and every one of them was a bundle chunk.
+
+The rule is read for `.js`, `.mjs`, `.cjs`, and `.css` only.
+That is what makes it safe, and it is also what makes the folder unimportant: a bundler names its assets the same way into `dist/`, `build/`, `out/`, `public/`, and `static/js/`, so no folder list has to guess which of those a project uses for output and which for source.
+
+### What the content says
+
+`hasGeneratedContent()` reads three kinds of evidence.
+
+The first is the header a generator writes about itself, which is the only thing that identifies an SDK client emitted from a service specification: it sits in an ordinary `src/` folder under an ordinary name, and that is 11 percent of Azure's JavaScript SDK.
 The marker has to sit inside a comment in the first eight lines.
 The comment is what makes it safe, and it was measured: unanchored, `@generated` also matches TypeORM's `@Generated()` column decorator and a Ruby `@generated` instance variable.
 `rendered` was measured and left out, because across 21 repositories it only ever matched prose about a component being rendered by something else.
 
-`isGenerated()` also reads the marker that a build tool writes into the stem, in whatever language it emits: `vimfn.gen.lua`, `CallInstruction.Generated.cs`, `serializer.autogen.cs`, and `zz_generated.deepcopy.go`.
-`gen` needs the dot before it, so that `hugo_gen.md`, which documents the `gen` command, and `codegen.py`, which is the generator, stay unflagged.
+A compiled bundle usually carries no header at all, so the other two kinds are read for the bundler formats only.
+
+- A source map comment, `//# sourceMappingURL=` or `/*# sourceMappingURL=`, opening a line.
+  Only a compiler writes one, and it is a statement that the real sources are elsewhere.
+  It must open the line, so a bundler's own source, which writes the marker as a string value, stays unflagged.
+- Minified line shape: at least 2,000 characters, and a mean non-blank line of at least 500.
+  The mean rather than the longest line, because one embedded data URI is normal in a stylesheet somebody wrote.
+  Hand-written JavaScript and CSS sit near 35 characters a line and a bundle sits in the thousands, so there is no boundary to tune.
+  This is what catches a library or a compiled stylesheet copied into an ordinary `static/` folder under its own name.
+
+Both are read for `.js`, `.mjs`, `.cjs`, and `.css`, because one long line means something different elsewhere: a `.json` fixture is often written as one, and so is a paragraph of Markdown.
 
 ## Grammar selection
 

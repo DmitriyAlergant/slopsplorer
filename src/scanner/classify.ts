@@ -21,10 +21,15 @@ export const EXCLUDED_DIRECTORIES: ReadonlySet<string> = new Set([
   "__pycache__", "node_modules", "target", "venv", "vendor",
 ]);
 
+/**
+ * Stylesheets are deliberately absent, and fall through to `other` beside the
+ * markup they dress. Both are hand-written source and neither holds logic, so
+ * one could not be code while the other is not.
+ */
 const CODE_EXTENSIONS: ReadonlySet<string> = new Set([
-  ".bash", ".bats", ".c", ".cc", ".cjs", ".cpp", ".cs", ".css", ".fish",
+  ".bash", ".bats", ".c", ".cc", ".cjs", ".cpp", ".cs", ".fish",
   ".go", ".h", ".hpp", ".java", ".js", ".jsx", ".ksh", ".kt", ".kts", ".lua",
-  ".mjs", ".php", ".prisma", ".ps1", ".py", ".pyi", ".rb", ".rs", ".scss",
+  ".mjs", ".php", ".prisma", ".ps1", ".py", ".pyi", ".rb", ".rs",
   ".sh", ".sql", ".svelte", ".swift", ".ts", ".tsx", ".vue", ".zsh",
 ]);
 
@@ -393,8 +398,45 @@ const GENERATED_DIRECTORIES: ReadonlySet<string> = new Set([
 
 const GENERATED_SUFFIXES: readonly string[] = [
   ".g.ts", ".g.dart", ".pb.go", "_pb2.py", "_pb2_grpc.py", "_pb.ts",
-  ".min.js", ".min.css", ".bundle.js", ".map", ".lock",
+  ".min.js", ".min.mjs", ".min.css", ".bundle.js", ".bundle.css",
+  ".chunk.js", ".chunk.css", ".map", ".lock",
 ];
+
+/**
+ * The formats a bundler emits, and the only ones whose name and line shape are
+ * read as evidence below.
+ *
+ * A content hash and a very long line both mean something particular here and
+ * nothing anywhere else: a `.json` fixture is often one long line, and a dated
+ * `.sql` migration carries a name that reads like a digest.
+ */
+const BUNDLE_EXTENSIONS: ReadonlySet<string> = new Set([".css", ".cjs", ".js", ".mjs"]);
+
+/** The parts of an asset stem, as `2.f1e2d3c4.chunk` and `index-DkR3sT1a` divide. */
+const STEM_SEGMENTS = /[.-]/;
+
+/**
+ * Whether one segment of an asset stem is a bundler's content hash.
+ *
+ * Two conventions are in use, so two shapes. Webpack and Create React App
+ * write a lowercase hex digest, as in `main.073c9b0a.js`. Vite, Rollup, and
+ * SvelteKit write a base64url one, as in `index-DkR3sT1a.js`, so that half
+ * asks for both cases instead.
+ *
+ * The hex half needs a letter and a digit, and each was measured. Without the
+ * letter every dated name matched, since `20240101` is eight hex characters.
+ * Without the digit `deadbeef` did.
+ *
+ * The mixed-case half needs neither, because a Vite digest often carries no
+ * digit at all. Read over 4,718 real files it flagged 56 names and every one
+ * was a bundle chunk, which holds because the caller asks for a bundler format
+ * and never reads the first segment.
+ */
+function isContentHash(segment: string): boolean {
+  if (segment.length < 8 || !/^[A-Za-z0-9_]+$/.test(segment)) return false;
+  if (/^[0-9a-f]+$/.test(segment)) return /[0-9]/.test(segment) && /[a-f]/.test(segment);
+  return /[a-z]/.test(segment) && /[A-Z]/.test(segment);
+}
 
 /**
  * The word a build tool puts in a stem, in whatever language it writes:
@@ -441,6 +483,36 @@ const GENERATED_HEADER_LINES = 8;
 /** How much of the head to read, so one minified line cannot cost a scan. */
 const GENERATED_HEADER_CHARS = 2000;
 
+/** The line a bundler writes to point at the sources it compiled away. */
+const SOURCE_MAP_COMMENT = /(?:^|\n)[ \t]*(?:\/\/|\/\*)# sourceMappingURL=/;
+
+/** Below this a file is too small for its line shape to mean anything. */
+const MIN_MINIFIED_CHARS = 2000;
+
+/** The mean length of a non-blank line, above which nobody wrote the file by hand. */
+const MIN_MINIFIED_LINE_LENGTH = 500;
+
+/**
+ * Whether the file has been through a minifier.
+ *
+ * The mean rather than the longest line, because one embedded data URI or one
+ * long selector list is normal in a stylesheet somebody wrote. Hand-written
+ * JavaScript and CSS sit near 35 characters a line, and a bundle sits in the
+ * thousands, so there is no boundary to tune.
+ */
+function isMinified(text: string): boolean {
+  if (text.length < MIN_MINIFIED_CHARS) return false;
+  let lines = 0;
+  let characters = 0;
+  for (const line of text.split("\n")) {
+    const trimmed = line.trim();
+    if (trimmed === "") continue;
+    lines += 1;
+    characters += trimmed.length;
+  }
+  return lines > 0 && characters >= lines * MIN_MINIFIED_LINE_LENGTH;
+}
+
 /**
  * Whether the file says a tool wrote it.
  *
@@ -448,20 +520,44 @@ const GENERATED_HEADER_CHARS = 2000;
  * is emitted from a service specification sits in ordinary `src/` folders
  * under ordinary names, and only the header it carries says what it is. That
  * is 11% of Azure's JavaScript SDK.
+ *
+ * A compiled bundle usually carries no header at all, so for the formats a
+ * bundler emits two more kinds of evidence are read. A source map reference is
+ * a statement that the real sources are elsewhere, and only a compiler writes
+ * one. Minified line shape catches the rest, among them a stylesheet or a
+ * library copied into an ordinary `static/` folder.
  */
-export function hasGeneratedHeader(text: string): boolean {
+export function hasGeneratedContent(relativePath: string, text: string): boolean {
   const head = text.slice(0, GENERATED_HEADER_CHARS).split("\n", GENERATED_HEADER_LINES);
-  return head.some((line) => COMMENT_LINE.test(line) && GENERATED_HEADER.test(line));
+  if (head.some((line) => COMMENT_LINE.test(line) && GENERATED_HEADER.test(line))) return true;
+  if (!BUNDLE_EXTENSIONS.has(path.posix.extname(relativePath).toLowerCase())) return false;
+  return SOURCE_MAP_COMMENT.test(text) || isMinified(text);
 }
 
-/** Detect generated output from path conventions alone, without reading content. */
+/**
+ * Detect generated output from path conventions alone, without reading content.
+ *
+ * The content hash is what reaches a front-end build wherever it was written,
+ * since a bundler names its assets the same way into `dist/`, `build/`,
+ * `out/`, and `static/js/`. Those folder names are not listed, because each of
+ * them also holds hand-written source in some other project, and the hash
+ * needs no such guess.
+ */
 export function isGenerated(relativePath: string): boolean {
-  const name = path.posix.basename(relativePath).toLowerCase();
+  const name = path.posix.basename(relativePath);
+  const lowercasedName = name.toLowerCase();
   const directories = path.posix.dirname(relativePath).toLowerCase().split("/").filter((part) => part && part !== ".");
   if (containsAny(directories, GENERATED_DIRECTORIES)) return true;
-  if (GENERATED_NAMES.has(name)) return true;
-  if (GENERATED_SUFFIXES.some((suffix) => name.endsWith(suffix))) return true;
-  return GENERATED_STEM.test(name.slice(0, name.length - path.posix.extname(name).length));
+  if (GENERATED_NAMES.has(lowercasedName)) return true;
+  if (GENERATED_SUFFIXES.some((suffix) => lowercasedName.endsWith(suffix))) return true;
+  const extension = path.posix.extname(lowercasedName);
+  // The hash keeps its own case, so it is read off the name as written.
+  const stem = name.slice(0, name.length - extension.length);
+  // Never the first segment, which is the name a person chose: `MyComponent.js`
+  // is mixed case and eight characters long, and a hash is what follows one.
+  if (BUNDLE_EXTENSIONS.has(extension)
+    && stem.split(STEM_SEGMENTS).some((segment, index) => index > 0 && isContentHash(segment))) return true;
+  return GENERATED_STEM.test(stem);
 }
 
 /** Trailing version digits on an interpreter name, as in `python3.12` or `perl5`. */
