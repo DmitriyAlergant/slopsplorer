@@ -198,7 +198,7 @@ Comment spans come from the grammar where there is one, and from a marker table 
 Every file gets a flavor: Code, Tests, Docs, i18n, Data & Config, or Other, with generated output as a switch of its own.
 The file decides its flavor before its folder does, so a fixture in a test folder counts as the format it is, not as test code.
 
-[docs/classification.md](docs/classification.md) has the full rules: which files enter a scan, how a grammar is chosen, and every deliberate divergence from `cloc`.
+[docs/scanning-and-classification.md](docs/scanning-and-classification.md) has the full rules: which files enter a scan, how a grammar is chosen, and every deliberate divergence from `cloc`.
 
 ## Options
 

@@ -11,7 +11,7 @@ That is why diff mode is a second producer of `ScanIndex` and not a second progr
 
 For the commits inside a comparison, read [commit-band.md](./commit-band.md).
 For the parts it shares, read [architecture.md](./architecture.md).
-For the rules that decide what each file is, read [classification.md](./classification.md).
+For the rules that decide what each file is, read [scanning-and-classification.md](./scanning-and-classification.md).
 
 ## The command line
 

@@ -36,4 +36,10 @@ describe("highlighting cut into lines", () => {
     expect(lines).toEqual(["alpha &lt;b&gt; &amp; &#x27;c&#x27;", "beta"]);
     expect(lines.map(plainText)).toEqual(["alpha <b> & 'c'", "beta"]);
   });
+
+  it("highlights every admitted HTML extension as markup", () => {
+    for (const extension of ["htm", "html", "xhtml"]) {
+      expect(highlightToLines(`page.${extension}`, "<main>text</main>")[0]).toContain("hljs-tag");
+    }
+  });
 });

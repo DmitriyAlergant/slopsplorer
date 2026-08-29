@@ -41,7 +41,7 @@ A tree and a comparison are two producers of one `ScanIndex`, and nothing downst
 Two design docs hold the detail, and they are the technical memory of this repository:
 
 - [docs/architecture.md](docs/architecture.md) - how the parts fit together, the scan, the wire contract, the routes, the client.
-- [docs/classification.md](docs/classification.md) - which files enter a scan, flavors, grammar selection, structure counts, lines, tokens.
+- [docs/scanning-and-classification.md](docs/scanning-and-classification.md) - which files enter a scan, flavors, grammar selection, structure counts, lines, tokens.
 - [docs/diff-mode.md](docs/diff-mode.md) - the second producer of an index: the command line, the line diff, churn and net, signed weight.
 - [docs/commit-band.md](docs/commit-band.md) - the commits inside a comparison: the span, the band above the filter bar, and where the spine is held.
 - [docs/report.md](docs/report.md) - the second consumer of an index: `--report`, the sections, the one rule that decides how deep the walk goes.

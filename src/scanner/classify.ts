@@ -7,11 +7,11 @@ import type { FileKind } from "../shared/api.ts";
  */
 const SOURCE_EXTENSIONS: ReadonlySet<string> = new Set([
   ".adoc", ".bash", ".bats", ".c", ".cc", ".cjs", ".cpp", ".cs", ".csv",
-  ".css", ".fish", ".go", ".h", ".hpp", ".html", ".java", ".js", ".json",
+  ".css", ".fish", ".go", ".h", ".hpp", ".htm", ".html", ".java", ".js", ".json",
   ".jsonc", ".jsx", ".ksh", ".kt", ".kts", ".lock", ".lua", ".md", ".mdx",
   ".mjs", ".php", ".po", ".pot", ".prisma", ".ps1", ".py", ".pyi", ".rb",
   ".rs", ".rst", ".scss", ".sh", ".sql", ".svelte", ".swift", ".toml", ".ts",
-  ".tsv", ".tsx", ".txt", ".vue", ".xml", ".yaml", ".yml", ".zsh",
+  ".tsv", ".tsx", ".txt", ".vue", ".xhtml", ".xml", ".yaml", ".yml", ".zsh",
 ]);
 
 /** Directories never worth measuring, even when a filesystem walk reaches them. */
@@ -41,6 +41,11 @@ const DATA_EXTENSIONS: ReadonlySet<string> = new Set([
 const DATA_NAMES: ReadonlySet<string> = new Set(["requirements.txt"]);
 
 const TEXT_EXTENSIONS: ReadonlySet<string> = new Set([".adoc", ".md", ".mdx", ".rst", ".txt"]);
+
+/** Extensionless repository documents whose names state that they are prose. */
+const TEXT_NAMES: ReadonlySet<string> = new Set([
+  "changelog", "changes", "citation", "contributing", "copying", "license", "licence", "readme",
+]);
 
 const I18N_DIRECTORIES: ReadonlySet<string> = new Set([
   "i18n", "intl", "lang", "locale", "locales", "translation", "translations",
@@ -101,6 +106,11 @@ const LANGUAGE_CODES: ReadonlySet<string> = new Set([
   "zh", "zu",
 ]);
 
+/** Obsolete ISO language codes that translation repositories still use. */
+const LEGACY_LANGUAGE_CODES: ReadonlySet<string> = new Set([
+  "in", "iw", "ji", "jw", "mo", "scc", "scr", "sh",
+]);
+
 /** Whether any member of `candidates` is in `known`. */
 function containsAny(candidates: Iterable<string>, known: ReadonlySet<string>): boolean {
   for (const candidate of candidates) {
@@ -110,7 +120,7 @@ function containsAny(candidates: Iterable<string>, known: ReadonlySet<string>): 
 }
 
 /**
- * ISO 3166-1 alpha-2 regions, plus the scripts that appear where a region does.
+ * ISO 3166-1 alpha-2 regions.
  *
  * Curated for the same reason the language codes are, and measured: a rule that
  * took any short suffix read `no_log`, `no_ip`, `no-tty`, and `hi_kumo` as
@@ -133,18 +143,28 @@ const REGION_CODES: ReadonlySet<string> = new Set([
   "ss", "sv", "sy", "sz", "td", "tg", "th", "tj", "tm", "tn", "to", "tr", "tt",
   "tw", "tz", "ua", "ug", "us", "uy", "uz", "ve", "vn", "vu", "ws", "ye", "za",
   "zm", "zw",
-  "arab", "cyrl", "hans", "hant", "latn",
 ]);
 
-/** `en`, `de-DE`, `pt_BR`, `sr_Latn` - the shape of a locale name. */
-const LOCALE_NAME = /^([a-z]{2,3})(?:[-_]([a-z]{2,4}))?$/;
+/** ISO 15924 scripts seen in the locale aliases maintained by Weblate. */
+const SCRIPT_CODES: ReadonlySet<string> = new Set([
+  "arab", "cyrl", "deva", "hani", "hans", "hant", "latn", "olck", "piqd", "qabs",
+]);
 
-/** Whether the name is a language code, with a real region or script if it carries one. */
+/** `en`, `de-DE`, `sr_Latn`, `zh-Hant-TW` - the shape of a locale name. */
+const LOCALE_NAME = /^([a-z]{2,3})(?:[-_]([a-z]{2}|[a-z]{4}))?(?:[-_]([a-z]{2}))?$/;
+
+/** Whether the name is a language code, with real script and region parts if it carries them. */
 function isLocaleName(name: string): boolean {
   const match = LOCALE_NAME.exec(name);
-  if (match === null || !LANGUAGE_CODES.has(match[1]!)) return false;
-  const region = match[2];
-  return region === undefined || REGION_CODES.has(region);
+  if (match === null) return false;
+  const language = match[1]!;
+  if (!LANGUAGE_CODES.has(language) && !LEGACY_LANGUAGE_CODES.has(language)) return false;
+  const qualifier = match[2];
+  const region = match[3];
+  if (region !== undefined) {
+    return qualifier !== undefined && SCRIPT_CODES.has(qualifier) && REGION_CODES.has(region);
+  }
+  return qualifier === undefined || REGION_CODES.has(qualifier) || SCRIPT_CODES.has(qualifier);
 }
 
 /**
@@ -322,6 +342,7 @@ export function classifyFile(relativePath: string, localeLevels: ReadonlySet<str
   if (isTestFileName(lowercasedName)) return "test";
   if (isLocaleCopy(directories, stem, localeLevels)) return "i18n";
   if (DATA_NAMES.has(lowercasedName)) return "data";
+  if (TEXT_NAMES.has(lowercasedName)) return "text";
   if (DATA_EXTENSIONS.has(extension)) return containsAny(directories, I18N_DIRECTORIES) ? "i18n" : "data";
   if (TEXT_EXTENSIONS.has(extension)) return containsAny(directories, FIXTURE_DIRECTORIES) ? "data" : "text";
   if (CODE_EXTENSIONS.has(extension)) {
@@ -398,6 +419,7 @@ const GENERATED_DIRECTORIES: ReadonlySet<string> = new Set([
 
 const GENERATED_SUFFIXES: readonly string[] = [
   ".g.ts", ".g.dart", ".pb.go", "_pb2.py", "_pb2_grpc.py", "_pb.ts",
+  ".designer.cs", ".feature.cs",
   ".min.js", ".min.mjs", ".min.css", ".bundle.js", ".bundle.css",
   ".chunk.js", ".chunk.css", ".map", ".lock",
 ];
@@ -450,8 +472,11 @@ function isContentHash(segment: string): boolean {
 const GENERATED_STEM = /[._-](?:generated|autogen)(?:$|[._-])|\.gen$/i;
 
 const GENERATED_NAMES: ReadonlySet<string> = new Set([
-  "package-lock.json", "pnpm-lock.yaml", "yarn.lock", "bun.lockb", "composer.lock",
+  "package-lock.json", "npm-shrinkwrap.json", "pnpm-lock.yaml", "yarn.lock", "bun.lockb", "composer.lock",
 ]);
+
+/** Generated filenames that form a family rather than one fixed name. */
+const GENERATED_NAME = /^\.pnp\./;
 
 /**
  * A line that opens or continues a comment, in any language a scan reads.
@@ -460,7 +485,10 @@ const GENERATED_NAMES: ReadonlySet<string> = new Set([
  * also matches TypeORM's `@Generated()` column decorator and a Ruby
  * `@generated` instance variable, neither of which is a generated file.
  */
-const COMMENT_LINE = /^\s*(?:\/\/|\/\*|\*|#|--|<!--|;|"""|''')/;
+const COMMENT_LINE = /^\s*(?:\/\/|\/\*+|\*|#|--|<!--|;|"""|''')\s*/;
+
+/** Notices that may introduce a generator's ownership statement on the same line. */
+const GENERATED_HEADER_NOTICE = /^(?:(?:(?:warning|note):|copyright\b[^.!]{0,80}[.!])\s*)+/i;
 
 /**
  * What a generator writes at the top of the file it wrote.
@@ -471,17 +499,60 @@ const COMMENT_LINE = /^\s*(?:\/\/|\/\*|\*|#|--|<!--|;|"""|''')/;
  * `This file is automatically generated by ...`, `@generated`, and Go's
  * `Code generated by "stringer"; DO NOT EDIT.`.
  *
+ * A warning or copyright notice may open the comment before the marker.
+ * Loose generated wording needs a whole-file subject, a named producer, or a
+ * do-not-edit warning so a comment about runtime-generated values stays code.
+ *
  * `rendered` was measured and left out. It reads like a generator marker, but
  * across 21 repositories it only ever matched prose about a component being
  * rendered by something else.
  */
-const GENERATED_HEADER = /@generated|code generated by|(?:auto[- ]?|automatically )generated(?:\s+by|.{0,80}?do not edit)|do not edit.{0,80}?generated/i;
+const GENERATED_HEADERS: readonly RegExp[] = [
+  /^@generated\b/i,
+  /^<auto-generated\s*\/?>/i,
+  /^(?:auto[- ]?generated|automatically generated)\b(?:\s+by\b|.{0,80}\bdo not (?:edit|modify)\b)/i,
+  /^(?:code|file) generated by\b/i,
+  /^generated by\b.{0,80}\bdo not (?:edit|modify)\b/i,
+  /^(?:this|the following)\s+(?:code|file|class|interface|art[ei]fact|module|script)\s+(?:was|is|has been)\s+(?:(?:auto[- ]?|automatically |mechanically )generated\b|generated by\b)/i,
+  /^this is (?:an? )?generated (?:code|file)\b/i,
+  /^(?:any )?modifications to this file will be lost\b/i,
+  /^generated code\b.{0,80}\bdo not (?:edit|modify)\b/i,
+  /^do not (?:edit|modify)\b.{0,80}\b(?:machine[- ]+)?generated\b/i,
+];
+
+/** Whether a leading comment line carries a generator's ownership marker. */
+function isGeneratedHeader(line: string): boolean {
+  const comment = COMMENT_LINE.exec(line);
+  if (comment === null) return false;
+  const text = line.slice(comment[0].length).replace(GENERATED_HEADER_NOTICE, "");
+  return GENERATED_HEADERS.some((marker) => marker.test(text));
+}
 
 /** How far into a file the marker may sit. A header is a header. */
 const GENERATED_HEADER_LINES = 8;
 
 /** How much of the head to read, so one minified line cannot cost a scan. */
 const GENERATED_HEADER_CHARS = 2000;
+
+/** Markup formats whose head can state which tool produced the document. */
+const HTML_EXTENSIONS: ReadonlySet<string> = new Set([".htm", ".html", ".xhtml"]);
+
+/** How much markup to inspect when the first line is a whole generated page. */
+const HTML_HEADER_CHARS = 10_000;
+
+/** An HTML generator declaration, independent of attribute order. */
+const HTML_META_TAG = /<meta\b[^>]*>/gi;
+const HTML_GENERATOR_NAME = /\bname\s*=\s*(?:["']generator["']|generator)(?=[\s/>])/i;
+
+/** Whether an HTML head names the tool that emitted it. */
+function hasHtmlGeneratorMetadata(relativePath: string, text: string): boolean {
+  if (!HTML_EXTENSIONS.has(path.posix.extname(relativePath).toLowerCase())) return false;
+  const head = text.slice(0, HTML_HEADER_CHARS).split("\n", 31).slice(0, 30).join("\n");
+  for (const tag of head.matchAll(HTML_META_TAG)) {
+    if (HTML_GENERATOR_NAME.test(tag[0])) return true;
+  }
+  return false;
+}
 
 /** The line a bundler writes to point at the sources it compiled away. */
 const SOURCE_MAP_COMMENT = /(?:^|\n)[ \t]*(?:\/\/|\/\*)# sourceMappingURL=/;
@@ -529,7 +600,8 @@ function isMinified(text: string): boolean {
  */
 export function hasGeneratedContent(relativePath: string, text: string): boolean {
   const head = text.slice(0, GENERATED_HEADER_CHARS).split("\n", GENERATED_HEADER_LINES);
-  if (head.some((line) => COMMENT_LINE.test(line) && GENERATED_HEADER.test(line))) return true;
+  if (head.some(isGeneratedHeader)) return true;
+  if (hasHtmlGeneratorMetadata(relativePath, text)) return true;
   if (!BUNDLE_EXTENSIONS.has(path.posix.extname(relativePath).toLowerCase())) return false;
   return SOURCE_MAP_COMMENT.test(text) || isMinified(text);
 }
@@ -549,6 +621,7 @@ export function isGenerated(relativePath: string): boolean {
   const directories = path.posix.dirname(relativePath).toLowerCase().split("/").filter((part) => part && part !== ".");
   if (containsAny(directories, GENERATED_DIRECTORIES)) return true;
   if (GENERATED_NAMES.has(lowercasedName)) return true;
+  if (GENERATED_NAME.test(lowercasedName)) return true;
   if (GENERATED_SUFFIXES.some((suffix) => lowercasedName.endsWith(suffix))) return true;
   const extension = path.posix.extname(lowercasedName);
   // The hash keeps its own case, so it is read off the name as written.
@@ -590,7 +663,8 @@ export function shebangInterpreter(text: string): string | null {
 /** Whether the scanner should read this path at all. */
 export function isSourceFile(relativePath: string): boolean {
   const extension = path.posix.extname(relativePath).toLowerCase();
-  if (!SOURCE_EXTENSIONS.has(extension)) return false;
+  const name = path.posix.basename(relativePath).toLowerCase();
+  if (!SOURCE_EXTENSIONS.has(extension) && !TEXT_NAMES.has(name)) return false;
   const directories = path.posix.dirname(relativePath).split("/").filter((part) => part && part !== ".");
   return !containsAny(directories, EXCLUDED_DIRECTORIES);
 }

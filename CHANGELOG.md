@@ -8,6 +8,9 @@ Write yours under Unreleased as you make the change, and rename that heading to 
 
 ### Features
 
+- Scans now include extensionless `README`, `CHANGELOG`, `CHANGES`, `CITATION`, `CONTRIBUTING`, `COPYING`, `LICENSE`, and `LICENCE` files as Docs, plus `.htm` and `.xhtml` files as Other.
+- Flavor detection now recognizes legacy language aliases and locale names that contain both a script and a region, such as `zh-Hant-TW`.
+- Generated-file detection now recognizes .NET designer and SpecFlow output, Yarn Plug'n'Play files, generator header warnings, and HTML generator metadata.
 - `Read all`, above the file table, opens every file the table lists in one scrolling preview, always in path order, so a change reads end to end instead of one file at a time. Each file folds away on its own, and the whole selection reads the same way in a static export.
 - `--export <dir>` writes a portable static explorer with filters, rankings, source or diff previews, a read-only commit band, and a backlink when a full GitHub or GitLab review URL names the comparison, then prints its path and exits. Serve the folder over HTTP to read it: a browser loads no module, worker, or data file from a `file://` address, and the page says so when opened that way.
 
