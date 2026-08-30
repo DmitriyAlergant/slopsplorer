@@ -268,13 +268,14 @@ export function FolderDetail({
       {/* The tiles divide the subject by folder and the rows divide it by file.
           The flavor and scope controls stand with the rows they change. */}
       <div className="detail__files-head">
-        {/* Every figure here is reserved the digits of the project's widest, so
-            walking the tree never resizes the controls. */}
+        {/* Every figure here is reserved the digits of the project's widest and,
+            in a comparison, a column for the sign, so neither walking the tree
+            nor changing the unit or the side resizes the controls. */}
         <div
           className="chips detail__flavor-stats"
           role="group"
           aria-label="Available weight by flavor"
-          style={{ "--figure-width": `${figureWidth(widestWeight, aspect === "net")}ch` } as React.CSSProperties}
+          style={{ "--figure-width": `${figureWidth(widestWeight, isDiff)}ch` } as React.CSSProperties}
         >
           {detail.flavorStats.map((stat) => {
             const fullLabel = stat.flavor === "generated" ? "Generated" : FILE_KIND_DETAILS[stat.flavor].label;

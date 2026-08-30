@@ -786,10 +786,13 @@ export function buildView(index: ScanIndex, request: ViewRequest): ViewResponse 
   } = prepareView(index, request);
   // The whole tree, unfiltered, which the ribbon states as `project`.
   const baseline = unfilteredWeight(index, "", fields.baseline);
-  // Churn is the widest any figure of this measure can be, because every other
-  // side is a part of it. A scan has one content, so its whole weight is.
-  const widestWeight = unfilteredWeight(
-    index, "", weightField(request.measure, index.meta.diff !== null ? "churn" : "after"),
+  // The widest figure the page can state. Every side is a part of churn, and
+  // LOC is a part of lines, so the wider of tokens and lines bounds them all.
+  // Tokens is nearly always the wider one, and taking both costs one lookup.
+  const widestAspect: Aspect = index.meta.diff !== null ? "churn" : "after";
+  const widestWeight = Math.max(
+    unfilteredWeight(index, "", weightField("tokens", widestAspect)),
+    unfilteredWeight(index, "", weightField("lines", widestAspect)),
   );
   const scopeBaseline = unfilteredWeight(index, scopeRoot.path, fields.baseline);
   const scopeTotals = aggregation.subtree.get(scopeRoot.path) ?? emptyTotals();

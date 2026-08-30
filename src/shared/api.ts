@@ -522,11 +522,14 @@ export interface SummaryView {
   /** Unfiltered weight of the drill scope, the denominator of "of scope". */
   scopeWeight: number;
   /**
-   * The widest figure the page can state in the active measure: the project's
-   * churn in a comparison, its whole weight in a scan.
+   * The widest figure the page can ever state: the project's churn in a
+   * comparison and its whole weight in a scan, in the wider of tokens and
+   * lines.
    *
-   * A control reserves digit space from it, so a figure that changes while the
-   * reader navigates never resizes the control that holds it.
+   * Every side is a part of churn and LOC is a part of lines, so this one
+   * figure bounds all of them. A control reserves digit space from it, so
+   * neither walking the tree nor changing the unit or the side resizes the
+   * control that holds the figure.
    */
   widestWeight: number;
   /** Drill-scope weight under the active visibility and inclusion switches. */
