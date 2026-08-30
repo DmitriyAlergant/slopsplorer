@@ -45,24 +45,31 @@ const OFFSET = 10;
  * A control near the foot of the window has no room under it, so the panel goes
  * above it instead and the arrow moves to the other edge. The dock of asks sits
  * there, and so does the proportion bar at the end of the page.
+ *
+ * Only the panel's size is measured, never where it currently stands: the panel
+ * moves under a transition, so a rect read during one carries the placement it
+ * is leaving rather than the one it is given here. The edges are computed from
+ * the anchor and that size, and rounded, so the border and the hairlines inside
+ * the panel land on whole device pixels instead of straddling two.
  */
 function place(anchor: HTMLElement, panel: HTMLElement): void {
   const anchorBounds = anchor.getBoundingClientRect();
-  panel.style.setProperty("--tooltip-left", `${anchorBounds.left + anchorBounds.width / 2}px`);
-  panel.style.setProperty("--tooltip-top", `${anchorBounds.bottom + OFFSET}px`);
-  panel.style.setProperty("--tooltip-shift", "0px");
-  panel.removeAttribute(ABOVE);
+  const panelBounds = panel.getBoundingClientRect();
+  // The centre is rounded before the edge is taken from it, so the shift the
+  // panel is given lands it on exactly the pixel this measured, gutter included.
+  const centre = Math.round(anchorBounds.left + anchorBounds.width / 2);
+  const centredLeft = centre - panelBounds.width / 2;
+  const rightmostLeft = Math.max(GUTTER, Math.floor(window.innerWidth - GUTTER - panelBounds.width));
+  const placedLeft = Math.round(Math.min(Math.max(centredLeft, GUTTER), rightmostLeft));
+  const above = anchorBounds.bottom + OFFSET + panelBounds.height > window.innerHeight - GUTTER;
 
-  const bounds = panel.getBoundingClientRect();
-  const shift = bounds.left < GUTTER
-    ? GUTTER - bounds.left
-    : Math.min(0, window.innerWidth - GUTTER - bounds.right);
-  panel.style.setProperty("--tooltip-shift", `${shift}px`);
-
-  if (anchorBounds.bottom + OFFSET + bounds.height > window.innerHeight - GUTTER) {
-    panel.style.setProperty("--tooltip-top", `${anchorBounds.top - OFFSET - bounds.height}px`);
-    panel.setAttribute(ABOVE, "");
-  }
+  panel.style.setProperty("--tooltip-left", `${centre}px`);
+  panel.style.setProperty("--tooltip-shift", `${placedLeft - centredLeft}px`);
+  panel.style.setProperty(
+    "--tooltip-top",
+    `${Math.round(above ? anchorBounds.top - OFFSET - panelBounds.height : anchorBounds.bottom + OFFSET)}px`,
+  );
+  panel.toggleAttribute(ABOVE, above);
 }
 
 function show(anchor: HTMLElement): void {
