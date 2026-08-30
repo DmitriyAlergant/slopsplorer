@@ -86,8 +86,11 @@ export function InstrumentBar({
       <div className="instrument__identity">
         <div className="instrument__title">
           {/* The wordmark says which of the two questions the page answers,
-              because every figure below it means something different in each. */}
-          <h1 className="wordmark">{diff ? "Slopsplorer diff" : "Slopsplorer"}</h1>
+              because every figure below it means something different in each.
+              A review keeps the word through before and after, which are its
+              two other views: the name would otherwise change width under the
+              switch that changed it, and move every control beside it. */}
+          <h1 className="wordmark">{diff || review ? "Slopsplorer diff" : "Slopsplorer"}</h1>
           {staticSnapshot ? <span className="instrument__snapshot">Static snapshot</span> : null}
           {staticSnapshot && backlink ? (
             <a

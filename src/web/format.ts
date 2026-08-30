@@ -140,12 +140,16 @@ export function comparisonLabel(request: ComparisonRequest): string {
  *
  * The subject comes first, because a tab is cut from the right and the folder
  * is what tells two Slopsplorer windows apart. The product name follows it in
- * the form the wordmark uses, so the tab and the strip name one mode.
+ * the form the wordmark uses, so the tab and the strip name one mode: a review
+ * keeps the word through before and after, and the tab adds which of the two
+ * images it holds, because they draw the same comparison and different figures.
  */
 export function documentTitle(meta: ScanMeta | null): string {
   if (meta === null) return "Slopsplorer";
-  if (meta.diff === null) return `${meta.rootName} - Slopsplorer`;
-  return `${meta.rootName}: ${comparisonLabel(meta.diff.request)} - Slopsplorer diff`;
+  const review = meta.review;
+  if (review === null) return `${meta.rootName} - Slopsplorer`;
+  const image = review.mode === "diff" ? "" : `, ${review.mode}`;
+  return `${meta.rootName}: ${comparisonLabel(review.request)}${image} - Slopsplorer diff`;
 }
 
 /**

@@ -46,7 +46,7 @@ export function AskDialog({ open, agent, starting, failure, onClose, onAsk }: Pr
           <p className="eyebrow">{agent.label}</p>
           <h2>Ask about what you are looking at</h2>
         </div>
-        <button type="button" className="button button--quiet" onClick={onClose}>Close</button>
+        <button type="button" className="button" onClick={onClose}>Close</button>
       </header>
 
       <div className="viewer__body viewer__body--prose">

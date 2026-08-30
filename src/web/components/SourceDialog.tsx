@@ -8,7 +8,7 @@ import {
 } from "../preferences.ts";
 import { CopyPathButton } from "./CopyPathButton.tsx";
 import { FilePreview } from "./FilePreview.tsx";
-import { FileStack } from "./FileStack.tsx";
+import { FileStack, foldedAfterFoldAll } from "./FileStack.tsx";
 
 /**
  * What the preview draws: one file of the open index, every file the folder
@@ -39,6 +39,13 @@ interface Props {
   loadFileList: (request: ViewRequest, signal?: AbortSignal) => Promise<FileListResponse>;
 }
 
+/** The same set with one path folded, or unfolded when it was already folded. */
+function toggledPath(folded: ReadonlySet<string>, path: string): ReadonlySet<string> {
+  const next = new Set(folded);
+  if (!next.delete(path)) next.add(path);
+  return next;
+}
+
 /**
  * Read-only preview of one file or of a whole selection, highlighted client-side.
  *
@@ -50,6 +57,8 @@ export function SourceDialog({ preview, onClose, loadSource = fetchSource, loadF
   const [source, setSource] = useState<SourceResponse | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   const [stackRows, setStackRows] = useState<FileListResponse["rows"] | null>(null);
+  /** Paths folded away in the open stack. A new selection arrives with every file open. */
+  const [folded, setFolded] = useState<ReadonlySet<string>>(() => new Set());
   const [changedOnly, setChangedOnly] = useState(() => readChangedLinesOnly(browserStorage()));
   const [wrap, setWrap] = useState(() => readWrapLines(browserStorage()));
 
@@ -72,6 +81,7 @@ export function SourceDialog({ preview, onClose, loadSource = fetchSource, loadF
     const controller = new AbortController();
     setStackRows(null);
     setFailure(null);
+    setFolded(new Set());
     loadFileList(stack.request, controller.signal)
       .then((loaded) => setStackRows(loaded.rows))
       .catch((cause: unknown) => {
@@ -115,6 +125,18 @@ export function SourceDialog({ preview, onClose, loadSource = fetchSource, loadF
           </div>
         </div>
         <div className="viewer__actions">
+          {/* One control for the whole stack, beside the two that also act on
+              every file it draws. A file folds by its own name, as it does in
+              the tree. */}
+          {stackRows ? (
+            <button
+              type="button"
+              className="button"
+              onClick={() => setFolded(foldedAfterFoldAll(stackRows, folded))}
+            >
+              {folded.size > 0 ? "Expand all" : "Collapse all"}
+            </button>
+          ) : null}
           {isDiff ? (
             <label className="viewer__toggle" data-on={changedOnly}>
               <input type="checkbox" role="switch" checked={changedOnly} onChange={toggleChangedOnly} />
@@ -127,7 +149,7 @@ export function SourceDialog({ preview, onClose, loadSource = fetchSource, loadF
               Wrap lines
             </label>
           ) : null}
-          <button type="button" className="button button--quiet" onClick={onClose}>Close</button>
+          <button type="button" className="button" onClick={onClose}>Close</button>
         </div>
       </header>
       <div className="viewer__body" data-wrap={wrap}>
@@ -138,6 +160,8 @@ export function SourceDialog({ preview, onClose, loadSource = fetchSource, loadF
             isDiff={stack.isDiff}
             changedOnly={changedOnly}
             loadSource={loadSource}
+            folded={folded}
+            onToggleFile={(path) => setFolded(toggledPath(folded, path))}
           />
         ) : stack ? (
           <FilePreview source={null} failure={failure} changedOnly={changedOnly} />

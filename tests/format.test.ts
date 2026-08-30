@@ -109,6 +109,18 @@ describe("documentTitle", () => {
       .toBe("slopsplorer: origin/main -> PR 14 - Slopsplorer diff");
   });
 
+  // A review keeps the word "diff" through its other two views, exactly as the
+  // wordmark does, and names which image it is drawing.
+  it("names the image a review is drawing", () => {
+    const scan = meta("slopsplorer", { kind: "mergeBase", base: "origin/main", target: "dev" });
+    const before: ScanMeta = { ...scan, diff: null, review: { ...scan.review!, mode: "before" } };
+    expect(documentTitle(before))
+      .toBe("slopsplorer: origin/main -> dev, from the merge base, before - Slopsplorer diff");
+    const after: ScanMeta = { ...scan, diff: null, review: { ...scan.review!, mode: "after" } };
+    expect(documentTitle(after))
+      .toBe("slopsplorer: origin/main -> dev, from the merge base, after - Slopsplorer diff");
+  });
+
   it("falls back to the product name before the first response", () => {
     expect(documentTitle(null)).toBe("Slopsplorer");
   });

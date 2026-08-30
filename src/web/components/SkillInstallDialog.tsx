@@ -47,7 +47,7 @@ export function SkillInstallDialog({ open, onClose, onPreviewSkill }: Props): Re
           <p className="eyebrow">Agent skill</p>
           <h2>Install for your coding agent</h2>
         </div>
-        <button type="button" className="button button--quiet" onClick={onClose}>Close</button>
+        <button type="button" className="button" onClick={onClose}>Close</button>
       </header>
 
       <div className="viewer__body viewer__body--prose">

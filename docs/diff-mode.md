@@ -119,6 +119,8 @@ Every choice rescans.
 `POST /api/review-mode` keeps the active `Comparison` and installs either its diff producer or a `reviewSide` producer.
 `ScanMeta.review` keeps the comparison and the active choice visible while `ScanMeta.diff` stays `null` in a repository view.
 The diff remains the only mode that reports churn.
+A review is what the wordmark and the tab name, not the mode inside it, so both say "Slopsplorer diff" in all three views and nothing beside the title moves when the switch moves.
+The tab adds the image it holds, because before and after draw the same comparison with different figures.
 
 `scanReviewSide()` in `src/scanner/scan.ts` reads a revision without checking it out.
 `listRevisionFiles()` asks `git ls-tree` for the complete path list, and `GitObjectReader` asks `git cat-file --batch` for each `<revision>:<path>` blob.
@@ -273,8 +275,8 @@ The server is not asked for a fifth field it can already imply.
 
 ## Where the aspect is chosen
 
-`FilterBar` draws it as a switch beside the unit, and only inside a comparison.
-The two read as one phrase, the side and then the unit: "net tokens".
+`FilterBar` draws it as a switch after the unit, and only inside a comparison.
+It comes second because it is the switch that appears and goes away, so the unit switch does not move when a review changes mode.
 The switch lists the five sides in the order of `ASPECTS`, which is the order the file tables draw them in, and a page opens on net.
 A second widget that could also set it would give the page two owners of what it counts.
 
@@ -296,6 +298,7 @@ The file table shows 100 changes on each page and provides previous and next con
 `Read all` opens every matching change, independent of the open table page.
 The modal requests the complete list and draws it in path order with `FileStack`.
 Each file keeps its own head, which states the Git letter and both sides of its change, and folds the file away.
+`Collapse all` folds every file, which turns a wide comparison into a list of its changed paths and the figures of each.
 The two dialog switches move the whole stack, so a comparison of fifty files reads as one page.
 
 The route sends the file whole, unchanged lines included, because hunks answer a question the reader did not ask.

@@ -2,7 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { FileRow } from "../src/shared/api.ts";
 import { parseViewRequest } from "../src/server/aggregate.ts";
-import { FileStack, alignNextFileAfterCollapse, inPathOrder } from "../src/web/components/FileStack.tsx";
+import { FileStack, alignNextFileAfterCollapse, foldedAfterFoldAll, inPathOrder } from "../src/web/components/FileStack.tsx";
 import { SourceDialog } from "../src/web/components/SourceDialog.tsx";
 
 function row(path: string, figures: Partial<FileRow> = {}): FileRow {
@@ -33,6 +33,7 @@ const RANKED: FileRow[] = [
   row("src/web/api.ts", { tokens: 120 }),
 ];
 
+const NONE_FOLDED: ReadonlySet<string> = new Set();
 const loadSource = (): Promise<never> => new Promise(() => undefined);
 const loadFileList = async () => ({ rows: RANKED });
 const request = parseViewRequest({ kinds: ["code"] });
@@ -62,7 +63,7 @@ describe("reading a whole selection", () => {
 
   it("draws one section for each file, in path order, none of them read yet", () => {
     const html = renderToStaticMarkup(
-      <FileStack rows={RANKED} measure="tokens" isDiff={false} changedOnly={false} loadSource={loadSource} />,
+      <FileStack rows={RANKED} measure="tokens" isDiff={false} changedOnly={false} loadSource={loadSource} folded={NONE_FOLDED} onToggleFile={() => undefined} />,
     );
     const paths = [...html.matchAll(/stack__file" aria-label="([^"]+)"/g)].map((match) => match[1]);
     expect(paths).toEqual(["src/cli.ts", "src/web/api.ts", "src/web/App.tsx"]);
@@ -73,16 +74,40 @@ describe("reading a whole selection", () => {
 
   it("states each file's own figure in the measure the page was in", () => {
     const html = renderToStaticMarkup(
-      <FileStack rows={RANKED} measure="tokens" isDiff={false} changedOnly={false} loadSource={loadSource} />,
+      <FileStack rows={RANKED} measure="tokens" isDiff={false} changedOnly={false} loadSource={loadSource} folded={NONE_FOLDED} onToggleFile={() => undefined} />,
     );
     expect(html).toContain("900");
     expect(html).toContain("tok");
   });
 
+  it("draws a folded file as a closed section with no body to load", () => {
+    const html = renderToStaticMarkup(
+      <FileStack
+        rows={RANKED}
+        measure="tokens"
+        isDiff={false}
+        changedOnly={false}
+        loadSource={loadSource}
+        folded={new Set(["src/cli.ts"])}
+        onToggleFile={() => undefined}
+      />,
+    );
+    expect(html.match(/aria-expanded="true"/g)).toHaveLength(2);
+    expect(html.match(/aria-expanded="false"/g)).toHaveLength(1);
+    expect(html.match(/data-pending="true"/g)).toHaveLength(2);
+  });
+
+  it("folds every file when none is folded, and unfolds every file otherwise", () => {
+    expect([...foldedAfterFoldAll(RANKED, new Set())])
+      .toEqual(["src/web/App.tsx", "src/cli.ts", "src/web/api.ts"]);
+    expect([...foldedAfterFoldAll(RANKED, new Set(["src/cli.ts"]))]).toEqual([]);
+    expect([...foldedAfterFoldAll(RANKED, new Set(RANKED.map((file) => file.path)))]).toEqual([]);
+  });
+
   it("states both sides of a compared file beside its Git letter", () => {
     const changed = [row("src/cli.ts", { addedTokens: 12, removedTokens: 5, status: "renamed", previousPath: "old.ts" })];
     const html = renderToStaticMarkup(
-      <FileStack rows={changed} measure="tokens" isDiff changedOnly loadSource={loadSource} />,
+      <FileStack rows={changed} measure="tokens" isDiff changedOnly loadSource={loadSource} folded={NONE_FOLDED} onToggleFile={() => undefined} />,
     );
     expect(html).toContain("+12");
     expect(html).toContain("-5");

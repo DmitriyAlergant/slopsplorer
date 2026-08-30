@@ -16,6 +16,9 @@
   --ink-faint: oklch(0.63 0.015 265);
   --rule: oklch(0.905 0.008 265);
   --rule-firm: oklch(0.84 0.012 265);
+  /* A control has to read as pressable, so its outline sits one step firmer
+     than the rules that only divide content. */
+  --control-rule: oklch(0.775 0.016 265);
   --tooltip-surface: oklch(0.27 0.025 265);
   --tooltip-ink: oklch(0.97 0.004 265);
   --tooltip-rule: oklch(0.42 0.025 265);
@@ -69,6 +72,7 @@
     --ink-faint: oklch(0.56 0.014 265);
     --rule: oklch(0.29 0.016 265);
     --rule-firm: oklch(0.38 0.018 265);
+    --control-rule: oklch(0.47 0.02 265);
     --tooltip-surface: oklch(0.25 0.02 265);
     --tooltip-ink: oklch(0.95 0.004 265);
     --tooltip-rule: oklch(0.42 0.02 265);
@@ -214,7 +218,7 @@ button { cursor: pointer; }
   align-items: center;
   gap: 5px;
   padding: 3px 8px;
-  border: 1px solid var(--rule-firm);
+  border: 1px solid var(--control-rule);
   border-radius: 999px;
   background: var(--surface);
   color: var(--ink-soft);
@@ -273,7 +277,7 @@ button { cursor: pointer; }
   max-width: 760px;
   min-width: 0;
   padding: 2px 5px;
-  border: 1px solid var(--rule-firm);
+  border: 1px solid var(--control-rule);
   border-radius: 4px;
   background: var(--surface);
   font-family: var(--font-mono);
@@ -293,7 +297,7 @@ button { cursor: pointer; }
   display: inline-grid; place-items: center;
   flex: none;
   width: 28px; height: 28px; padding: 0;
-  border: 1px solid var(--rule-firm); border-radius: 999px;
+  border: 1px solid var(--control-rule); border-radius: 999px;
   background: var(--surface);
   color: var(--ink-soft);
   transition: border-color 120ms ease, color 120ms ease;
@@ -335,7 +339,7 @@ button { cursor: pointer; }
   min-width: 0;
   max-width: 100%;
   padding: 4px 10px;
-  border: 1px solid transparent;
+  border: 1px solid var(--control-rule);
   border-radius: 999px;
   background: var(--sunk);
   font-size: 13px;
@@ -393,7 +397,7 @@ button { cursor: pointer; }
 }
 .picker__search {
   padding: 5px 8px;
-  border: 1px solid var(--rule-firm);
+  border: 1px solid var(--control-rule);
   border-radius: 4px;
   background: var(--paper);
   font-size: 12px;
@@ -455,7 +459,7 @@ button { cursor: pointer; }
 
 .button {
   padding: 7px 13px;
-  border: 1px solid var(--rule-firm);
+  border: 1px solid var(--control-rule);
   border-radius: var(--radius-sm);
   background: var(--surface);
   font-size: 12.5px;
@@ -713,7 +717,7 @@ button { cursor: pointer; }
   position: relative;
   width: 24px;
   padding: 3px 0;
-  border: 1px solid var(--rule-firm);
+  border: 1px solid var(--control-rule);
   background: var(--surface);
   color: var(--ink-soft);
   font-size: 14px;
@@ -725,7 +729,7 @@ button { cursor: pointer; }
 .spine__step button:disabled { color: var(--ink-faint); opacity: 0.5; }
 .spine__all {
   padding: 4px 10px;
-  border: 1px solid var(--rule-firm);
+  border: 1px solid var(--control-rule);
   border-radius: var(--radius-sm);
   background: var(--surface);
   color: var(--ink-soft);
@@ -882,11 +886,7 @@ button { cursor: pointer; }
 
 /* ---- Filters ----------------------------------------------------------- */
 
-/*
- * One row while the three groups fit, and the chips take a row of their own
- * when they do not. They wrap as a group rather than folding into two ragged
- * rows beside the switches, so the flavors always read as one set.
- */
+/* The path and measure controls stay above the workspace. Flavor controls sit with their scope totals above the file table. */
 .filters {
   position: sticky;
   top: 0;
@@ -902,15 +902,10 @@ button { cursor: pointer; }
  * The side of the change and the unit are properties of every figure, so each
  * is stated once. They sit together and read as one phrase: "net tokens".
  */
-/*
- * The switches take the free space on the line, so the chips beside them sit
- * at the right edge while they share it and start at the left edge once they
- * have a line of their own.
- */
 .filters__switches { display: flex; flex: 1 0 auto; align-items: center; gap: 18px; }
 .switch {
   display: flex;
-  border: 1px solid var(--rule-firm);
+  border: 1px solid var(--control-rule);
   border-radius: var(--radius-sm);
   overflow: hidden;
 }
@@ -918,7 +913,7 @@ button { cursor: pointer; }
   position: relative;
   padding: 5px 10px;
   border: 0;
-  border-left: 1px solid var(--rule-firm);
+  border-left: 1px solid var(--control-rule);
   background: var(--surface);
   color: var(--ink-soft);
   font-size: 12.5px; font-weight: 600; line-height: 1.4;
@@ -946,7 +941,7 @@ button { cursor: pointer; }
 .search input {
   width: 100%;
   padding: 5px 10px;
-  border: 1px solid var(--rule-firm);
+  border: 1px solid var(--control-rule);
   border-radius: var(--radius-sm);
   background: var(--surface);
   font-size: 12.5px;
@@ -1327,6 +1322,9 @@ button { cursor: pointer; }
 }
 .tree__row[data-selected="true"] .tree__label { color: var(--signal); font-weight: 600; }
 .tree__row[data-muted="true"] .tree__label { color: var(--ink-faint); text-decoration: line-through; }
+.tree__row[data-filtered="true"] .tree__label,
+.tree__row[data-filtered="true"] .tree__weight { color: var(--ink-faint); }
+.tree__row[data-filtered="true"] .tree__label { text-decoration: none; }
 .tree__row[data-kind="files"] .tree__label { font-style: italic; color: var(--ink-soft); }
 
 .tree__disclose {
@@ -1434,41 +1432,39 @@ button { cursor: pointer; }
 /* The file table's own strip: what the rows below are, and the floor under them. */
 .detail__files-head {
   flex: none;
-  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  display: flex; align-items: center; justify-content: space-between; gap: 8px 16px; flex-wrap: wrap;
   margin: 18px 20px 8px;
 }
-.detail__caption {
-  margin: 0;
-  color: var(--ink-faint);
-  font-size: 11px; letter-spacing: 0.05em; text-transform: uppercase;
+.detail__flavor-stats { display: flex; flex: 1 1 720px; min-width: min(720px, 100%); align-items: center; gap: 6px; flex-wrap: wrap; }
+.detail__flavor-stat {
+  padding-block: 5px;
+  font-size: 11px;
 }
-/* A qualifier on the caption rather than a caption of its own, so it reads as
-   part of the same line and not as a second claim. The space before it in the
-   markup is the break opportunity, so a strip too narrow for both drops the
-   whole qualifier to the next line rather than stranding one word of it. */
-.detail__caption-note { margin-left: 6px; color: var(--rule-firm); white-space: nowrap; }
+.detail__flavor-copy { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; line-height: 1.05; }
+.detail__flavor-weight { color: var(--ink-soft); font-family: var(--font-mono); font-size: 10px; font-variant-numeric: tabular-nums; }
+.detail__flavor-stat[data-on="false"] .detail__flavor-weight { color: var(--ink-faint); }
 /* The two controls of the file list share the right of its strip: what the rows
    are, and the floor under them. */
-.detail__files-controls { display: flex; flex: none; align-items: center; gap: 14px; }
+.detail__files-controls { display: flex; flex: none; flex-direction: column; align-items: flex-end; gap: 3px; margin-left: auto; }
+.detail__file-count, .detail__file-total { color: var(--ink-soft); font-family: var(--font-mono); font-size: 10.5px; white-space: nowrap; }
+.detail__file-total { padding-right: 18px; color: var(--ink-faint); }
 .detail__pager {
   display: flex; align-items: center; gap: 5px;
   color: var(--ink-faint);
   font-family: var(--font-mono); font-size: 10px; font-variant-numeric: tabular-nums;
 }
-.detail__page { min-width: 26px; padding-inline: 7px; }
+.detail__page {
+  position: relative;
+  display: inline-grid; place-items: center;
+  width: 18px; height: 18px; padding: 0;
+  border: 0; border-radius: 3px; background: transparent;
+  color: var(--ink-soft); font: inherit;
+}
+.detail__page:hover { background: var(--sunk); color: var(--signal); }
+.detail__page[aria-disabled="true"] { color: var(--rule-firm); cursor: default; }
+.detail__page[aria-disabled="true"]:hover { background: transparent; }
 /* Sized for a strip inside a panel rather than for the filter bar it borrows. */
 .switch--compact .switch__option { padding: 4px 9px; font-size: 11px; }
-.detail__threshold { display: flex; flex: none; align-items: center; gap: 8px; }
-.detail__threshold span {
-  color: var(--ink-faint);
-  font-size: 9.5px; letter-spacing: 0.11em; text-transform: uppercase;
-}
-.detail__threshold input {
-  width: 96px; padding: 5px 8px;
-  border: 1px solid var(--rule-firm); border-radius: var(--radius-sm);
-  background: var(--surface);
-  font-size: 12px; font-variant-numeric: tabular-nums;
-}
 
 .cards {
   flex: none;
@@ -1583,6 +1579,9 @@ button { cursor: pointer; }
   font: inherit; letter-spacing: inherit; text-transform: inherit;
 }
 .metrics th.metrics__path .metrics__sort { justify-content: flex-start; }
+.metrics__path-head { display: flex; align-items: center; justify-content: space-between; min-width: 0; }
+.metrics__path-head .metrics__sort { min-width: 0; width: auto; flex: 1; }
+.metrics__read-all { position: relative; flex: none; margin-right: 5px; padding: 3px 7px; letter-spacing: 0; text-transform: none; }
 .metrics__sort:hover { color: var(--ink); }
 /* Two different facts: bold marks the unit the page counts in, the caret and
    its heading colour mark the order the rows are in. Usually one column. */
@@ -1742,7 +1741,7 @@ button { cursor: pointer; }
   flex: none;
   width: 26px; height: 14px;
   margin: 0;
-  border: 1px solid var(--rule-firm); border-radius: 999px;
+  border: 1px solid var(--control-rule); border-radius: 999px;
   background: var(--sunk);
   cursor: pointer;
   transition: background-color 120ms ease, border-color 120ms ease;
@@ -1918,7 +1917,7 @@ button { cursor: pointer; }
 .agent-picker { position: relative; display: flex; flex: none; }
 .agent-picker__ask, .agent-picker__more {
   position: relative;
-  border: 1px solid var(--rule-firm);
+  border: 1px solid var(--control-rule);
   background: var(--surface);
   color: var(--ink);
   font-size: 12.5px;

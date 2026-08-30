@@ -35,6 +35,9 @@ interface StackProps {
   isDiff: boolean;
   changedOnly: boolean;
   loadSource: (path: string) => Promise<SourceResponse>;
+  /** Paths the reader folded away. The dialog holds it, because the control that folds them all sits in its header. */
+  folded: ReadonlySet<string>;
+  onToggleFile: (path: string) => void;
 }
 
 /**
@@ -48,8 +51,24 @@ export function inPathOrder(rows: readonly FileRow[]): FileRow[] {
   return [...rows].sort((left, right) => left.path.localeCompare(right.path));
 }
 
+/**
+ * What the one fold control does next.
+ *
+ * A stack that holds no fold closes, and any other stack opens, so a partly
+ * folded stack takes one press to become a state the reader can see whole.
+ */
+export function foldedAfterFoldAll(
+  rows: readonly FileRow[],
+  folded: ReadonlySet<string>,
+): ReadonlySet<string> {
+  if (folded.size > 0) return new Set();
+  return new Set(rows.map((row) => row.path));
+}
+
 /** Every listed file, one after another, in path order. */
-export function FileStack({ rows, measure, isDiff, changedOnly, loadSource }: StackProps): React.JSX.Element {
+export function FileStack({
+  rows, measure, isDiff, changedOnly, loadSource, folded, onToggleFile,
+}: StackProps): React.JSX.Element {
   return (
     <div className="stack">
       {inPathOrder(rows).map((row) => (
@@ -60,6 +79,8 @@ export function FileStack({ rows, measure, isDiff, changedOnly, loadSource }: St
           isDiff={isDiff}
           changedOnly={changedOnly}
           loadSource={loadSource}
+          open={!folded.has(row.path)}
+          onToggle={() => onToggleFile(row.path)}
         />
       ))}
     </div>
@@ -72,6 +93,8 @@ interface FileProps {
   isDiff: boolean;
   changedOnly: boolean;
   loadSource: (path: string) => Promise<SourceResponse>;
+  open: boolean;
+  onToggle: () => void;
 }
 
 /**
@@ -80,12 +103,14 @@ interface FileProps {
  * The stack holds as many files as the panel lists, and asking for all of them
  * at once would send a whole subtree to a browser that draws two screens of it.
  * A file that has been read stays read, so scrolling back is immediate, and a
- * file the reader folded away is never read at all.
+ * file the reader folded away is never read at all. Which files are folded is
+ * the dialog's, so one control there can fold them all.
  */
-function StackedFile({ row, measure, isDiff, changedOnly, loadSource }: FileProps): React.JSX.Element {
+function StackedFile({
+  row, measure, isDiff, changedOnly, loadSource, open, onToggle,
+}: FileProps): React.JSX.Element {
   const sectionRef = useRef<HTMLElement>(null);
   const bodyId = useId();
-  const [open, setOpen] = useState(true);
   const [wanted, setWanted] = useState(false);
   const [source, setSource] = useState<SourceResponse | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
@@ -117,7 +142,7 @@ function StackedFile({ row, measure, isDiff, changedOnly, loadSource }: FileProp
 
   const toggleOpen = (): void => {
     if (!open) {
-      setOpen(true);
+      onToggle();
       return;
     }
 
@@ -126,7 +151,7 @@ function StackedFile({ row, measure, isDiff, changedOnly, loadSource }: FileProp
     const nextHeader = section?.nextElementSibling?.querySelector<HTMLElement>(".stack__head");
     const scroll = section?.closest<HTMLElement>(".viewer__body");
     const collapsedHeaderTop = currentHeader?.getBoundingClientRect().top;
-    setOpen(false);
+    onToggle();
     if (scroll && collapsedHeaderTop !== undefined && nextHeader) {
       requestAnimationFrame(() => alignNextFileAfterCollapse(scroll, collapsedHeaderTop, nextHeader));
     }
