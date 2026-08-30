@@ -1,6 +1,6 @@
 import type { Aspect, FileRow, Measure, MeasuredMetric, RankMetric } from "../../shared/api.ts";
 import {
-  FILE_KIND_DETAILS, aspectHeading, measureAbbreviation, rankMetricsFor, weightField,
+  FLAVOR_DETAILS, aspectHeading, measureAbbreviation, rankMetricsFor, weightField,
 } from "../../shared/api.ts";
 import { pathRelativeTo } from "../displayPath.ts";
 import { count, percent, signed, statusLetter, statusName } from "../format.ts";
@@ -141,7 +141,7 @@ export function FileTable({
               <tr key={file.path}>
                 <td>
                   <span className="tag" data-flavor={file.generated ? "generated" : file.kind}>
-                    {file.generated ? "gen" : FILE_KIND_DETAILS[file.kind].label}
+                    {file.generated ? "gen" : FLAVOR_DETAILS[file.kind].label}
                   </span>
                 </td>
                 {isDiff ? (

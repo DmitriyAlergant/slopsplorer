@@ -581,21 +581,51 @@ button { cursor: pointer; }
   height: 54px;
   border-radius: var(--radius);
   overflow: hidden;
-  background: var(--sunk);
+  /* The strip's own base, not the page's sunk well: the seams between segments
+     and the rounded corners then read as part of one dark object, and a thin
+     closing segment is not cut into a pale notch by the radius. */
+  background: var(--band-base);
 }
 .ribbon__segment {
+  position: relative;
   display: flex;
   align-items: center;
   min-width: 3px;
   padding: 0;
   border: 0;
   overflow: hidden;
+  background: var(--band-base);
   color: oklch(0.99 0 0);
-  transition: box-shadow 120ms ease;
 }
-.ribbon__segment:hover { box-shadow: inset 0 0 0 100vmax oklch(1 0 0 / 0.11); }
 .ribbon__segment--empty { width: 100%; background: var(--sunk); }
+/* Hover and selection sit above the bands, so a mark is never painted under
+   the thing it marks. */
+.ribbon__segment::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  transition: background 120ms ease;
+}
+.ribbon__segment:hover::after { background: oklch(1 0 0 / 0.11); }
+/* A frame, so the mark sits around the segment and leaves the bands inside it
+   alone. Recolouring one would make the selection argue with the flavor it is
+   drawn in. */
+.ribbon__segment[data-selected="true"]::after { box-shadow: inset 0 0 0 2px oklch(1 0 0 / 0.85); }
+/* The frame follows the track's own corners at the two ends, so a square
+   corner is never drawn inside a rounded one. */
+.ribbon__segment:first-child::after { border-radius: var(--radius) 0 0 var(--radius); }
+.ribbon__segment:last-child::after { border-radius: 0 var(--radius) var(--radius) 0; }
+
+.ribbon__stack { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 1px; }
+/* Grown from zero rather than sized: the bands then divide the height exactly,
+   whatever the seams between them cost, and the thinnest flavor still shows. */
+.ribbon__band { flex: 0 1 0; min-height: 3px; background: var(--band-color); }
+
 .ribbon__label {
+  position: relative;
+  z-index: 1;
   display: flex;
   flex-direction: column;
   gap: 1px;
@@ -610,22 +640,43 @@ button { cursor: pointer; }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.ribbon__weight { font-size: 10.5px; opacity: 0.75; }
+.ribbon__weight { font-size: 10.5px; opacity: 0.82; }
 
 /*
- * Rank is encoded as ink density, darkest first, so the ordering reads without
- * a legend and no folder is assigned an arbitrary hue.
+ * The bands are the flavor palette mixed into the strip's own deep slate: the
+ * hue names the flavor, as it does in the chips and the tile bars, and the
+ * depth keeps the strip one dark object with a legible label rather than a
+ * colour wheel competing with the page's one saturated colour.
  */
-.ribbon__segment[data-shade="0"] { background: oklch(0.30 0.035 265); }
-.ribbon__segment[data-shade="1"] { background: oklch(0.38 0.032 265); }
-.ribbon__segment[data-shade="2"] { background: oklch(0.46 0.028 265); }
-.ribbon__segment[data-shade="3"] { background: oklch(0.54 0.024 265); }
-.ribbon__segment[data-shade="4"] { background: oklch(0.62 0.020 265); }
-.ribbon__segment[data-shade="5"] { background: oklch(0.69 0.016 265); }
-.ribbon__segment[data-shade="6"] { background: oklch(0.76 0.012 265); color: var(--ink); }
-.ribbon__segment[data-shade="7"] { background: oklch(0.82 0.010 265); color: var(--ink); }
-.ribbon__segment[data-selected="true"] { box-shadow: inset 0 -4px 0 var(--signal); }
-.ribbon__segment[data-selected="true"] .ribbon__name { color: var(--signal); }
+.ribbon { --band-base: oklch(0.24 0.028 265); }
+.ribbon__band, .ribbon__swatch { --band-color: color-mix(in oklab, var(--band-hue) 58%, var(--band-base)); }
+[data-flavor="code"].ribbon__band, [data-flavor="code"].ribbon__swatch { --band-hue: var(--flavor-code); }
+[data-flavor="test"].ribbon__band, [data-flavor="test"].ribbon__swatch { --band-hue: var(--flavor-test); }
+[data-flavor="text"].ribbon__band, [data-flavor="text"].ribbon__swatch { --band-hue: var(--flavor-text); }
+[data-flavor="i18n"].ribbon__band, [data-flavor="i18n"].ribbon__swatch { --band-hue: var(--flavor-i18n); }
+[data-flavor="data"].ribbon__band, [data-flavor="data"].ribbon__swatch { --band-hue: var(--flavor-data); }
+[data-flavor="other"].ribbon__band, [data-flavor="other"].ribbon__swatch { --band-hue: var(--flavor-other); }
+[data-flavor="generated"].ribbon__band, [data-flavor="generated"].ribbon__swatch { --band-hue: var(--flavor-generated); }
+
+/* The bands, named and measured. A hovered segment states its own legend, so
+   the strip needs no permanent one. The name and the figure it stands for take
+   a line each, and the unit is stated once, so the rows below stay a column of
+   digits. */
+.ribbon__tip { display: flex; flex-direction: column; gap: 1px; }
+.ribbon__tip-name { font-weight: 600; }
+.ribbon__tip-scope { opacity: 0.7; }
+.ribbon__tip-rows {
+  display: grid;
+  grid-template-columns: auto auto 1fr auto;
+  gap: 3px 10px;
+  align-items: center;
+  margin-top: 7px;
+  padding-top: 7px;
+  border-top: 1px solid var(--tooltip-rule);
+}
+.ribbon__tip-row { display: contents; }
+.ribbon__tip-figure { text-align: right; font-variant-numeric: tabular-nums; }
+.ribbon__swatch { width: 8px; height: 8px; border-radius: 2px; background: var(--band-color); }
 
 /* ---- Commit band ------------------------------------------------------- */
 
@@ -1040,7 +1091,9 @@ button { cursor: pointer; }
   content: "";
   position: absolute;
   bottom: 100%;
-  left: calc(50% - var(--tooltip-shift));
+  /* Kept off the panel's rounded ends, where an arrow reads as sprouting from
+     the corner rather than from the edge it points away from. */
+  left: clamp(14px, calc(50% - var(--tooltip-shift)), calc(100% - 14px));
   width: 9px;
   height: 9px;
   border-top: 1px solid var(--tooltip-rule);
@@ -1564,6 +1617,7 @@ button { cursor: pointer; }
 [data-flavor="i18n"].flavor-bar__slice { background: var(--flavor-i18n); }
 [data-flavor="data"].flavor-bar__slice { background: var(--flavor-data); }
 [data-flavor="other"].flavor-bar__slice { background: var(--flavor-other); }
+[data-flavor="generated"].flavor-bar__slice { background: var(--flavor-generated); }
 
 /* ---- Metrics tables ---------------------------------------------------- */
 

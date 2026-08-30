@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { Aspect, DetailView, FileKind, FileRow, FileScope, Measure, RankMetric, RowKind, ViewRequest } from "../../shared/api.ts";
 import {
-  ASPECTS, FILE_KIND_DETAILS, FILE_SCOPES, MAX_CARD_COLUMNS, MEASURES, MIN_CARD_COLUMNS, aspectTotals, measureHeading,
+  ASPECTS, FILE_SCOPES, FLAVOR_DETAILS, MAX_CARD_COLUMNS, MEASURES, MIN_CARD_COLUMNS, aspectTotals, measureHeading,
   weightAbbreviation, weightHeading, weightName,
 } from "../../shared/api.ts";
 import { aspectFigure, count, countOf, figureWidth, percent, weightCount } from "../format.ts";
@@ -67,8 +67,6 @@ const FILE_SCOPE_DETAILS: Record<FileScope, { label: string; description: string
     description: "List every file of the selected folder and of the folders under it.",
   },
 };
-
-const GENERATED_DESCRIPTION = "Generated output and lockfiles detected from path and filename conventions.";
 
 /** Kept as a one-line reversible frontend choice while folder-only scope remains supported by the request contract. */
 const SHOW_FILE_SCOPE_CONTROL = false;
@@ -281,8 +279,7 @@ export function FolderDetail({
           style={{ "--figure-width": `${figureWidth(widestWeight, isDiff)}ch` } as React.CSSProperties}
         >
           {detail.flavorStats.map((stat) => {
-            const fullLabel = stat.flavor === "generated" ? "Generated" : FILE_KIND_DETAILS[stat.flavor].label;
-            const description = stat.flavor === "generated" ? GENERATED_DESCRIPTION : FILE_KIND_DETAILS[stat.flavor].description;
+            const { label: fullLabel, description } = FLAVOR_DETAILS[stat.flavor];
             return (
               <label
                 key={stat.flavor}

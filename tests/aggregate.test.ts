@@ -533,19 +533,17 @@ describe("primary measure", () => {
     }
   });
 
-  it("keeps generated output out of the bars, even when the page counts it", () => {
+  it("splits generated output into a band of its own, so a bar states the whole it counts", () => {
     const view = buildView(index, request({ cardColumns: 6, showGenerated: true }));
     const generated = view.detail.cards.find((card) => card.name === "dist")!;
     expect(generated.weight).toBe(tokensOf("dist/bundle.js"));
-    expect(generated.flavors).toEqual([]);
-    const sliced = view.detail.cards.flatMap((card) => card.flavors.map((slice) => slice.flavor));
-    expect(sliced).not.toContain("generated");
+    expect(generated.flavors).toEqual([{ flavor: "generated", weight: tokensOf("dist/bundle.js") }]);
   });
 
   it("measures the tile baseline over every flavor, so turning one off only shortens bars", () => {
     const everything = buildView(index, request());
     const codeOnly = buildView(index, request({ kinds: ["code"] }));
-    // Generated output is never in the whole, whether the page counts it or not.
+    // The whole answers to no switch, generated output included.
     const withGenerated = buildView(index, request({ showGenerated: true }));
 
     expect(codeOnly.detail.flavorBaseline).toBe(everything.detail.flavorBaseline);
@@ -650,9 +648,9 @@ describe("drill scope", () => {
     expect(drilled.summary.selectedFiles).toBe(3);
     expect(drilled.summary.selectedTokens).toBe(scopeTokens);
 
-    // The bar splits the scope the tree beside it is showing: the child folder,
-    // then the pseudo-segment for the files sitting directly in src.
-    expect(drilled.summary.ribbon.map((segment) => segment.name)).toEqual(["deep", "."]);
+    // The bar splits the scope the tree beside it is showing, heaviest first:
+    // the files sitting directly in src outweigh its one child folder.
+    expect(drilled.summary.ribbon.map((segment) => segment.name)).toEqual([".", "deep"]);
     expect(drilled.summary.ribbon.reduce((total, segment) => total + segment.weight, 0)).toBe(scopeTokens);
     const deepSegment = drilled.summary.ribbon.find((segment) => segment.path === "src/deep")!;
     expect(deepSegment.weight).toBe(tokensOf("src/deep/helper.ts"));
@@ -810,29 +808,37 @@ describe("folder tile grid", () => {
     expect(view.detail.cards.some((card) => card.path === null)).toBe(false);
   });
 
-  it("keeps a folder's own files in the last tile", () => {
+  it("keeps a folder's own files in the first tile", () => {
     const view = buildView(index, request({ cardColumns: 6 }));
-    const ownFiles = view.detail.cards.find((card) => card.rowKind === "files")!;
-    expect(ownFiles.name).toBe(".");
-    expect(ownFiles.path).toBe("");
+    const ownFiles = view.detail.cards[0]!;
+    expect(ownFiles).toMatchObject({ rowKind: "files", path: "", name: "." });
     expect(ownFiles.weight).toBe(tokensOf("README.md"));
-    expect(view.detail.cards.at(-1)).toBe(ownFiles);
   });
 
-  it("collapses the entries past the first row into one tile", () => {
+  it("collapses the entries past the first row into the last tile", () => {
     // src, tests, dist, and the root's own files, in four tiles worth of order.
     const view = buildView(index, request({ cardColumns: 2, showGenerated: true }));
     expect(view.detail.cards).toHaveLength(2);
-    expect(view.detail.cards[0]!.path).toBeNull();
-    expect(view.detail.cards[0]!.name).toBe("3 more folders");
-    expect(view.detail.cards[1]).toMatchObject({ rowKind: "files", path: "", name: "." });
+    expect(view.detail.cards[0]).toMatchObject({ rowKind: "files", path: "", name: "." });
+    expect(view.detail.cards[1]!.path).toBeNull();
+    expect(view.detail.cards[1]!.name).toBe("3 more folders");
   });
 
-  it("reserves the last tile for direct files at every measured capacity", () => {
-    for (const cardColumns of [1, 2, 3]) {
+  it("opens with direct files and closes with the collapsed tile at every measured capacity", () => {
+    for (const cardColumns of [1, 2, 3, 6]) {
       const view = buildView(index, request({ cardColumns, showGenerated: true }));
-      expect(view.detail.cards.at(-1)).toMatchObject({ rowKind: "files", path: "", name: "." });
+      expect(view.detail.cards[0]).toMatchObject({ rowKind: "files", path: "", name: "." });
+      const collapsed = view.detail.cards.filter((card) => card.path === null);
+      expect(collapsed.length).toBeLessThanOrEqual(1);
+      if (collapsed.length === 1) expect(view.detail.cards.at(-1)).toBe(collapsed[0]);
     }
+  });
+
+  it("ranks the child folder tiles between them, heaviest first", () => {
+    const view = buildView(index, request({ cardColumns: 6, showGenerated: true }));
+    const folders = view.detail.cards.filter((card) => card.rowKind === "folder");
+    const weights = folders.map((card) => Math.abs(card.weight));
+    expect(weights).toEqual([...weights].sort((left, right) => right - left));
   });
 
   it("draws a folder's own files as a tile, so a folder with no subfolders still has a row", () => {
@@ -873,7 +879,7 @@ describe("folder heading", () => {
 
     expect(folder.detail.title).toBe("src");
     expect(folder.detail.cards.map((card) => `${card.rowKind}:${card.path}`))
-      .toEqual(["folder:src/deep", "files:src"]);
+      .toEqual(["files:src", "folder:src/deep"]);
     expect(folder.detail.weight).toBe(tokensOf("src/main.ts", "src/util.ts", "src/deep/helper.ts"));
 
     // The heading becomes slopsplorer/src/., the tiles belong to the subtree
@@ -901,5 +907,152 @@ describe("folder heading", () => {
     expect(view.detail.title).toBe(".");
     expect(view.detail.trail.map((crumb) => crumb.name)).toEqual([index.meta.rootName]);
     expect(view.detail.weight).toBe(tokensOf("README.md"));
+  });
+});
+
+describe("a folder with no loose files of its own", () => {
+  // `shell` holds only subfolders and one doc, so a flavor filter can empty its
+  // own-files tile without emptying the folder.
+  const NESTED_FIXTURE = {
+    "README.md": "# Nested\n\nA tree whose middle folder holds no code of its own.\n",
+    "shell/README.md": "# Shell\n\nThe folder's one loose file.\n",
+    "shell/app/main.ts": "export const start = (): number => 1;\n",
+    "shell/lib/util.ts": "export const helper = (value: number): number => value + 1;\n",
+  };
+
+  let nestedRoot: string;
+  let nested: ScanIndex;
+
+  beforeAll(async () => {
+    nestedRoot = await mkdtemp(path.join(os.tmpdir(), "slopsplorer-nested-"));
+    for (const [relativePath, contents] of Object.entries(NESTED_FIXTURE)) {
+      const absolute = path.join(nestedRoot, relativePath);
+      await mkdir(path.dirname(absolute), { recursive: true });
+      await writeFile(absolute, contents, "utf8");
+    }
+    nested = await scanSourceTree({
+      root: nestedRoot,
+      tokenizer: "cl100k_base",
+      allFiles: true,
+      exclude: [],
+      maxFileBytes: 2 * 1024 * 1024,
+      concurrency: 8,
+    });
+  }, SCAN_TIMEOUT_MS);
+
+  afterAll(async () => {
+    await rm(nestedRoot, { recursive: true, force: true });
+  });
+
+  function shell(overrides: Partial<ViewRequest> = {}): ViewResponse {
+    return buildView(nested, request({ selected: { rowKind: "folder", path: "shell" }, ...overrides }));
+  }
+
+  it("draws no own-files tile once the scan found no loose file there", () => {
+    const view = shell({ query: "shell/app" });
+    expect(view.detail.cards.map((card) => card.name)).toEqual(["app"]);
+  });
+
+  it("keeps the own-files tile when the path filter keeps the loose file", () => {
+    const names = shell().detail.cards.map((card) => card.name);
+    expect(names[0]).toBe(".");
+    expect(names.slice(1).sort()).toEqual(["app", "lib"]);
+  });
+
+  it("keeps the own-files tile when a flavor filter empties it", () => {
+    const view = shell({ kinds: ["code"] });
+    const ownFiles = view.detail.cards[0]!;
+    expect(ownFiles).toMatchObject({ rowKind: "files", path: "shell", name: "." });
+    expect(ownFiles.files).toBe(0);
+    expect(ownFiles.weight).toBe(0);
+  });
+
+  it("names the same parts as the tree", () => {
+    const view = shell({ query: "shell/app", expanded: ["", "shell"] });
+    const shellPosition = view.tree.findIndex((row) => row.path === "shell" && row.rowKind === "folder");
+    const shellRow = view.tree[shellPosition]!;
+    const after = view.tree.slice(shellPosition + 1);
+    const end = after.findIndex((row) => row.depth <= shellRow.depth);
+    const subtree = end === -1 ? after : after.slice(0, end);
+    const children = subtree.filter((row) => row.depth === shellRow.depth + 1);
+    expect(children.map((row) => row.name).sort()).toEqual(view.detail.cards.map((card) => card.name).sort());
+  });
+
+  it("draws the own-files tile alone rather than an empty row", () => {
+    const view = shell({ kinds: [] });
+    expect(view.detail.cards).toHaveLength(1);
+    expect(view.detail.cards[0]).toMatchObject({ rowKind: "files", path: "shell", name: ".", files: 0 });
+  });
+});
+
+/**
+ * Wide trees: one heavy folder and a long tail of small ones. Drawing the tail
+ * one folder at a time gives a run of hairlines nobody can name, hover, or hit,
+ * so the strip stops and states the rest as one part.
+ */
+describe("the ribbon tail", () => {
+  let tinyTail: ScanIndex;
+  let evenTail: ScanIndex;
+  const roots: string[] = [];
+
+  async function scanFixture(files: Record<string, string>): Promise<ScanIndex> {
+    const fixtureRoot = await mkdtemp(path.join(os.tmpdir(), "slopsplorer-wide-"));
+    roots.push(fixtureRoot);
+    for (const [relativePath, contents] of Object.entries(files)) {
+      const absolute = path.join(fixtureRoot, relativePath);
+      await mkdir(path.dirname(absolute), { recursive: true });
+      await writeFile(absolute, contents, "utf8");
+    }
+    return scanSourceTree({
+      root: fixtureRoot,
+      tokenizer: "cl100k_base",
+      allFiles: true,
+      exclude: [],
+      maxFileBytes: 2 * 1024 * 1024,
+      concurrency: 8,
+    });
+  }
+
+  beforeAll(async () => {
+    // One folder holds so much that every other is under half a percent of it.
+    const tiny: Record<string, string> = { "core/main.ts": MAIN_TS.repeat(12) };
+    for (let position = 0; position < 12; position += 1) {
+      tiny[`tail${String(position).padStart(2, "0")}/index.ts`] = "export const value = 1;\n";
+    }
+    // Every folder is worth drawing, and there are more of them than the strip draws.
+    const even: Record<string, string> = {};
+    for (let position = 0; position < 25; position += 1) {
+      even[`part${String(position).padStart(2, "0")}/index.ts`] = MAIN_TS;
+    }
+    [tinyTail, evenTail] = await Promise.all([scanFixture(tiny), scanFixture(even)]);
+  }, SCAN_TIMEOUT_MS);
+
+  afterAll(async () => {
+    await Promise.all(roots.map((fixtureRoot) => rm(fixtureRoot, { recursive: true, force: true })));
+  });
+
+  it("gathers the folders under the smallest drawn share into one closing segment", () => {
+    const segments = buildView(tinyTail, request()).summary.ribbon;
+    expect(segments.map((segment) => segment.name)).toEqual(["core", "12 more folders"]);
+    expect(segments[1]!.path).toBeNull();
+  });
+
+  it("draws no more folders than the strip can hold, whatever their share", () => {
+    const segments = buildView(evenTail, request()).summary.ribbon;
+    expect(segments).toHaveLength(21);
+    expect(segments[20]).toMatchObject({ name: "5 more folders", path: null });
+  });
+
+  it("still partitions the scope, because the tail keeps the weight it stands for", () => {
+    const view = buildView(tinyTail, request());
+    const rest = view.summary.ribbon[1]!;
+    expect(rest.weight).toBe(view.summary.selectedWeight - view.summary.ribbon[0]!.weight);
+    expect(view.summary.ribbon.reduce((sum, segment) => sum + segment.shareOfScope, 0)).toBeCloseTo(1, 10);
+    expect(view.summary.ribbon.reduce((sum, segment) => sum + segment.files, 0)).toBe(view.summary.selectedFiles);
+  });
+
+  it("splits the closing segment by flavor like any other, so its bands still describe it", () => {
+    const rest = buildView(tinyTail, request()).summary.ribbon[1]!;
+    expect(rest.flavors).toEqual([{ flavor: "code", weight: rest.weight }]);
   });
 });

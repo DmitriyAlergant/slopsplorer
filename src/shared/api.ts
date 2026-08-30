@@ -13,7 +13,15 @@ export type Flavor = FileKind | "generated";
 
 export const FILE_KINDS: readonly FileKind[] = ["code", "test", "text", "i18n", "data", "other"];
 
-interface FileKindDetails {
+/**
+ * Every flavor, in the order each breakdown draws them.
+ *
+ * One order for the whole page, so a band means the same place in every bar and
+ * two folders beside each other can be compared band by band.
+ */
+export const FLAVORS: readonly Flavor[] = [...FILE_KINDS, "generated"];
+
+interface FlavorDetails {
   label: string;
   description: string;
 }
@@ -25,13 +33,14 @@ interface FileKindDetails {
  * names are: the brief an ask sends has to call a flavor what the switch the
  * reader clicked calls it.
  */
-export const FILE_KIND_DETAILS: Readonly<Record<FileKind, FileKindDetails>> = {
+export const FLAVOR_DETAILS: Readonly<Record<Flavor, FlavorDetails>> = {
   code: { label: "Code", description: "Source and application code." },
   test: { label: "Tests", description: "Test code: source files in a test folder, plus anything named by a test convention. Fixtures keep the flavor of their own format." },
   text: { label: "Docs", description: "Markdown and other prose documentation." },
   i18n: { label: "i18n", description: "Translation catalogues and locale files, including source files that are almost entirely translated strings." },
   data: { label: "Data & Conf", description: "Structured data and configuration formats such as JSON, YAML, TOML, XML, CSV, and dependency manifests, plus source files that are almost entirely string literals." },
   other: { label: "Other", description: "Scannable text files that do not fit another flavor, such as HTML and stylesheets." },
+  generated: { label: "Generated", description: "Generated output and lockfiles detected from path and filename conventions." },
 };
 
 export type TreeSort = "name" | "weight";
@@ -438,11 +447,12 @@ export interface FolderCard {
 /**
  * One flavor's part of a folder, in the active measure and aspect.
  *
- * Generated files are never in one: the bar these draw states what the source
- * of a folder is made of, and a lockfile is not part of that answer.
+ * The slices divide the folder's own weight, so they hold every flavor the
+ * switches count, generated output included. A tile headline and the bar under
+ * it therefore describe the same files.
  */
 export interface FlavorSlice {
-  flavor: FileKind;
+  flavor: Flavor;
   weight: number;
 }
 
@@ -500,9 +510,9 @@ export interface DetailView {
    * The whole every tile's bar divides, so all the tiles share one scale.
    *
    * The drill scope as the tree's own checkboxes and the path filter leave it,
-   * with every flavor in it and generated files out of it. The flavor chips
-   * are deliberately not applied: they take slices out of the bars, so turning
-   * one off shortens every bar rather than stretching the rest to fill it.
+   * with every flavor in it, generated output included. The flavor switches are
+   * deliberately not applied: they take slices out of the bars, so turning one
+   * off shortens every bar rather than stretching the rest to fill it.
    */
   flavorBaseline: number;
   /** Fixed column capacity measured from the panel width. */
@@ -543,7 +553,12 @@ export interface SummaryView {
   selectedChurnTokens: number;
   selectedChurnLines: number;
   selectedChurnCodeLines: number;
-  /** Top-level segments of the drill scope's proportion ribbon. */
+  /**
+   * Top-level segments of the drill scope's proportion ribbon.
+   *
+   * A segment's width is its share of the scope and its `flavors` are the bands
+   * it is drawn in, so one strip states where the weight sits and what it is.
+   */
   ribbon: FolderCard[];
 }
 

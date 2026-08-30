@@ -156,10 +156,11 @@ describe("aggregating a diff", () => {
     expect({ added: card.added, removed: card.removed }).toEqual({ added: 30, removed: 0 });
   });
 
-  it("keeps the direct-files tile at one-column capacity", () => {
+  it("gives the one column to the folders when the root holds no loose files", () => {
     const view = buildView(diffIndex, request({ cardColumns: 1, selected: { rowKind: "folder", path: "" } }));
     expect(view.detail.cards).toHaveLength(1);
-    expect(view.detail.cards[0]).toMatchObject({ name: ".", rowKind: "files", files: 0, weight: 0 });
+    expect(view.detail.cards[0]).toMatchObject({ path: null, rowKind: "folder" });
+    expect(view.detail.cards[0]!.name).toMatch(/more folders$/);
   });
 
   it("splits a folder tile by flavor inside a comparison too", () => {

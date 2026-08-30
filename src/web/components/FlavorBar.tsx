@@ -1,5 +1,5 @@
 import type { Aspect, FlavorSlice, Measure } from "../../shared/api.ts";
-import { FILE_KIND_DETAILS, weightName } from "../../shared/api.ts";
+import { FLAVOR_DETAILS, weightName } from "../../shared/api.ts";
 import { count } from "../format.ts";
 import { Tooltip, tooltipHandlers } from "./Tooltip.tsx";
 
@@ -36,7 +36,7 @@ export function FlavorBar({ slices, measure, aspect, isDiff, baseline }: Props):
             {...tooltipHandlers}
           >
             <Tooltip compact>
-              {`${FILE_KIND_DETAILS[slice.flavor].label}: ${count(slice.weight)} ${unit}`}
+              {`${FLAVOR_DETAILS[slice.flavor].label}: ${count(slice.weight)} ${unit}`}
             </Tooltip>
           </span>
         ))}

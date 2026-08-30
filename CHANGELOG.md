@@ -12,9 +12,15 @@ Write yours under Unreleased as you make the change, and rename that heading to 
 
 ### Other Changes
 
+- The proportion bar at the bottom splits each folder into bands by flavor, and a hovered segment names those bands with their figures.
+- The proportion bar stops drawing folders under half a percent of the strip, and gathers the rest into one closing segment.
+- A tile's flavor bar now counts generated output as a flavor of its own, so the bar and the figure above it describe the same files.
 - The path filter is now the width of the source tree and follows the splitter, and the unit switch starts where the panel beside the tree starts.
 - Ask now sits at the right of the control row beside Open in, so both stay in place when the header scrolls away.
 - Panels take the same outline as the controls above them, so the filter box and the tree under it read as one column.
+- The folder tiles read in one order: the `.` tile first, the child folders after it heaviest first, and the tile for the folders past the row last.
+- A folder that holds no loose files of its own no longer draws an empty `.` tile, and the room goes to its subfolders.
+- The strip at the bottom names its subject as `whole project under current filters` or `drilled scope under current filters`.
 - The workspace splitter no longer carries a tooltip.
 - The file table strip now reads `of 1,309 files` beside the pager and `total 1,316 files scanned` under it.
 - The source tree steps in less per level, so a deep folder keeps more room for its name.

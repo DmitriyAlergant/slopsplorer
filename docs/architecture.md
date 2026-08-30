@@ -196,15 +196,27 @@ Everything below the workspace describes what the workspace shows, so no part of
 The one deliberate exception is the proportion bar, whose segments select a folder in the folder panel above it.
 The bar is a view of the scope, so selecting from it is the same act as clicking the tree.
 
+The bar draws the drill scope as one strip, and `buildSummary()` in `src/server/aggregate.ts` decides what it holds.
+A segment's width is one part's share of the scope, and the bands stacked inside it are the flavors that part is made of, in the order `FLAVORS` gives.
+So the strip states where the weight sits and what that weight is, and a hovered segment names its own bands with their figures.
+The parts are ranked heaviest first, and the strip stops drawing them one at a time below half a percent of itself or past twenty segments.
+Whatever is left becomes one closing segment that names how many folders it stands for and selects nothing.
+The scope's own files always keep a segment, because no other segment leads to them.
+
 There is one file table, and it is inside the folder panel.
 The panel divides its subject twice: the tiles divide it by part, and the table lists every file under it, heaviest first.
-A part is a child folder or the folder's own files, which take the last tile named `.`, so a folder with no subfolders still fills the row.
-The `.` tile remains when filtering leaves it with zero files and zero weight, so the folder's direct-files path never disappears.
-The tile before `.` absorbs child folders that do not fit one row, and it is named for what it holds.
+A part is a child folder or the folder's own files, which take the first tile named `.`.
+The `.` tile remains when a flavor filter leaves it with zero files and zero weight, so the folder's direct-files path never disappears.
+It is absent when the folder holds no loose file that the path filter keeps, which is the rule the tree uses for the same row, and the two panels name the same parts.
+A folder with only loose files, and a folder the filters empty, still draw that one tile, because a row of no tiles would move the controls under it.
+The child folder tiles come after it, heaviest first.
+The last tile absorbs the child folders that do not fit one row, and it is named for what it holds, so it stands at the end of the order.
+When every part fits, there is no such tile.
 
 Each tile carries a bar, and every bar in the panel divides one whole: `DetailView.flavorBaseline`, the drill scope as the tree's checkboxes and the path filter leave it.
-The flavor chips are not applied to that whole, and generated files are never in it.
+No flavor switch is applied to that whole, and generated output is in it like any other flavor.
 So the bar's length is what the folder holds of the scope, its divisions are the flavors it is made of, and turning a flavor off takes a slice out of every bar instead of stretching the rest to fill the width.
+A tile's slices divide the tile's own weight, so the bar and the figure above it always describe the same files.
 The tiles account for the whole of their folder, so at the top of a scope the bars add up to the scope.
 A separate ranking panel used to repeat the tiles as rows, which put the same subtree on the page twice.
 The strip above the ranked table holds the flavor controls and states the available weight of every flavor in the table scope, including disabled and empty flavors.
@@ -256,7 +268,7 @@ A `.` row is its own subject and not a second way to name its folder.
 Selecting it reports the folder's own files: the heading reads `root/folder/.`, the child-folder tiles disappear because they belong to the subtree and not to the loose files, and every figure in the panel is the loose files' own.
 The panel keeps one tile there, the subject itself, so the row still stands and the file table under it does not move.
 In the tree it is the first row of every level it appears in, above the subfolders and whichever order the level is sorted by, because it is the one row that holds files rather than more folders.
-In the tiles and in the ribbon it is ranked by weight like every other part of the folder.
+In the tiles it is the first one, for the same reason, and in the ribbon it is ranked by weight like every other part of the folder.
 
 ## Where the measure is chosen
 
