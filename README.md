@@ -226,7 +226,7 @@ Outside one, the walker applies `.gitignore` itself, so a plain folder behaves t
 
 ## Open the project locally
 
-The **Open in** control in the header opens one folder in Cursor, VS Code, Finder on macOS, File Explorer on Windows, or the default file manager on Linux.
+The **Open in** control in the control row opens one folder in Cursor, VS Code, Finder on macOS, File Explorer on Windows, or the default file manager on Linux.
 The main button repeats the last application you chose, and the browser keeps that choice for the next visit.
 Slopsplorer does not check whether an editor is installed, so a missing editor reports the launch error when you choose it.
 At the top of the page it opens the measured project root.

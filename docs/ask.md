@@ -92,7 +92,7 @@ One list is the whole client state, so a reload finds the asks still running and
 
 ## The page
 
-The agent picker is a split control in the instrument bar: the wide half asks the chosen agent, and the chevron opens the list of the others.
+The agent picker is a split control at the right of the filter bar, beside Open in: the wide half asks the chosen agent, and the chevron opens the list of the others.
 Choosing a row changes the agent and asks nothing, because the two acts are the two halves of the control.
 The choice is kept in local storage, so the reader chooses an agent once.
 

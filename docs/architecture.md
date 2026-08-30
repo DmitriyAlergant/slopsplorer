@@ -151,6 +151,8 @@ The route requires the drill to exist in `ScanIndex.folderByPath`, then resolves
 They do not probe installed applications.
 The route reports a launch failure when the chosen editor or system command is absent.
 The browser stores the last chosen application, and `OpenInPicker` uses it for the main half of the split control.
+`FilterBar` draws it, and the agent picker beside it, at the right of the filter bar.
+Both act on the drill scope that bar filters, and the bar holds the top of the page after the header scrolls away.
 
 The skill ships with the package and not with the scan, so `/api/skill-source` reads it by a fixed name instead of through that allowlist, and the same dialog draws it.
 `buildSkillInstall()` writes the install command for the platform the server runs on: `cp` chained with `&&` for a POSIX shell, `Copy-Item` chained with `;` under `$ErrorActionPreference` for PowerShell.
@@ -260,6 +262,7 @@ In the tiles and in the ribbon it is ranked by weight like every other part of t
 
 The measure and the aspect are properties of every figure on the page, so each is chosen once, in the filter bar.
 `FilterBar` draws two switches side by side, the unit and then the side of the change.
+The row ends with the two acts on the drill scope, Open in and Ask, which the header held before.
 The aspect switch is only drawn inside a comparison, because a scanned file has one content, and it comes second so that the unit switch keeps its place while a review moves between before, diff, and after.
 A control per panel would let several widgets each claim to decide what the page counts.
 

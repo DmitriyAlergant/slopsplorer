@@ -8,11 +8,12 @@ Write yours under Unreleased as you make the change, and rename that heading to 
 
 ### Features
 
-- The header can open the project root or current drill folder in Cursor, VS Code, or the host operating system's file manager, remembers the last choice, and does not probe which applications are installed.
+- The control row can open the project root or current drill folder in Cursor, VS Code, or the host operating system's file manager, remembers the last choice, and does not probe which applications are installed.
 
 ### Other Changes
 
 - The path filter is now the width of the source tree and follows the splitter, and the unit switch starts where the panel beside the tree starts.
+- Ask now sits at the right of the control row beside Open in, so both stay in place when the header scrolls away.
 - Panels take the same outline as the controls above them, so the filter box and the tree under it read as one column.
 - The workspace splitter no longer carries a tooltip.
 - The file table strip now reads `of 1,309 files` beside the pager and `total 1,316 files scanned` under it.

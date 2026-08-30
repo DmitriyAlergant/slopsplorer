@@ -911,6 +911,10 @@ button { cursor: pointer; }
  * is stated once. They sit together and read as one phrase: "net tokens".
  */
 .filters__switches { display: flex; flex: 1 0 auto; align-items: center; gap: 18px; }
+/* The two acts on the drilled folder end the row, opposite the filter that
+   scopes it. `margin-left: auto` rather than a spacer, so they stay right when
+   the aspect switch appears and widens the group beside them. */
+.filters__actions { display: flex; flex: none; align-items: center; gap: 10px; margin-left: auto; }
 .switch {
   display: flex;
   border: 1px solid var(--control-rule);
@@ -1932,9 +1936,6 @@ button { cursor: pointer; }
 
 /* ---- Asking a local agent ---------------------------------------------- */
 
-/* The facts about the measurement, and the one act that is about all of it. */
-.instrument__right { display: flex; align-items: center; gap: 24px; }
-
 /*
  * One split control: the wide half asks, the chevron chooses who answers. The
  * two halves share a border, so they read as one control and not as two.
@@ -1946,11 +1947,14 @@ button { cursor: pointer; }
   background: var(--surface);
   color: var(--ink);
   font-size: 12.5px;
+  line-height: 1.4;
   transition: border-color 120ms ease, color 120ms ease;
 }
 .split-picker__primary {
   display: inline-flex; align-items: center; gap: 7px;
-  padding: 7px 12px;
+  /* The same box the switch option and the path filter draw, so the row holds
+     one line of controls of one height. */
+  padding: 5px 12px;
   border-right: 0;
   border-radius: var(--radius-sm) 0 0 var(--radius-sm);
 }
@@ -2159,6 +2163,7 @@ button { cursor: pointer; }
      chips fold inside their own row rather than running off the page. */
   .filters { flex-direction: column; align-items: stretch; }
   .search, .filters__switches, .chips { flex: none; }
+  .filters__actions { margin-left: 0; }
   .filters__switches { flex-wrap: wrap; }
   .chips { flex-wrap: wrap; }
 }
@@ -2171,7 +2176,7 @@ button { cursor: pointer; }
   .ribbon__actions, .detail__actions { flex-direction: row; align-items: center; gap: 20px; }
   .detail__files-head { flex-wrap: wrap; gap: 10px; }
   .instrument__path-hint { display: none; }
-  .instrument__right { gap: 14px; }
+  .instrument__facts { gap: 14px; }
   .dock { right: 12px; bottom: 12px; width: calc(100% - 24px); }
 }
 

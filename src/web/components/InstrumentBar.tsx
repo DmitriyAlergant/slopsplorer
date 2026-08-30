@@ -1,12 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import type {
-  AgentTool, ComparisonRequest, FileSource, OpenInApplication, OpenInOption, ReviewMode, ScanMeta,
-  SnapshotBacklink,
+  ComparisonRequest, FileSource, ReviewMode, ScanMeta, SnapshotBacklink,
 } from "../../shared/api.ts";
 import { countOf, since } from "../format.ts";
-import { AgentPicker } from "./AgentPicker.tsx";
 import { ComparisonPicker } from "./ComparisonPicker.tsx";
-import { OpenInPicker } from "./OpenInPicker.tsx";
 import { Tooltip, tooltipHandlers } from "./Tooltip.tsx";
 
 interface Props {
@@ -22,16 +19,6 @@ interface Props {
   onOpen: (root: string) => void;
   onCompare: (comparison: ComparisonRequest) => void;
   onReviewMode: (mode: ReviewMode) => void;
-  drillPath: string;
-  openInOptions: readonly OpenInOption[];
-  openInApplication: OpenInApplication;
-  openingIn: OpenInApplication | null;
-  onOpenIn: (application: OpenInApplication) => void;
-  /** Agents this host can run. No agent, no control: there is nothing to ask. */
-  agents: readonly AgentTool[];
-  agentId: string;
-  onChooseAgent: (agentId: string) => void;
-  onAsk: () => void;
 }
 
 /** Where a file list came from, named in the reader's terms rather than ours. */
@@ -46,8 +33,7 @@ const FILE_SOURCE_LABELS: Readonly<Record<FileSource, string>> = {
 /** The fixed readout strip: what was measured, how, and how long ago. */
 export function InstrumentBar({
   meta, staticSnapshot = false, backlink = null, rescanning, scanning,
-  onRescan, onOpen, onCompare, onReviewMode, drillPath, openInOptions, openInApplication, openingIn, onOpenIn,
-  agents, agentId, onChooseAgent, onAsk,
+  onRescan, onOpen, onCompare, onReviewMode,
 }: Props): React.JSX.Element {
   const [editingPath, setEditingPath] = useState(false);
   const [pathValue, setPathValue] = useState(meta?.rootPath ?? "");
@@ -208,36 +194,20 @@ export function InstrumentBar({
         )}
       </div>
 
-      <div className="instrument__right">
-        {/* These act on the whole page rather than on any one panel of it, so
-            they sit beside the facts about the measurement. */}
-        {openInOptions.length > 0 && meta ? (
-          <OpenInPicker
-            options={openInOptions}
-            application={openInApplication}
-            targetLabel={drillPath ? `${meta.rootName}/${drillPath}` : meta.rootName}
-            opening={openingIn}
-            onOpen={onOpenIn}
-          />
-        ) : null}
-        {agents.length > 0 ? (
-          <AgentPicker agents={agents} agentId={agentId} onChoose={onChooseAgent} onAsk={onAsk} />
-        ) : null}
-        <dl className="instrument__facts">
-          <div className="fact">
-            <dt>Tokenizer</dt>
-            <dd>{meta?.tokenizer ?? "-"}</dd>
-          </div>
-          <div className="fact">
-            <dt>Source</dt>
-            <dd>{meta ? FILE_SOURCE_LABELS[meta.fileSource] : "-"}</dd>
-          </div>
-          <div className="fact">
-            <dt>Scanned</dt>
-            <dd>{meta ? since(meta.scannedAt) : "-"}</dd>
-          </div>
-        </dl>
-      </div>
+      <dl className="instrument__facts">
+        <div className="fact">
+          <dt>Tokenizer</dt>
+          <dd>{meta?.tokenizer ?? "-"}</dd>
+        </div>
+        <div className="fact">
+          <dt>Source</dt>
+          <dd>{meta ? FILE_SOURCE_LABELS[meta.fileSource] : "-"}</dd>
+        </div>
+        <div className="fact">
+          <dt>Scanned</dt>
+          <dd>{meta ? since(meta.scannedAt) : "-"}</dd>
+        </div>
+      </dl>
 
       {meta && meta.skippedLargeFiles > 0 ? (
         <p className="instrument__note">

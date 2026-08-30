@@ -674,6 +674,10 @@ export function App({ runtime = liveRuntime, backlink = null }: Props = {}): Rea
         }
       : null;
   const aspect = view?.aspect ?? request.aspect;
+  // Open in and Ask both act on the drilled folder, which is the page's subject.
+  const actionTarget = view?.meta
+    ? (request.drillPath ? `${view.meta.rootName}/${request.drillPath}` : view.meta.rootName)
+    : null;
 
   return (
     <main
@@ -693,18 +697,6 @@ export function App({ runtime = liveRuntime, backlink = null }: Props = {}): Rea
         onOpen={handleOpen}
         onCompare={handleCompare}
         onReviewMode={handleReviewMode}
-        drillPath={request.drillPath}
-        openInOptions={openInOptions}
-        openInApplication={openInApplication}
-        openingIn={openingIn}
-        onOpenIn={handleOpenIn}
-        agents={agents}
-        agentId={chosenAgentId ?? ""}
-        onChooseAgent={chooseAgent}
-        onAsk={() => {
-          setAskFailure(null);
-          setAskOpen(true);
-        }}
       />
 
       {view && view.meta.diff && spine === null && spineLoading ? <PendingSpineBand /> : null}
@@ -729,6 +721,18 @@ export function App({ runtime = liveRuntime, backlink = null }: Props = {}): Rea
         onQueryChange={(query) => patch({ query })}
         onMeasureChange={setMeasure}
         onAspectChange={setAspect}
+        actionTarget={actionTarget}
+        openInOptions={openInOptions}
+        openInApplication={openInApplication}
+        openingIn={openingIn}
+        onOpenIn={handleOpenIn}
+        agents={agents}
+        agentId={chosenAgentId ?? ""}
+        onChooseAgent={chooseAgent}
+        onAsk={() => {
+          setAskFailure(null);
+          setAskOpen(true);
+        }}
       />
 
       {error ? <p className="error-banner" role="status">{error}</p> : null}

@@ -47,15 +47,6 @@ describe("a static instrument bar", () => {
         onOpen={() => undefined}
         onCompare={() => undefined}
         onReviewMode={() => undefined}
-        drillPath=""
-        openInOptions={[]}
-        openInApplication="cursor"
-        openingIn={null}
-        onOpenIn={() => undefined}
-        agents={[]}
-        agentId=""
-        onChooseAgent={() => undefined}
-        onAsk={() => undefined}
       />,
     );
 
@@ -80,19 +71,6 @@ describe("a static instrument bar", () => {
         onOpen={() => undefined}
         onCompare={() => undefined}
         onReviewMode={() => undefined}
-        drillPath="src"
-        openInOptions={[
-          { id: "cursor", label: "Cursor" },
-          { id: "vscode", label: "VS Code" },
-          { id: "fileManager", label: "Finder" },
-        ]}
-        openInApplication="vscode"
-        openingIn={null}
-        onOpenIn={() => undefined}
-        agents={[]}
-        agentId=""
-        onChooseAgent={() => undefined}
-        onAsk={() => undefined}
       />,
     );
 
@@ -101,9 +79,6 @@ describe("a static instrument bar", () => {
     expect(html).toContain("Before");
     expect(html).toContain("Diff");
     expect(html).toContain("After");
-    expect(html).toContain("Open in");
-    expect(html).toContain("Open project/src in VS Code");
-    expect(html).toContain('data-compact="true" data-single-line="true" aria-hidden="true">Choose application</span>');
   });
 
   it("keeps review navigation visible in a full repository-side view", () => {
@@ -116,15 +91,6 @@ describe("a static instrument bar", () => {
         onOpen={() => undefined}
         onCompare={() => undefined}
         onReviewMode={() => undefined}
-        drillPath=""
-        openInOptions={[]}
-        openInApplication="cursor"
-        openingIn={null}
-        onOpenIn={() => undefined}
-        agents={[]}
-        agentId=""
-        onChooseAgent={() => undefined}
-        onAsk={() => undefined}
       />,
     );
 
