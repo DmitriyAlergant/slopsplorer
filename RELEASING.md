@@ -8,10 +8,11 @@
 
 ## Take the screenshot
 
-Use the current source through Vite, a light theme, a 1301 x 726 CSS-pixel viewport, no path filter, all regular flavors on, and Generated off.
+Use the current source through Vite, a light theme, a 1021 x 731 CSS-pixel viewport, no path filter, all regular flavors on, and Generated off.
 
 For `docs/screenshot.png`, run `node --watch src/cli.ts vPREVIOUS --dev --no-open` and open the printed URL.
 Collapse the commit band, select Diff, LOC, and Net, then capture the full viewport at the repository root.
+Add a 1 CSS-pixel `#c7cbd3` border inside the image, which is 2 image pixels in the @2x asset, and keep the final image at 2042 x 1462 pixels.
 
 The screenshot shows the repository-view control and the diff metrics in one frame.
 The illustration in `docs/hero.jpg` is not a product screenshot and does not need release-by-release updates.
