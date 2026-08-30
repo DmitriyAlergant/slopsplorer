@@ -133,8 +133,8 @@ button { cursor: pointer; }
  * edge the halves share, and a group that clips its overflow would cut it.
  * Each half draws the ring inside its own shape instead.
  */
-.agent-picker__ask:focus-visible,
-.agent-picker__more:focus-visible,
+.split-picker__primary:focus-visible,
+.split-picker__more:focus-visible,
 .spine__step button:focus-visible,
 .switch__option:focus-visible {
   outline: none;
@@ -894,10 +894,16 @@ button { cursor: pointer; }
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 14px;
+  /* 6px gap, the 8px splitter, 6px gap: the same gutter the workspace grid
+     leaves, so the switches start where the panel beside the tree starts. */
+  gap: 14px 20px;
   padding: 18px 0;
 }
-.search { flex: 0 1 280px; min-width: 180px; }
+/* The width of the tree it filters, from the same expression the workspace
+   grid uses, so the box and the column below it move together under a drag.
+   `.filters` and `.workspace` are siblings of one width, which is what makes
+   the percentage resolve to the same pixels in both. */
+.search { flex: 0 1 clamp(260px, var(--tree-panel-width, 27%), calc(100% - 380px)); min-width: 180px; }
 /*
  * The side of the change and the unit are properties of every figure, so each
  * is stated once. They sit together and read as one phrase: "net tokens".
@@ -1093,6 +1099,7 @@ button { cursor: pointer; }
   place-items: center;
   border-radius: 4px;
   touch-action: none;
+  user-select: none;
 }
 /* The grip is 2px wide. The hit area is not: this pseudo-element widens the
    target past the drawn line without moving anything around it. */
@@ -1131,7 +1138,7 @@ button { cursor: pointer; }
    has to take the height the panel leaves it. */
 .detail .table-scroll { flex: 1 1 auto; min-height: 0; max-height: none; }
 .panel {
-  border: 1px solid var(--rule);
+  border: 1px solid var(--control-rule);
   border-radius: var(--radius);
   background: var(--surface);
   overflow: hidden;
@@ -1477,8 +1484,10 @@ button { cursor: pointer; }
 .cards {
   flex: none;
   display: grid;
-  /* Column count is measured by the panel, so rows are always complete. */
-  grid-template-columns: repeat(var(--card-columns, 3), minmax(0, 1fr));
+  /* Column count is measured by the panel, and a tile keeps one width whatever
+     that measurement is: widening the panel adds a tile instead of stretching
+     every one. The track shrinks only when a single tile no longer fits. */
+  grid-template-columns: repeat(var(--card-columns, 3), minmax(0, var(--card-width, 210px)));
   gap: 8px;
   padding: 18px 20px 0;
 }
@@ -1922,8 +1931,8 @@ button { cursor: pointer; }
  * One split control: the wide half asks, the chevron chooses who answers. The
  * two halves share a border, so they read as one control and not as two.
  */
-.agent-picker { position: relative; display: flex; flex: none; }
-.agent-picker__ask, .agent-picker__more {
+.split-picker { position: relative; display: flex; flex: none; }
+.split-picker__primary, .split-picker__more {
   position: relative;
   border: 1px solid var(--control-rule);
   background: var(--surface);
@@ -1931,26 +1940,28 @@ button { cursor: pointer; }
   font-size: 12.5px;
   transition: border-color 120ms ease, color 120ms ease;
 }
-.agent-picker__ask {
+.split-picker__primary {
   display: inline-flex; align-items: center; gap: 7px;
   padding: 7px 12px;
   border-right: 0;
   border-radius: var(--radius-sm) 0 0 var(--radius-sm);
 }
-.agent-picker__more {
+.split-picker__more {
   display: grid; place-items: center;
   padding: 0 8px;
   border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
   color: var(--ink-soft);
 }
-.agent-picker__ask:hover, .agent-picker__more:hover { border-color: var(--signal); color: var(--signal); }
+.split-picker__primary:hover, .split-picker__more:hover { border-color: var(--signal); color: var(--signal); }
 /* The hovered half owns the shared edge, so the seam never reads as a gap. */
-.agent-picker__ask:hover + .agent-picker__more { border-left-color: var(--signal); }
-.agent-picker__ask:focus-visible + .agent-picker__more { border-left-color: var(--signal); }
-.agent-picker__more[aria-expanded="true"] { border-color: var(--signal); color: var(--signal); }
+.split-picker__primary:hover + .split-picker__more { border-left-color: var(--signal); }
+.split-picker__primary:focus-visible + .split-picker__more { border-left-color: var(--signal); }
+.split-picker__more[aria-expanded="true"] { border-color: var(--signal); color: var(--signal); }
 .agent-mark { flex: none; }
+.open-in-mark { flex: none; }
+.open-in-mark--vscode { color: #1688d4; }
 
-.agent-picker__panel {
+.split-picker__panel {
   position: absolute; top: calc(100% + 8px); right: 0; z-index: 60;
   min-width: 208px;
   display: flex; flex-direction: column;
@@ -1959,20 +1970,20 @@ button { cursor: pointer; }
   background: var(--surface);
   box-shadow: 0 12px 32px oklch(0.15 0.02 265 / 0.18);
 }
-.agent-picker__option {
+.split-picker__option {
   display: flex; align-items: center; gap: 9px;
   padding: 7px 9px;
   border: 0; border-radius: var(--radius-sm);
   background: transparent;
   text-align: left;
 }
-.agent-picker__option:hover { background: var(--sunk); }
+.split-picker__option:hover { background: var(--sunk); }
 /* The mark rests in ink and takes the page's colour under the pointer, so a row
    reads as a plain list until the reader is on one. */
-.agent-picker__option:hover .agent-mark { color: var(--signal); }
-.agent-picker__option[aria-current="true"] { color: var(--signal); }
-.agent-picker__option[aria-current="true"] .agent-picker__option-name { font-weight: 600; }
-.agent-picker__option-name { flex: 1 1 auto; padding-right: 18px; font-size: 12.5px; }
+.split-picker__option:hover .agent-mark { color: var(--signal); }
+.split-picker__option[aria-current="true"] { color: var(--signal); }
+.split-picker__option[aria-current="true"] .split-picker__option-name { font-weight: 600; }
+.split-picker__option-name { flex: 1 1 auto; padding-right: 18px; font-size: 12.5px; }
 /* What the sign-in probe believed, which is the one thing that decides whether
    an ask can answer at all. */
 .agent-picker__option-note { color: var(--ink-faint); font-size: 11px; }

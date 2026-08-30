@@ -257,7 +257,6 @@ export function SpineBand({
           height={height}
           onHeightChange={onHeightChange}
           label="Resize the commit band"
-          hint="Drag to resize the commit band. Double-click to reset."
           minimum={MIN_SPINE_HEIGHT}
           maximum={MAX_SPINE_HEIGHT}
           defaultHeight={DEFAULT_SPINE_HEIGHT}

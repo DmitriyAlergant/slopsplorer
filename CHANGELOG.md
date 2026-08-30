@@ -12,11 +12,15 @@ Write yours under Unreleased as you make the change, and rename that heading to 
 
 ### Other Changes
 
+- The path filter is now the width of the source tree and follows the splitter, and the unit switch starts where the panel beside the tree starts.
+- Panels take the same outline as the controls above them, so the filter box and the tree under it read as one column.
+- The workspace splitter no longer carries a tooltip.
 - The file table strip now reads `of 1,309 files` beside the pager and `total 1,316 files scanned` under it.
 - The source tree steps in less per level, so a deep folder keeps more room for its name.
 
 ### Bug Fixes
 
+- Pressing the workspace splitter no longer shifts both panels sideways before the drag begins, and a double-click on it resets the split. Each press used to move the boundary to the pointer, which took the bar out from under the second click.
 - The folder tiles keep one width, so a wider panel adds a tile instead of resizing every one.
 
 ## [0.6.0](https://github.com/DmitriyAlergant/slopsplorer/releases/tag/v0.6.0) - 2026-08-29

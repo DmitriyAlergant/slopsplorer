@@ -1,6 +1,5 @@
-import { useId, useRef } from "react";
-import type { KeyboardEvent, MouseEvent, PointerEvent } from "react";
-import { Tooltip, tooltipHandlers } from "./Tooltip.tsx";
+import { useRef } from "react";
+import type { KeyboardEvent, PointerEvent } from "react";
 
 const SPLITTER_WIDTH = 8;
 const GRID_GAPS = 12;
@@ -19,51 +18,48 @@ interface ColumnProps {
 
 /** Draggable and keyboard-accessible boundary between the two workspace panels. */
 export function WorkspaceSplitter({ ratio, onRatioChange }: ColumnProps): React.JSX.Element {
-  const hintId = useId();
-  const dragging = useRef(false);
+  const drag = useRef<{ pointerX: number; width: number } | null>(null);
 
-  const resizeFromClientX = (element: HTMLElement, clientX: number): void => {
+  /** The tree's drawn width, which is the clamped ratio rather than the stored one. */
+  const treeWidth = (element: HTMLElement): number => (
+    element.previousElementSibling!.getBoundingClientRect().width
+  );
+
+  const resizeTo = (element: HTMLElement, width: number): void => {
     const workspace = element.parentElement;
     if (!workspace) return;
     const bounds = workspace.getBoundingClientRect();
     const maximum = bounds.width - SPLITTER_WIDTH - GRID_GAPS - MIN_DETAIL_WIDTH;
-    const width = Math.max(MIN_TREE_WIDTH, Math.min(maximum, clientX - bounds.left));
-    onRatioChange(width / bounds.width);
+    onRatioChange(Math.max(MIN_TREE_WIDTH, Math.min(maximum, width)) / bounds.width);
   };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
     if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
-    const workspace = event.currentTarget.parentElement;
-    if (!workspace) return;
     event.preventDefault();
-    const bounds = workspace.getBoundingClientRect();
-    const currentWidth = ratio * bounds.width;
     const direction = event.key === "ArrowLeft" ? -1 : 1;
-    resizeFromClientX(event.currentTarget, bounds.left + currentWidth + direction * KEYBOARD_STEP);
+    resizeTo(event.currentTarget, treeWidth(event.currentTarget) + direction * KEYBOARD_STEP);
   };
 
   // Capture is what keeps a drag alive once the pointer leaves the 8px bar,
   // which it does immediately.
+  //
+  // A drag is measured as pointer travel from where it started, as the row
+  // splitter's is. Reading the pointer as the new edge instead would teleport
+  // the bar by the width of the grid gap on the press, which moves the page
+  // under a click that was not a drag and takes the bar out from under a second
+  // click that was a double-click.
   const handlePointerDown = (event: PointerEvent<HTMLDivElement>): void => {
-    event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
-    dragging.current = true;
-    resizeFromClientX(event.currentTarget, event.clientX);
+    drag.current = { pointerX: event.clientX, width: treeWidth(event.currentTarget) };
   };
 
   const handlePointerMove = (event: PointerEvent<HTMLDivElement>): void => {
-    if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
-    resizeFromClientX(event.currentTarget, event.clientX);
+    const started = drag.current;
+    if (started === null || !event.currentTarget.hasPointerCapture(event.pointerId)) return;
+    resizeTo(event.currentTarget, started.width + event.clientX - started.pointerX);
   };
 
-  const endDrag = (): void => { dragging.current = false; };
-
-  // A drag holds the pointer, so move events keep arriving here after the press
-  // shut the tooltip. Without this the panel reopens and follows the drag.
-  const handleMouseMove = (event: MouseEvent<HTMLDivElement>): void => {
-    if (dragging.current) return;
-    tooltipHandlers.onMouseMove(event);
-  };
+  const endDrag = (): void => { drag.current = null; };
 
   return (
     <div
@@ -74,10 +70,7 @@ export function WorkspaceSplitter({ ratio, onRatioChange }: ColumnProps): React.
       aria-valuemin={10}
       aria-valuemax={80}
       aria-valuenow={Math.round(ratio * 100)}
-      aria-describedby={hintId}
       tabIndex={0}
-      {...tooltipHandlers}
-      onMouseMove={handleMouseMove}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={endDrag}
@@ -86,7 +79,6 @@ export function WorkspaceSplitter({ ratio, onRatioChange }: ColumnProps): React.
       onDoubleClick={() => onRatioChange(DEFAULT_TREE_PANEL_RATIO)}
     >
       <span className="splitter__grip" aria-hidden="true" />
-      <Tooltip id={hintId}>Drag to resize the source tree. Double-click to reset.</Tooltip>
     </div>
   );
 }
@@ -95,7 +87,6 @@ interface RowProps {
   height: number;
   onHeightChange: (height: number) => void;
   label: string;
-  hint: string;
   minimum: number;
   maximum: number;
   defaultHeight: number;
@@ -113,9 +104,8 @@ interface RowProps {
  * box would then chase itself all the way to the minimum.
  */
 export function HeightSplitter({
-  height, onHeightChange, label, hint, minimum, maximum, defaultHeight,
+  height, onHeightChange, label, minimum, maximum, defaultHeight,
 }: RowProps): React.JSX.Element {
-  const hintId = useId();
   const drag = useRef<{ pointerY: number; height: number } | null>(null);
 
   // Never taller than the window can show: the box scrolls inside itself, and a
@@ -126,9 +116,8 @@ export function HeightSplitter({
   };
 
   // Capture is what keeps a drag alive once the pointer leaves the bar, which
-  // it does immediately.
+  // it does immediately. See the column splitter for why the press stands.
   const handlePointerDown = (event: PointerEvent<HTMLDivElement>): void => {
-    event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
     drag.current = { pointerY: event.clientY, height };
   };
@@ -140,12 +129,6 @@ export function HeightSplitter({
   };
 
   const endDrag = (): void => { drag.current = null; };
-
-  // See the column splitter: a captured drag would otherwise reopen the panel.
-  const handleMouseMove = (event: MouseEvent<HTMLDivElement>): void => {
-    if (drag.current !== null) return;
-    tooltipHandlers.onMouseMove(event);
-  };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
     if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
@@ -163,10 +146,7 @@ export function HeightSplitter({
       aria-valuemin={minimum}
       aria-valuemax={maximum}
       aria-valuenow={Math.round(height)}
-      aria-describedby={hintId}
       tabIndex={0}
-      {...tooltipHandlers}
-      onMouseMove={handleMouseMove}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={endDrag}
@@ -175,7 +155,6 @@ export function HeightSplitter({
       onDoubleClick={() => onHeightChange(defaultHeight)}
     >
       <span className="splitter__grip" aria-hidden="true" />
-      <Tooltip id={hintId}>{hint}</Tooltip>
     </div>
   );
 }
