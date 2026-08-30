@@ -131,6 +131,27 @@ function filesRow(rows: readonly TreeRow[], folderPath: string): TreeRow | undef
 }
 
 describe("folder aggregation", () => {
+  it("keeps folders navigable when their files belong only to disabled flavors", () => {
+    const view = buildView(index, request({ kinds: ["text"], expanded: ["", "src", "src/deep", "tests"] }));
+
+    expect(folderRow(view.tree, "src")).toMatchObject({ weight: 0, hasChildren: true, filteredOut: true });
+    expect(folderRow(view.tree, "src/deep")).toMatchObject({ weight: 0, filteredOut: true });
+    expect(folderRow(view.tree, "tests")).toMatchObject({ weight: 0, filteredOut: true });
+  });
+
+  it("keeps a folder's virtual direct-files row when its flavors are disabled", () => {
+    const view = buildView(index, request({ kinds: ["text"], expanded: ["", "src"] }));
+
+    expect(filesRow(view.tree, "src")).toMatchObject({ weight: 0, filteredOut: true });
+  });
+
+  it("still removes folders that do not match the path search", () => {
+    const view = buildView(index, request({ kinds: ["text"], query: "README" }));
+
+    expect(folderRow(view.tree, "src")).toBeUndefined();
+    expect(folderRow(view.tree, "tests")).toBeUndefined();
+  });
+
   it("reports a folder's weight as exactly the sum of the files beneath it", () => {
     const view = buildView(index, request());
     const src = folderRow(view.tree, "src")!;
@@ -205,20 +226,20 @@ describe("folder aggregation", () => {
 });
 
 describe("visibility switches", () => {
-  it("hiding a file kind removes its weight from the totals and its folder from the tree", () => {
+  it("hiding a file kind removes its weight but keeps its folder in the tree", () => {
     const withTests = buildView(index, request());
     const withoutTests = buildView(index, request({ kinds: ["code", "text", "i18n", "data", "other"] }));
     expect(withoutTests.summary.selectedWeight).toBe(
       withTests.summary.selectedWeight - tokensOf("tests/main.test.ts"),
     );
     expect(folderRow(withTests.tree, "tests")).toBeDefined();
-    expect(folderRow(withoutTests.tree, "tests")).toBeUndefined();
+    expect(folderRow(withoutTests.tree, "tests")).toMatchObject({ weight: 0 });
   });
 
   it("generated output is left out of the totals until it is asked for", () => {
     const hidden = buildView(index, request());
     const shown = buildView(index, request({ showGenerated: true }));
-    expect(folderRow(hidden.tree, "dist")).toBeUndefined();
+    expect(folderRow(hidden.tree, "dist")).toMatchObject({ weight: 0 });
     expect(folderRow(shown.tree, "dist")!.weight).toBe(tokensOf("dist/bundle.js"));
     expect(shown.summary.selectedWeight).toBe(hidden.summary.selectedWeight + tokensOf("dist/bundle.js"));
   });
@@ -667,6 +688,49 @@ describe("drill scope", () => {
 });
 
 describe("ranking scope", () => {
+  it("reports every flavor in the file-list scope and marks which switches keep it", () => {
+    const view = buildView(index, request({ kinds: ["code"], showGenerated: false }));
+
+    expect(view.detail.shownFiles).toBe(3);
+    expect(view.detail.availableFiles).toBe(6);
+    expect(view.detail.flavorStats).toEqual([
+      { flavor: "code", weight: tokensOf("src/main.ts", "src/util.ts", "src/deep/helper.ts"), enabled: true },
+      { flavor: "test", weight: tokensOf("tests/main.test.ts"), enabled: false },
+      { flavor: "text", weight: tokensOf("README.md"), enabled: false },
+      { flavor: "i18n", weight: 0, enabled: false },
+      { flavor: "data", weight: 0, enabled: false },
+      { flavor: "other", weight: 0, enabled: false },
+      { flavor: "generated", weight: tokensOf("dist/bundle.js"), enabled: false },
+    ]);
+  });
+
+  it("narrows flavor stats with the same folder-only switch as the file list", () => {
+    const subtree = buildView(index, request({ selected: { rowKind: "folder", path: "src" } }));
+    const folder = buildView(index, request({ selected: { rowKind: "folder", path: "src" }, fileScope: "folder" }));
+
+    expect(subtree.detail.flavorStats.find(({ flavor }) => flavor === "code")?.weight).toBe(
+      tokensOf("src/main.ts", "src/util.ts", "src/deep/helper.ts"),
+    );
+    expect(folder.detail.flavorStats.find(({ flavor }) => flavor === "code")?.weight).toBe(
+      tokensOf("src/main.ts", "src/util.ts"),
+    );
+  });
+
+  it("keeps the direct-files card when filtering leaves it empty", () => {
+    const view = buildView(index, request({
+      kinds: ["text"],
+      selected: { rowKind: "folder", path: "src" },
+      cardColumns: 6,
+    }));
+
+    expect(view.detail.cards.find((card) => card.rowKind === "files")).toMatchObject({
+      name: ".",
+      path: "src",
+      files: 0,
+      weight: 0,
+    });
+  });
+
   it("ranks only files inside the selected folder, so the panel label is truthful", () => {
     const wholeTree = buildView(index, request());
     const justSrc = buildView(index, request({ selected: { rowKind: "folder", path: "src" } }));
@@ -746,25 +810,29 @@ describe("folder tile grid", () => {
     expect(view.detail.cards.some((card) => card.path === null)).toBe(false);
   });
 
-  it("ranks a folder's own files among the tiles rather than pinning them", () => {
+  it("keeps a folder's own files in the last tile", () => {
     const view = buildView(index, request({ cardColumns: 6 }));
     const ownFiles = view.detail.cards.find((card) => card.rowKind === "files")!;
     expect(ownFiles.name).toBe(".");
     expect(ownFiles.path).toBe("");
     expect(ownFiles.weight).toBe(tokensOf("README.md"));
-    // Lightest of the three, and last, because nothing pins it to the front.
     expect(view.detail.cards.at(-1)).toBe(ownFiles);
-    const weights = view.detail.cards.map((card) => Math.abs(card.weight));
-    expect([...weights].sort((left, right) => right - left)).toEqual(weights);
   });
 
   it("collapses the entries past the first row into one tile", () => {
     // src, tests, dist, and the root's own files, in four tiles worth of order.
     const view = buildView(index, request({ cardColumns: 2, showGenerated: true }));
     expect(view.detail.cards).toHaveLength(2);
-    expect(view.detail.cards[1]!.path).toBeNull();
-    // Not "3 more folders": the pile holds the own-files tile as well.
-    expect(view.detail.cards[1]!.name).toBe("3 more");
+    expect(view.detail.cards[0]!.path).toBeNull();
+    expect(view.detail.cards[0]!.name).toBe("3 more folders");
+    expect(view.detail.cards[1]).toMatchObject({ rowKind: "files", path: "", name: "." });
+  });
+
+  it("reserves the last tile for direct files at every measured capacity", () => {
+    for (const cardColumns of [1, 2, 3]) {
+      const view = buildView(index, request({ cardColumns, showGenerated: true }));
+      expect(view.detail.cards.at(-1)).toMatchObject({ rowKind: "files", path: "", name: "." });
+    }
   });
 
   it("draws a folder's own files as a tile, so a folder with no subfolders still has a row", () => {
@@ -805,7 +873,7 @@ describe("folder heading", () => {
 
     expect(folder.detail.title).toBe("src");
     expect(folder.detail.cards.map((card) => `${card.rowKind}:${card.path}`))
-      .toEqual(["files:src", "folder:src/deep"]);
+      .toEqual(["folder:src/deep", "files:src"]);
     expect(folder.detail.weight).toBe(tokensOf("src/main.ts", "src/util.ts", "src/deep/helper.ts"));
 
     // The heading becomes slopsplorer/src/., the tiles belong to the subtree

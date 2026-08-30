@@ -97,7 +97,7 @@ For the complete path, read [export.md](./export.md).
 
 `buildView()` runs these passes in order:
 
-- Visibility. The flavor switches and the search text decide which files are counted at all.
+- Visibility. The path search decides which paths the tree shows, while the flavor switches decide which matching files carry weight.
 - Inclusion. The tree checkboxes decide which of the visible files count toward the totals. Exclusion is inherited by every folder below the excluded one.
 - Aggregation. Tree rows, folder cards, the folder panel, the headline figures, and the ranked file list are all built from the same totals.
 
@@ -186,27 +186,30 @@ The bar is a view of the scope, so selecting from it is the same act as clicking
 
 There is one file table, and it is inside the folder panel.
 The panel divides its subject twice: the tiles divide it by part, and the table lists every file under it, heaviest first.
-A part is a child folder or the folder's own files, which take a tile named `.` ranked among the others by weight, so the tiles account for the whole folder and a folder with no subfolders still fills the row.
-The last tile absorbs whatever does not fit one row, and it is named for what it holds.
+A part is a child folder or the folder's own files, which take the last tile named `.`, so a folder with no subfolders still fills the row.
+The `.` tile remains when filtering leaves it with zero files and zero weight, so the folder's direct-files path never disappears.
+The tile before `.` absorbs child folders that do not fit one row, and it is named for what it holds.
 
 Each tile carries a bar, and every bar in the panel divides one whole: `DetailView.flavorBaseline`, the drill scope as the tree's checkboxes and the path filter leave it.
 The flavor chips are not applied to that whole, and generated files are never in it.
 So the bar's length is what the folder holds of the scope, its divisions are the flavors it is made of, and turning a flavor off takes a slice out of every bar instead of stretching the rest to fill the width.
 The tiles account for the whole of their folder, so at the top of a scope the bars add up to the scope.
 A separate ranking panel used to repeat the tiles as rows, which put the same subtree on the page twice.
-The strip above the ranked table holds the two controls that belong to the rows below it: how much of the selection the table lists, and the threshold that thins it.
+The strip above the ranked table holds the flavor controls and states the available weight of every flavor in the table scope, including disabled and empty flavors.
+The page does not draw a file-scope control, but the request field remains available for shared links and static snapshots.
 
 `ViewRequest.fileScope` is that first control.
 `subtree` lists every file under the selected folder, and `folder` lists only the files that sit directly in it.
 It moves the table alone: the tiles, the folder head, and the tree all keep describing the whole selection, so a reader can ask what one folder holds without leaving the subtree the panel is about.
 A `.` selection is a folder's own files already, so the switch is not drawn there and `rankFiles()` treats that selection as the narrow scope whatever the field says.
 
-The table shows at most 100 files on one page.
-Compact previous and next controls request the other pages from the same ranked list.
+The pagination line places borderless previous and next controls around the current row range and the number of files the flavor switches show.
+The line below states how many files are available in the same path, folder, and checkbox scope.
+Compact previous and next controls request the other pages from the same ranked list and stay visibly inert when only one page exists.
 
 The matching list is read in two ways.
 Clicking one file opens it alone in `SourceDialog`.
-`Read all`, in the strip above the table, opens every matching file in one scrolling dialog, drawn by `FileStack`.
+`Read all`, beside the File column heading, opens every matching file in one scrolling dialog, drawn by `FileStack`.
 The modal requests the complete list through `ExplorerRuntime.fetchFileList`, independent of the open table page.
 The modal always sorts the files by path.
 A rank order can separate files from the same folder, but a path order keeps them together.
@@ -215,6 +218,8 @@ The modal fetches one file when the reader comes near it.
 The modal does not fetch the source of a file that the reader folds.
 When the reader folds an open file, `FileStack` moves the next file header to the same viewport position.
 This keeps the next fold control under the pointer and moves the earlier folded headers up by one row instead of snapping the stack to the top.
+`Collapse all` in the modal head folds every file at once, and reads `Expand all` while any file is folded, so one press always reaches a state the reader can see whole.
+`SourceDialog` holds which paths are folded, because the control that folds them all sits in its head, and a new selection arrives with every file open.
 `FilePreview` draws the body in both dialogs, so a file cannot read one way alone and another way among its neighbours.
 
 The scope strip under the workspace draws the same columns as the folder head, in the same order, and one is read the same way in both places.
@@ -223,12 +228,15 @@ The two figures no other panel can state - how much of the project the scope and
 
 Three controls narrow the view, and they do different things:
 
-- The flavor switches and the search box decide which files are counted at all.
+- The flavor switches decide which files carry weight, while the search box decides which paths the tree and table can show.
 - The tree checkboxes decide which of those count toward the totals.
 - Drill decides which folder the page is about. Drilling moves the whole view: the headline figures, the proportion bar, and the percentage baselines all describe the drilled folder, and one readout keeps the project figure visible.
 
 Ordinary folder selection is navigation inside the drill scope.
 It moves the detail panel and the ranking, and it leaves the headline figures alone.
+The source tree keeps folders that the path search finds even when every file below them has a disabled flavor.
+Such a folder stays navigable, reads as muted, and carries zero active weight.
+The virtual `.` row follows the same rule for files that sit directly in a folder.
 Selection is clamped to the drill scope on both sides.
 `buildView()` puts the scope root in place of a selection that falls outside it, and `readRequest()` does the same to a link, so a panel can never name a folder that its contents do not cover.
 
@@ -241,14 +249,14 @@ In the tiles and in the ribbon it is ranked by weight like every other part of t
 ## Where the measure is chosen
 
 The measure and the aspect are properties of every figure on the page, so each is chosen once, in the filter bar.
-`FilterBar` draws two switches side by side, the side of the change and then the unit, which is how the pair is read: "net tokens".
-The aspect switch is only drawn inside a comparison, because a scanned file has one content.
+`FilterBar` draws two switches side by side, the unit and then the side of the change.
+The aspect switch is only drawn inside a comparison, because a scanned file has one content, and it comes second so that the unit switch keeps its place while a review moves between before, diff, and after.
 A control per panel would let several widgets each claim to decide what the page counts.
 
 `ViewRequest.rank.metric` is the sorted column of the file table, and it is coupled to the measure and the aspect in one direction each way.
-Sorting on `tokens`, `lines`, or `codeLines` makes that column the measure; sorting on `churn`, `net`, `added`, `removed`, or `after` makes that column the aspect.
+Sorting on `tokens`, `lines`, or `codeLines` makes that column the measure; sorting on `churn`, `net`, `added`, or `removed` makes that column the aspect.
 Choosing one moves the sort to it, unless the tables are sorted on a metric it does not cover, such as comment lines or function count, which is a deliberate choice and stays where it is.
-Either way the threshold under the table resets, because a floor of 2,000 tokens is not a floor of 2,000 lines and a floor of 2,000 churn tokens is not a floor of 2,000 net tokens.
+The file order follows a new measure or aspect, so a tokens page cannot keep ranking its files by lines and a net page cannot keep ranking them by churn.
 
 The file column is the one sorted column that holds no figure.
 It orders the rows A to Z by whole path, which keeps the files of one folder together, and it moves neither the measure nor the aspect.

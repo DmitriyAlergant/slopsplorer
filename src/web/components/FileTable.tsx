@@ -22,6 +22,7 @@ interface Props {
   /** Project-relative folder that displayed file names should be relative to. */
   displayRoot: string;
   onOpenSource: (path: string) => void;
+  onOpenListed: () => void;
   emptyMessage: string;
 }
 
@@ -77,7 +78,7 @@ const STRUCTURE_METRICS: ReadonlySet<RankMetric> = new Set<RankMetric>(["functio
 
 /** The metrics table of the folder panel: one row for each file of the selection. */
 export function FileTable({
-  files, measure, aspect, isDiff, sort, onSortChange, displayRoot, onOpenSource, emptyMessage,
+  files, measure, aspect, isDiff, sort, onSortChange, displayRoot, onOpenSource, onOpenListed, emptyMessage,
 }: Props): React.JSX.Element {
   if (files.length === 0) return <p className="empty">{emptyMessage}</p>;
   const columns = rankMetricsFor(isDiff).map((metric) => describeColumn(metric, measure));
@@ -92,15 +93,21 @@ export function FileTable({
             {/* Left-aligned above the paths it heads, and sorted A to Z: a path
                 is read from its start, and no order of it is a ranking. */}
             <th scope="col" className="metrics__path" aria-sort={sort === "name" ? "ascending" : "none"}>
-              <button
-                type="button"
-                className="metrics__sort"
-                aria-label="Sort by file name, A to Z"
-                onClick={() => onSortChange("name")}
-              >
-                File
-                <SortCaret ascending placeholder={sort !== "name"} />
-              </button>
+              <span className="metrics__path-head">
+                <button
+                  type="button"
+                  className="metrics__sort"
+                  aria-label="Sort by file name, A to Z"
+                  onClick={() => onSortChange("name")}
+                >
+                  File
+                  <SortCaret ascending placeholder={sort !== "name"} />
+                </button>
+                <button type="button" className="button button--tiny metrics__read-all" onClick={onOpenListed} {...tooltipHandlers}>
+                  Read all
+                  <Tooltip compact>Open all matching files in one scrolling preview, in path order</Tooltip>
+                </button>
+              </span>
             </th>
             {columns.map(({ metric, label }) => (
               <th

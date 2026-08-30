@@ -30,7 +30,7 @@ export const FILE_KIND_DETAILS: Readonly<Record<FileKind, FileKindDetails>> = {
   test: { label: "Tests", description: "Test code: source files in a test folder, plus anything named by a test convention. Fixtures keep the flavor of their own format." },
   text: { label: "Docs", description: "Markdown and other prose documentation." },
   i18n: { label: "i18n", description: "Translation catalogues and locale files, including source files that are almost entirely translated strings." },
-  data: { label: "Data & Config", description: "Structured data and configuration formats such as JSON, YAML, TOML, XML, CSV, and dependency manifests, plus source files that are almost entirely string literals." },
+  data: { label: "Data & Conf", description: "Structured data and configuration formats such as JSON, YAML, TOML, XML, CSV, and dependency manifests, plus source files that are almost entirely string literals." },
   other: { label: "Other", description: "Scannable text files that do not fit another flavor, such as HTML and stylesheets." },
 };
 
@@ -397,6 +397,8 @@ export interface TreeRow {
   included: boolean;
   indeterminate: boolean;
   disabled: boolean;
+  /** This path exists, but the flavor switches leave it with no matching files. */
+  filteredOut: boolean;
   selected: boolean;
 }
 
@@ -430,6 +432,14 @@ export interface FolderCard {
 export interface FlavorSlice {
   flavor: FileKind;
   weight: number;
+}
+
+/** One flavor's available weight in the file table's scope. */
+export interface FlavorStat {
+  flavor: Flavor;
+  weight: number;
+  /** Whether the matching flavor switch currently counts these files. */
+  enabled: boolean;
 }
 
 /** One navigable step of the folder heading's path. */
@@ -468,6 +478,12 @@ export interface DetailView {
    */
   shareOfScope: number;
   cards: FolderCard[];
+  /** Files the active flavor switches keep in the file table's path and checkbox scope. */
+  shownFiles: number;
+  /** Files of every flavor in the same path and checkbox scope. */
+  availableFiles: number;
+  /** Every flavor in the file table's scope, including disabled and empty ones. */
+  flavorStats: FlavorStat[];
   /**
    * The whole every tile's bar divides, so all the tiles share one scale.
    *

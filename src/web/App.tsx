@@ -537,9 +537,8 @@ export function App({ runtime = liveRuntime, backlink = null }: Props = {}): Rea
    * unchanged measure still moves the sort. The file tables follow, because a
    * page counting code lines that ranks its files by tokens reads as a bug. A
    * sort on a metric outside the measures, such as comment lines, is a
-   * deliberate choice and stays where it is. The threshold resets, since a
-   * floor of 2,000 tokens is not a floor of 2,000 lines and carrying the number
-   * across would silently empty the list.
+   * deliberate choice and stays where it is. A threshold from a shared link
+   * resets because its unit has changed.
    */
   const setMeasure = useCallback((measure: Measure) => {
     setRequest((previous) => {
@@ -594,9 +593,9 @@ export function App({ runtime = liveRuntime, backlink = null }: Props = {}): Rea
    * Switch which side of a change every figure describes.
    *
    * The switch beside the unit owns it, and it moves the same three things the
-   * unit does: the tree onto its numbers column, the file tables onto the
-   * matching column, and the threshold back to zero, because a floor of 2,000
-   * churn tokens is not a floor of 2,000 net tokens.
+   * unit does: the tree onto its numbers column and the file tables onto the
+   * matching column. A threshold from a shared link resets because its side
+   * has changed.
    */
   const setAspect = useCallback((aspect: Aspect) => {
     setRequest((previous) => {
@@ -699,8 +698,6 @@ export function App({ runtime = liveRuntime, backlink = null }: Props = {}): Rea
       <FilterBar
         request={request}
         isDiff={isDiff}
-        onToggleKind={toggleKind}
-        onToggleGenerated={() => patch({ showGenerated: !request.showGenerated })}
         onQueryChange={(query) => patch({ query })}
         onMeasureChange={setMeasure}
         onAspectChange={setAspect}
@@ -751,6 +748,8 @@ export function App({ runtime = liveRuntime, backlink = null }: Props = {}): Rea
           directFilesOnly={request.selected.rowKind === "files"}
           fileScope={request.fileScope}
           onFileScopeChange={(fileScope) => patch({ fileScope })}
+          onToggleKind={toggleKind}
+          onToggleGenerated={() => patch({ showGenerated: !request.showGenerated })}
           canDrill={request.selected.rowKind === "folder" && request.selected.path !== request.drillPath}
           onDrill={() => drill(request.selected.path)}
           rank={request.rank}

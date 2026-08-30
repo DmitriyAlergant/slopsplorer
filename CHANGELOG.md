@@ -8,6 +8,7 @@ Write yours under Unreleased as you make the change, and rename that heading to 
 
 ### Features
 
+- Flavor controls now sit above the file table with each flavor's available weight and a shorter Data & Conf label, the strip always shows how many available files those filters keep plus pagination, `Read all` sits beside the File heading, the file-scope and minimum-weight controls are hidden, and both the source tree and folder cards keep zero-weight `.` entries navigable when their files are filtered out.
 - Diff reviews can now rescan the complete repository before or after a change and return to the diff from one header control, without checking out either revision.
 - Scans now include extensionless `README`, `CHANGELOG`, `CHANGES`, `CITATION`, `CONTRIBUTING`, `COPYING`, `LICENSE`, and `LICENCE` files as Docs, plus `.htm` and `.xhtml` files as Other.
 - Flavor detection now recognizes legacy language aliases and locale names that contain both a script and a region, such as `zh-Hant-TW`.

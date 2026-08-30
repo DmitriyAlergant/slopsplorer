@@ -8,6 +8,7 @@ import { scanDiff } from "../src/scanner/diffScan.ts";
 import { resolveComparison } from "../src/scanner/gitdiff.ts";
 import { scanSourceTree, type ScanIndex } from "../src/scanner/scan.ts";
 import { buildView, parseViewRequest } from "../src/server/aggregate.ts";
+import { ASPECTS, DIFF_RANK_METRICS, WEIGHT_FIELD_NAMES } from "../src/shared/api.ts";
 import type { Aspect, FileKind, Measure, RankMetric, TreeRow, ViewRequest } from "../src/shared/api.ts";
 
 const execFileAsync = promisify(execFile);
@@ -155,27 +156,55 @@ describe("aggregating a diff", () => {
     expect({ added: card.added, removed: card.removed }).toEqual({ added: 30, removed: 0 });
   });
 
-  it("names a collapsed tile for folders when only folders are in it", () => {
-    // The comparison root holds two folders and no files of its own.
+  it("keeps the direct-files tile at one-column capacity", () => {
     const view = buildView(diffIndex, request({ cardColumns: 1, selected: { rowKind: "folder", path: "" } }));
     expect(view.detail.cards).toHaveLength(1);
-    expect(view.detail.cards[0]!.name).toBe("2 more folders");
+    expect(view.detail.cards[0]).toMatchObject({ name: ".", rowKind: "files", files: 0, weight: 0 });
   });
 
   it("splits a folder tile by flavor inside a comparison too", () => {
-    const view = buildView(diffIndex, request({ selected: { rowKind: "folder", path: "" } }));
+    const view = buildView(diffIndex, request({ cardColumns: 3, selected: { rowKind: "folder", path: "" } }));
     const card = view.detail.cards.find((entry) => entry.name === "grown")!;
     expect(card.flavors).toEqual([{ flavor: "code", weight: 30 }]);
   });
 
   it("holds the tile baseline still when a flavor is turned off, so bars only shorten", () => {
-    const all = buildView(diffIndex, request({ selected: { rowKind: "folder", path: "" } }));
-    const withoutCode = buildView(diffIndex, request({ kinds: [], selected: { rowKind: "folder", path: "" } }));
+    const all = buildView(diffIndex, request({ cardColumns: 3, selected: { rowKind: "folder", path: "" } }));
+    const withoutCode = buildView(diffIndex, request({ cardColumns: 3, kinds: [], selected: { rowKind: "folder", path: "" } }));
     expect(withoutCode.detail.flavorBaseline).toBe(all.detail.flavorBaseline);
     const before = all.detail.cards.find((entry) => entry.name === "grown")!;
     expect(before.flavors).not.toEqual([]);
     const after = withoutCode.detail.cards.find((entry) => entry.name === "grown");
     expect(after?.flavors ?? []).toEqual([]);
+  });
+});
+
+/**
+ * The after-image of the files a change touched is not one of them: it is
+ * neither the change nor the repository, and the review's After view answers
+ * what the repository holds now.
+ */
+describe("the sides a comparison offers", () => {
+  it("offers four, and draws a column for each", () => {
+    expect(ASPECTS).toEqual(["added", "removed", "net", "churn"]);
+    expect(DIFF_RANK_METRICS).not.toContain("after");
+  });
+
+  it("still measures every scanned after-image, which no side names", () => {
+    expect(WEIGHT_FIELD_NAMES).toContain("tokens");
+    expect(WEIGHT_FIELD_NAMES).toContain("lines");
+    expect(WEIGHT_FIELD_NAMES).toContain("codeLines");
+  });
+
+  // Every request reaches an index through this gate, on the server and in the
+  // snapshot worker, so a stale link cannot put the page on a side it no longer
+  // draws a control for.
+  it("refuses a request that names the after-image as a side or a column", () => {
+    const parsed = parseViewRequest({ aspect: "after", rank: { metric: "after" } });
+    expect(parsed.aspect).toBe("net");
+    expect(parsed.rank.metric).toBe("tokens");
+    // The mode clamp then moves that column to the one a comparison opens on.
+    expect(buildView(diffIndex, { ...request(), ...parsed }).rankMetric).toBe("net");
   });
 });
 

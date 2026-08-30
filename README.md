@@ -23,7 +23,7 @@ cd vibe-coded-repo
 slopsplorer .
 ```
 
-![Slopsplorer reading its own repository: a measure switch and flavor filters above a source tree, a folder panel that holds the folder totals, the share cards, and the heaviest files, then the whole-project readouts and the mass ribbon.](https://raw.githubusercontent.com/DmitriyAlergant/slopsplorer/main/docs/screenshot.png)
+![Slopsplorer reading its own repository: unit and weighted flavor controls above a source tree, folder totals, share cards, and a ranked file table, with whole-project readouts below.](https://raw.githubusercontent.com/DmitriyAlergant/slopsplorer/main/docs/screenshot.png)
 
 *Slopsplorer sniffing its own source tree.*
 
@@ -199,7 +199,7 @@ LOC tells you how much logic is there, which is the question a comment-padded fi
 A file outside the 13 grammars still gets tokens and lines, and reports zero structure rather than a guess.
 Comment spans come from the grammar where there is one, and from a marker table for some fifty other formats where there is not.
 
-Every file gets a flavor: Code, Tests, Docs, i18n, Data & Config, or Other, with generated output as a switch of its own.
+Every file gets a flavor: Code, Tests, Docs, i18n, Data & Conf, or Other, with generated output as a switch of its own.
 The file decides its flavor before its folder does, so a fixture in a test folder counts as the format it is, not as test code.
 
 [docs/scanning-and-classification.md](docs/scanning-and-classification.md) has the full rules: which files enter a scan, how a grammar is chosen, and every deliberate divergence from `cloc`.

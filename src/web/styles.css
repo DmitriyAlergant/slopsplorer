@@ -1435,7 +1435,7 @@ button { cursor: pointer; }
   display: flex; align-items: center; justify-content: space-between; gap: 8px 16px; flex-wrap: wrap;
   margin: 18px 20px 8px;
 }
-.detail__flavor-stats { display: flex; flex: 1 1 720px; min-width: min(720px, 100%); align-items: center; gap: 6px; flex-wrap: wrap; }
+.detail__flavor-stats { display: flex; flex: 0 0 auto; width: max-content; max-width: 100%; align-items: center; gap: 6px; flex-wrap: wrap; }
 .detail__flavor-stat {
   padding-block: 5px;
   font-size: 11px;
@@ -1446,8 +1446,9 @@ button { cursor: pointer; }
 /* The two controls of the file list share the right of its strip: what the rows
    are, and the floor under them. */
 .detail__files-controls { display: flex; flex: none; flex-direction: column; align-items: flex-end; gap: 3px; margin-left: auto; }
-.detail__file-count, .detail__file-total { color: var(--ink-soft); font-family: var(--font-mono); font-size: 10.5px; white-space: nowrap; }
-.detail__file-total { padding-right: 18px; color: var(--ink-faint); }
+.detail__file-range, .detail__file-count, .detail__file-total { color: var(--ink-soft); font-family: var(--font-mono); font-size: 10.5px; white-space: nowrap; }
+.detail__file-count { margin-left: 3px; }
+.detail__file-total { color: var(--ink-faint); text-align: right; }
 .detail__pager {
   display: flex; align-items: center; gap: 5px;
   color: var(--ink-faint);
