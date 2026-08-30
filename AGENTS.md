@@ -99,13 +99,13 @@ JUSTIFY DEFENSIVE COMPLEXITY. Prefer code that is correct by its shape over code
 A sorted array with a prefix sum beats a cache with an invalidation rule.
 
 WRITE GREPPABLE CODE. Agents navigate by text search, so every name worth searching for appears whole in the source.
-The measures are the example: `codeLines` is spelled out in `MEASURES`, in `FileRow`, in the aggregator, and in the column that draws it, so one search finds every place it matters.
-Indexing by a validated whole name, as `file[measure]` does, keeps that. Assembling one from fragments, as `` file[`${kind}Lines`] `` would, destroys it.
+The measures are the example: `codeLines` is spelled out in `MEASURES`, in `FileRow`, in the aggregator, and in the column that draws it, so one search finds every place it matters. Indexing by a validated whole name, as `file[measure]` does, keeps that. Assembling one from fragments, as `` file[`${kind}Lines`] `` would, destroys it.
 
 BE PICKY ABOUT THE UI. This product is a page someone reads.
-Alignment, spacing, and two panels agreeing about the same number are part of the work, not polish for later.
+  - Alignment, spacing, and two panels agreeing about the same number are part of the work, not polish for later.
+  - Non-jumping controls. We prefer non-jumpy controls that stay in place when other controls navigate or change mode. This means reserving enough space for worst-case, disabling (muting) a non-applicable control instead of removing it, etc.
 
-KEEP THE SNAPSHOT AT PARITY. A new capability of the page has to work in a static export as well as against the server.
+KEEP THE EXPORT SNAPSHOT AT PARITY. A new capability of the page has to work in a static export as well as against the server.
 Read the index through `ExplorerRuntime`, so the live routes and the snapshot worker both serve it, and open an exported bundle before you call the work done.
 The exemptions are the ones a frozen index cannot serve, and [docs/export.md](docs/export.md) names them: a snapshot cannot rescan, open another folder, change the comparison, step to another span in the commit band, install the skill, or ask a local agent.
 Anything outside that list is a parity break and not a trade-off to accept quietly.
@@ -114,8 +114,9 @@ CONSULT AND MAINTAIN THE DOCS. `docs/` is written by agents for agents: how the 
   - Update the doc when behavior changes substantially, and edit the existing one rather than adding a near-duplicate.
   - Current state only. History lives in git.
   - Name the modules, functions, routes, and fields a reader would open, with no line numbers, and explain intent rather than restating the code.
-  - English, ASD-STE100 Simplified Technical English: short words, active voice, simple tenses, plain verbs over metaphor.
-  - Short enough to read in one go. If curtailing gets hard, split the doc.
+  - English, ASD-STE100 Simplified Technical English: short words, active voice, simple tenses, plain verbs over metaphor
+  - Staright sentence structure: subject verb adjective.
+  - Short enough to read in one go by a human. If curtailing gets hard, split the doc.
 
 COMMENTS AND DOCSTRINGS. English, short, and only where they carry a rationale the code cannot.
 The reader is as competent as you are, so what the code or a design doc already says needs no restating.
@@ -138,7 +139,7 @@ Use the `dev-browser` CLI against the dev server on `http://127.0.0.1:8765`, and
 
 ## Conventions
 
-- No em dashes anywhere. Plain `-`.
+- No em dashes anywhere. Plain `-` and even that is rarely needed.
 - Comments explain why, not what. Doc comments on exported symbols and on non-obvious logic only.
 - In Markdown and long comments, one sentence per line. Do not wrap inside a sentence.
 - Relative imports carry the `.ts` / `.tsx` extension. `tsc` rewrites them on emit.
@@ -155,32 +156,10 @@ Four runtime packages, pinned exactly, none with a transitive dependency of its 
 That is a constraint and not an accident: `npx slopsplorer` has to work on any platform with no native build, which is why the grammars ship as prebuilt WASM.
 
 Pin every dependency, runtime or dev, to an exact version that is at least four days old.
-Check the registry rather than writing a version from memory.
-Do not bump a version without a reason.
+Check the registry rather than writing a version from memory. Do not bump a version without a reason.
 Treat an unpinned install as running unreviewed code: check the manifest before invoking the installer.
 
 ## Changelog and releasing
 
-Every user-facing change adds one sentence to `CHANGELOG.md`, under the `## [Unreleased]` heading at the top.
-Put it under `### Features`, `### Bug Fixes`, `### Documentation`, or `### Other Changes`, and add the heading if that group is not there yet.
-Write it for a user, in the voice the released sections already use, and not for a reader of the diff.
-A fix to a feature that has not shipped yet is part of that feature and needs no entry of its own.
-An internal change with nothing for a user to read needs no entry at all.
-
-A release is one tag, and `.github/workflows/release.yml` does the rest.
-
-1. Bump `version` in `package.json` and `package-lock.json`.
-2. Rename `## [Unreleased]` to `## [X.Y.Z](https://github.com/DmitriyAlergant/slopsplorer/releases/tag/vX.Y.Z) - YYYY-MM-DD`, and open a fresh `## [Unreleased]` above it.
-3. Run `./scripts/changelog-section.sh X.Y.Z` and read what it prints. Everything under the heading is the release page, and the release is named after the tag.
-4. Commit and push the version and the changelog.
-5. Tag that exact commit `vX.Y.Z` and push the tag.
-
-The workflow refuses to publish when the tag and the manifest disagree, and when `CHANGELOG.md` holds no section for the version or holds an empty one.
-Both checks run before `npm publish`, because a registry version is permanent.
-The release page is then written from the same section, so the notes and the changelog in the tagged commit cannot say different things.
-
-Publishing is npm trusted publishing over OIDC.
-No npm token exists in this repository and none may ever be added: the registry mints a short-lived one for this workflow and signs a provenance attestation with it.
-
-Both workflows must stay safe against a hostile pull request, and the reasoning is written in the header of `.github/workflows/ci.yml`.
-Read it before changing either file.
+Add each user-facing change to `CHANGELOG.md` under `Unreleased` in one user-facing sentence.
+Do not add an entry for internal work or for a fix to an unreleased feature. Follow `RELEASING.md` to prepare screenshots, validate, and release a version.
