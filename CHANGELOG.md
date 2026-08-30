@@ -6,34 +6,11 @@ Write yours under Unreleased as you make the change, and rename that heading to 
 
 ## [Unreleased]
 
+## [0.6.0](https://github.com/DmitriyAlergant/slopsplorer/releases/tag/v0.6.0) - 2026-08-30
+
 ### Features
 
 - The control row can open the project root or current drill folder in Cursor, VS Code, or the host operating system's file manager, remembers the last choice, and does not probe which applications are installed.
-
-### Other Changes
-
-- The proportion bar at the bottom splits each folder into bands by flavor, and a hovered segment names every flavor with its figures, saying which ones the switches excluded.
-- The proportion bar stops drawing folders under half a percent of the strip, and gathers the rest into one closing segment.
-- A tile's flavor bar now counts generated output as a flavor of its own, so the bar and the figure above it describe the same files.
-- The path filter is now the width of the source tree and follows the splitter, and the unit switch starts where the panel beside the tree starts.
-- Ask now sits at the right of the control row beside Open in, so both stay in place when the header scrolls away.
-- Panels take the same outline as the controls above them, so the filter box and the tree under it read as one column.
-- The folder tiles read in one order: the `.` tile first, the child folders after it heaviest first, and the tile for the folders past the row last.
-- A folder that holds no loose files of its own no longer draws an empty `.` tile, and the room goes to its subfolders.
-- The strip at the bottom names its subject as `whole project under current filters` or `drilled scope under current filters`.
-- The workspace splitter no longer carries a tooltip.
-- The file table strip now reads `of 1,309 files` beside the pager and `total 1,316 files scanned` under it.
-- The source tree steps in less per level, so a deep folder keeps more room for its name.
-
-### Bug Fixes
-
-- Pressing the workspace splitter no longer shifts both panels sideways before the drag begins, and a double-click on it resets the split. Each press used to move the boundary to the pointer, which took the bar out from under the second click.
-- The folder tiles keep one width, so a wider panel adds a tile instead of resizing every one.
-
-## [0.6.0](https://github.com/DmitriyAlergant/slopsplorer/releases/tag/v0.6.0) - 2026-08-29
-
-### Features
-
 - Flavor controls now sit above the file table with each flavor's available weight and a shorter Data & Conf label, the strip always shows how many available files those filters keep plus pagination, `Read all` sits beside the File heading, the file-scope and minimum-weight controls are hidden, and both the source tree and folder cards keep zero-weight `.` entries navigable when their files are filtered out.
 - Diff reviews can now rescan the complete repository before or after a change and return to the diff from one header control, without checking out either revision.
 - Scans now include extensionless `README`, `CHANGELOG`, `CHANGES`, `CITATION`, `CONTRIBUTING`, `COPYING`, `LICENSE`, and `LICENCE` files as Docs, plus `.htm` and `.xhtml` files as Other.
@@ -45,6 +22,20 @@ Write yours under Unreleased as you make the change, and rename that heading to 
 
 ### Other Changes
 
+- The proportion bar at the bottom splits each folder into bands by flavor, and a hovered segment names every flavor with its figures, saying which ones the switches excluded.
+- The proportion bar stops drawing folders under half a percent of the strip, and gathers the rest into one closing segment.
+- A tile's flavor bar now counts generated output as a flavor of its own, so the bar and the figure above it describe the same files.
+- The path filter is now the width of the source tree and follows the splitter, and the unit switch starts where the panel beside the tree starts.
+- Ask now sits at the right of the control row beside Open in, so both stay in place when the header scrolls away.
+- Open in uses Finder's own mark on macOS, and the agent picker keeps the brand colors of Claude and Codex while Cursor and opencode follow the page theme.
+- Panels take the same outline as the controls above them, so the filter box and the tree under it read as one column.
+- The flavor controls now carry a firmer frame, so each one reads as a switch instead of as an annotation beside its number.
+- The folder tiles read in one order: the `.` tile first, the child folders after it heaviest first, and the tile for the folders past the row last.
+- A folder that holds no loose files of its own no longer draws an empty `.` tile, and the room goes to its subfolders.
+- The strip at the bottom names its subject as `whole project under current filters` or `drilled scope under current filters`.
+- The workspace splitter no longer carries a tooltip.
+- The file table strip now reads `of 1,309 files` beside the pager and `total 1,316 files scanned` under it.
+- The source tree steps in less per level, so a deep folder keeps more room for its name.
 - The flavor controls above the file table now reserve their digits from the widest figure the project can state and right-align the number, so walking the tree never moves a control.
 - The Before / Diff / After switch is now the size of the unit and side switches below it, so the page has one switch.
 - A comparison now offers four sides - Added, Removed, Net, and Churn. `After` has left the switch, the file table, and the readout strips, because the after-image of the files a change touched is neither the change nor the repository: the review's After view answers what the repository holds now. `--report --aspect after` is gone with it, and a scan report is still the after-image.
@@ -56,13 +47,16 @@ Write yours under Unreleased as you make the change, and rename that heading to 
 
 ### Bug Fixes
 
+- Pressing the workspace splitter no longer shifts both panels sideways before the drag begins, and a double-click on it resets the split. Each press used to move the boundary to the pointer, which took the bar out from under the second click.
+- The folder tiles keep one width, so a wider panel adds a tile instead of resizing every one.
+- Tooltips near a window edge no longer jump out of the viewport on every other hover, and their borders now land on whole pixels.
 - `Read all` now opens every matching file instead of only the current 100-row table page, and compact previous and next controls make all table pages available.
 - Flavor filters now start with all flavors on and generated files off on every visit instead of restoring the last selection.
 - Choosing one commit in the band now draws that commit alone on a branch that has taken `main` in with a merge. It used to compare from the commit listed above it, which for a commit the merge brought in sits on the other line of history, so one commit of a pull request drew the whole branch. A run of commits stops at such a seam, and the band draws the seam.
 
 ### Documentation
 
-- The README now shows the current scan and diff layouts and keeps one screenshot for each mode.
+- The README now uses one current screenshot and explains how the repository and diff views work together.
 
 ## [0.5.1](https://github.com/DmitriyAlergant/slopsplorer/releases/tag/v0.5.1) - 2026-08-28
 

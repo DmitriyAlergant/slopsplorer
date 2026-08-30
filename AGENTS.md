@@ -125,6 +125,8 @@ Trim a pre-existing comment that deviates from this rather than growing it furth
 PLANS. Keep a plan high-level and write no code inside it: its reader is as capable as you are.
 A plan in an untracked `./.plans/` folder stays uncommitted, whatever other instructions suggest.
 
+README stays concise and should not verbally explain the UI/UX details where it is already ergonomic and self-obvious to engineer users. README stays lightly ironic (code == slop).
+
 ## Agentic tooling
 
 This section is a default. A user-owned AGENTS.md with competing personal guidance wins.
