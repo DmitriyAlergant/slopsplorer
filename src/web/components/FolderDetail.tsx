@@ -331,9 +331,9 @@ export function FolderDetail({
               &gt;
               <Tooltip compact>Next {count(rank.limit)} files</Tooltip>
             </button>
-            <span className="detail__file-count">{`of ${count(detail.shownFiles)} files shown`}</span>
+            <span className="detail__file-count">{`of ${count(detail.shownFiles)} files`}</span>
           </div>
-          <span className="detail__file-total">{count(detail.availableFiles)} files total</span>
+          <span className="detail__file-total">total {count(detail.availableFiles)} files scanned</span>
           {/* Not drawn for a `.` row: that selection is the folder's own files,
               and a switch offering the subtree would contradict every figure
               above it. */}

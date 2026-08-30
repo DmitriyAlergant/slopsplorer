@@ -6,6 +6,11 @@ Write yours under Unreleased as you make the change, and rename that heading to 
 
 ## [Unreleased]
 
+### Other Changes
+
+- The file table strip now reads `of 1,309 files` beside the pager and `total 1,316 files scanned` under it.
+- The source tree steps in less per level, so a deep folder keeps more room for its name.
+
 ## [0.6.0](https://github.com/DmitriyAlergant/slopsplorer/releases/tag/v0.6.0) - 2026-08-29
 
 ### Features

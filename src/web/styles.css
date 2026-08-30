@@ -1217,7 +1217,7 @@ button { cursor: pointer; }
   align-items: center;
   gap: 4px;
   min-height: 30px;
-  padding-left: calc(var(--indent) * 13px);
+  padding-left: calc(var(--indent) * 9px);
   border-radius: var(--radius-sm);
 }
 /*
