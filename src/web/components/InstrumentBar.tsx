@@ -114,7 +114,7 @@ export function InstrumentBar({
               : <ComparisonPicker comparison={review} disabled={scanning} onCompare={onCompare} />
           ) : null}
           {!staticSnapshot && review ? (
-            <div className="switch switch--compact instrument__review-switch" role="group" aria-label="Review view">
+            <div className="switch instrument__review-switch" role="group" aria-label="Review view">
               {(["before", "diff", "after"] as const).map((mode) => (
                 <button
                   key={mode}

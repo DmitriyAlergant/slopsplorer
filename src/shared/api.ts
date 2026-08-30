@@ -60,21 +60,25 @@ export const MEASURES: readonly Measure[] = ["tokens", "lines", "codeLines"];
 /**
  * Which side of a change the measure describes.
  *
- * A scanned file has one content, so only `after` means anything. A changed
- * file has two, and every measure splits into what the change added and what
- * it removed. Churn is their sum and is never negative; net is their
- * difference and is signed.
+ * A scanned file has one content, so only `after` means anything, and a scan
+ * resolves to it. A changed file has two, and every measure splits into what
+ * the change added and what it removed. Churn is their sum and is never
+ * negative; net is their difference and is signed. `ASPECTS` holds the four a
+ * comparison offers.
  */
 export type Aspect = "added" | "removed" | "churn" | "net" | "after";
 
 /**
- * Ordered as the change reads: what it put in, what it took out, what that
- * leaves, what it cost, and what the file is now.
+ * The sides a comparison offers, ordered as the change reads: what it put in,
+ * what it took out, what that leaves, and what it cost.
  *
- * The switch in the filter bar and the aspect columns of the file tables both
- * follow this order, so the page presents the five sides in one order only.
+ * The switch in the filter bar, the aspect columns of the file tables, and the
+ * readout strips all follow this order, so the page presents the four sides in
+ * one order only. `after` is not among them: it is the aspect a scan resolves
+ * to, and a review answers "how large is this now" about the whole repository
+ * in its After view, not about the files a change happened to touch.
  */
-export const ASPECTS: readonly Aspect[] = ["added", "removed", "net", "churn", "after"];
+export const ASPECTS: readonly Aspect[] = ["added", "removed", "net", "churn"];
 
 /**
  * A numeric `FileRow` field a weight can be read from.
@@ -224,9 +228,17 @@ export function weightAbbreviation(measure: Measure, aspect: Aspect, isDiff: boo
     : MEASURE_NAMES[measure].abbreviation;
 }
 
-/** Every weight field, so the scanner can build one prefix sum for each. */
+/**
+ * Every weight field, so the scanner can build one prefix sum for each.
+ *
+ * The after-image field is here beside the four sides, because every scan is
+ * measured in it even though no comparison offers it as a side.
+ */
 export const WEIGHT_FIELD_NAMES: readonly WeightField[] =
-  MEASURES.flatMap((measure) => ASPECTS.map((aspect) => weightField(measure, aspect)));
+  MEASURES.flatMap((measure) => [
+    weightField(measure, "after"),
+    ...ASPECTS.map((aspect) => weightField(measure, aspect)),
+  ]);
 
 /**
  * A sortable column of the file tables.
@@ -259,7 +271,7 @@ export const SCAN_RANK_METRICS: readonly MeasuredMetric[] = [
   "tokens", "lines", "codeLines", "commentLines", "functions", "branches",
 ];
 
-/** Columns a diff draws. The five aspect columns are `ASPECTS`, in its order. */
+/** Columns a diff draws. The aspect columns are `ASPECTS`, in its order. */
 export const DIFF_RANK_METRICS: readonly MeasuredMetric[] = [
   ...ASPECTS, "functions", "branches",
 ];
@@ -509,6 +521,14 @@ export interface SummaryView {
   scopePath: string;
   /** Unfiltered weight of the drill scope, the denominator of "of scope". */
   scopeWeight: number;
+  /**
+   * The widest figure the page can state in the active measure: the project's
+   * churn in a comparison, its whole weight in a scan.
+   *
+   * A control reserves digit space from it, so a figure that changes while the
+   * reader navigates never resizes the control that holds it.
+   */
+  widestWeight: number;
   /** Drill-scope weight under the active visibility and inclusion switches. */
   selectedWeight: number;
   selectedAdded: number;

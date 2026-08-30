@@ -4,7 +4,7 @@ import {
   ASPECTS, FILE_KIND_DETAILS, FILE_SCOPES, MAX_CARD_COLUMNS, MEASURES, MIN_CARD_COLUMNS, aspectTotals, measureHeading,
   weightAbbreviation, weightHeading, weightName,
 } from "../../shared/api.ts";
-import { aspectFigure, count, countOf, percent, weightCount } from "../format.ts";
+import { aspectFigure, count, countOf, figureWidth, percent, weightCount } from "../format.ts";
 import { CopyPathButton } from "./CopyPathButton.tsx";
 import { FileTable } from "./FileTable.tsx";
 import { FlavorBar } from "./FlavorBar.tsx";
@@ -23,6 +23,8 @@ interface Props {
   measure: Measure;
   /** The side of the change the figures describe. */
   aspect: Aspect;
+  /** Widest figure the page can state, which the flavor controls reserve their digits from. */
+  widestWeight: number;
   isDiff: boolean;
   /** Sorted column of the file table, shared with the ranking panel below. */
   sort: RankMetric;
@@ -73,7 +75,7 @@ const SHOW_FILE_SCOPE_CONTROL = false;
 
 /** The selected folder: its weight, how its children divide it, and its own files. */
 export function FolderDetail({
-  detail, files, filesTotal, filesOffset, measure, aspect, isDiff, sort, onSortChange, path, onSelect,
+  detail, files, filesTotal, filesOffset, measure, aspect, widestWeight, isDiff, sort, onSortChange, path, onSelect,
   directFilesOnly, fileScope, onFileScopeChange, onToggleKind, onToggleGenerated, canDrill, onDrill, rank, onRankChange,
   onOpenSource, onOpenListed, onCapacityChange,
 }: Props): React.JSX.Element {
@@ -266,7 +268,14 @@ export function FolderDetail({
       {/* The tiles divide the subject by folder and the rows divide it by file.
           The flavor and scope controls stand with the rows they change. */}
       <div className="detail__files-head">
-        <div className="chips detail__flavor-stats" role="group" aria-label="Available weight by flavor">
+        {/* Every figure here is reserved the digits of the project's widest, so
+            walking the tree never resizes the controls. */}
+        <div
+          className="chips detail__flavor-stats"
+          role="group"
+          aria-label="Available weight by flavor"
+          style={{ "--figure-width": `${figureWidth(widestWeight, aspect === "net")}ch` } as React.CSSProperties}
+        >
           {detail.flavorStats.map((stat) => {
             const fullLabel = stat.flavor === "generated" ? "Generated" : FILE_KIND_DETAILS[stat.flavor].label;
             const description = stat.flavor === "generated" ? GENERATED_DESCRIPTION : FILE_KIND_DETAILS[stat.flavor].description;

@@ -1440,8 +1440,15 @@ button { cursor: pointer; }
   padding-block: 5px;
   font-size: 11px;
 }
-.detail__flavor-copy { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; line-height: 1.05; }
-.detail__flavor-weight { color: var(--ink-soft); font-family: var(--font-mono); font-size: 10px; font-variant-numeric: tabular-nums; }
+.detail__flavor-copy { display: flex; flex-direction: column; align-items: stretch; gap: 1px; line-height: 1.05; }
+/* The width is reserved from the widest figure the page can state, so the chips
+   keep their places while the reader walks the tree. */
+.detail__flavor-weight {
+  min-width: var(--figure-width);
+  color: var(--ink-soft);
+  font-family: var(--font-mono); font-size: 10px; font-variant-numeric: tabular-nums;
+  text-align: right;
+}
 .detail__flavor-stat[data-on="false"] .detail__flavor-weight { color: var(--ink-faint); }
 /* The two controls of the file list share the right of its strip: what the rows
    are, and the floor under them. */

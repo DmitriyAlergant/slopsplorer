@@ -6,6 +6,8 @@ Write yours under Unreleased as you make the change, and rename that heading to 
 
 ## [Unreleased]
 
+## [0.6.0](https://github.com/DmitriyAlergant/slopsplorer/releases/tag/v0.6.0) - 2026-08-29
+
 ### Features
 
 - Flavor controls now sit above the file table with each flavor's available weight and a shorter Data & Conf label, the strip always shows how many available files those filters keep plus pagination, `Read all` sits beside the File heading, the file-scope and minimum-weight controls are hidden, and both the source tree and folder cards keep zero-weight `.` entries navigable when their files are filtered out.
@@ -19,6 +21,9 @@ Write yours under Unreleased as you make the change, and rename that heading to 
 
 ### Other Changes
 
+- The flavor controls above the file table now reserve their digits from the widest figure the project can state and right-align the number, so walking the tree never moves a control.
+- The Before / Diff / After switch is now the size of the unit and side switches below it, so the page has one switch.
+- A comparison now offers four sides - Added, Removed, Net, and Churn. `After` has left the switch, the file table, and the readout strips, because the after-image of the files a change touched is neither the change nor the repository: the review's After view answers what the repository holds now. `--report --aspect after` is gone with it, and a scan report is still the after-image.
 - The unit switch now sits before the side-of-the-change switch in the filter bar, so it keeps its place when a review moves between before, diff, and after.
 - The header keeps the name `Slopsplorer diff` through the before and after views of a review, so the comparison picker and the view switch stay where they are. The browser tab now names which of the three views it holds.
 - Buttons, switches, and text boxes now carry a firmer outline, so a control reads apart from the rules that divide content.
@@ -30,6 +35,10 @@ Write yours under Unreleased as you make the change, and rename that heading to 
 - `Read all` now opens every matching file instead of only the current 100-row table page, and compact previous and next controls make all table pages available.
 - Flavor filters now start with all flavors on and generated files off on every visit instead of restoring the last selection.
 - Choosing one commit in the band now draws that commit alone on a branch that has taken `main` in with a merge. It used to compare from the commit listed above it, which for a commit the merge brought in sits on the other line of history, so one commit of a pull request drew the whole branch. A run of commits stops at such a seam, and the band draws the seam.
+
+### Documentation
+
+- The README now shows the current scan and diff layouts and keeps one screenshot for each mode.
 
 ## [0.5.1](https://github.com/DmitriyAlergant/slopsplorer/releases/tag/v0.5.1) - 2026-08-28
 

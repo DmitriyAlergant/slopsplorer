@@ -464,9 +464,15 @@ function readReportOptions(values: ReportFlags, isDiff: boolean): ReportOptions 
   if (measure === undefined) fail(`unknown unit "${unitName}". Known units: ${Object.keys(REPORT_UNITS).join(", ")}`);
 
   if (values.aspect !== undefined && !isDiff) fail("--aspect names a side of a change, and a scan has none");
-  const aspectName = values.aspect ?? (isDiff ? "churn" : "after");
-  const aspect: Aspect | undefined = ASPECTS.find((candidate) => candidate === aspectName);
-  if (aspect === undefined) fail(`unknown aspect "${aspectName}". Known aspects: ${ASPECTS.join(", ")}`);
+  // A scan has one content, so its report is the after-image, which is no side
+  // a comparison offers and therefore no flag a reader can name.
+  let aspect: Aspect = "after";
+  if (isDiff) {
+    const aspectName = values.aspect ?? "churn";
+    const named = ASPECTS.find((candidate) => candidate === aspectName);
+    if (named === undefined) fail(`unknown aspect "${aspectName}". Known aspects: ${ASPECTS.join(", ")}`);
+    aspect = named;
+  }
 
   const threshold = values.threshold === undefined ? DEFAULT_REPORT_THRESHOLD : Number(values.threshold);
   if (!Number.isFinite(threshold) || threshold < 0 || threshold > 100) {

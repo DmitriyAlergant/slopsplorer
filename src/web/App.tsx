@@ -740,6 +740,7 @@ export function App({ runtime = liveRuntime, backlink = null }: Props = {}): Rea
           filesOffset={view?.rankedOffset ?? 0}
           measure={view?.measure ?? request.measure}
           aspect={aspect}
+          widestWeight={view?.summary.widestWeight ?? 0}
           isDiff={isDiff}
           sort={request.rank.metric}
           onSortChange={setRankMetric}

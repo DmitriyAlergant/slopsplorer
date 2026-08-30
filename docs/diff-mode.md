@@ -211,6 +211,9 @@ Measure  = tokens | lines | codeLines
 Aspect   = churn | net | added | removed | after
 ```
 
+`ASPECTS` holds the four a comparison offers.
+`after` is not one of them: it is the aspect a scan resolves to, and "how large is this now" is a question about the whole repository, which the review's After view answers.
+
 `weightField(measure, aspect)` returns a whole field name, such as `churnLines`.
 The table holds every name in full.
 Building a name from fragments would save a few lines and would break the rule that every name worth searching for appears whole in the source.
@@ -263,7 +266,7 @@ The Git letter in the file table carries the change status instead, one file at 
 
 ## How a folder is summarised
 
-The head of `FolderDetail` states every aspect at once, as one strip of `Readout` figures: added, removed, net, churn, after, and the file count.
+The head of `FolderDetail` states every aspect at once, as one strip of `Readout` figures: added, removed, net, churn, and the file count.
 The switch above moves the emphasis along that strip and never changes its shape, so the panel keeps its height and the reader keeps their place.
 Only the selected figure keeps full ink and its hue, and the rest are muted, because a strip of equal numbers gives the reader nothing to hold.
 The strip is a grid of equal tracks, so a figure stays in the same place when the reader opens the next folder.
@@ -277,7 +280,7 @@ The server is not asked for a fifth field it can already imply.
 
 `FilterBar` draws it as a switch after the unit, and only inside a comparison.
 It comes second because it is the switch that appears and goes away, so the unit switch does not move when a review changes mode.
-The switch lists the five sides in the order of `ASPECTS`, which is the order the file tables draw them in, and a page opens on net.
+The switch lists the four sides in the order of `ASPECTS`, which is the order the file tables draw them in, and a page opens on net.
 A second widget that could also set it would give the page two owners of what it counts.
 
 Every numeric column of `FileTable` is a `RankMetric`, and the diff columns are the five aspects plus the two structure counts.

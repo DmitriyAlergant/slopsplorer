@@ -106,7 +106,7 @@ describe("a static instrument bar", () => {
       />,
     );
 
-    expect(html).toContain("Slopsplorer</h1>");
+    expect(html).toContain("Slopsplorer diff</h1>");
     expect(html).toContain('aria-label="Review view"');
     expect(html).toContain('aria-pressed="true">Before');
     expect(html).not.toContain("scan-root");

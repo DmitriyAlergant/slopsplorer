@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ComparisonRequest, DiffMeta, ScanMeta } from "../src/shared/api.ts";
-import { aspectFigure, comparisonLabel, countOf, documentTitle, shortRevision } from "../src/web/format.ts";
+import { aspectFigure, comparisonLabel, countOf, documentTitle, figureWidth, shortRevision } from "../src/web/format.ts";
 
 const FULL_SHA = "87d1e8b76cece130474a7fcc6093528f3c20cd4c";
 
@@ -84,6 +84,14 @@ function meta(rootName: string, request: ComparisonRequest | null): ScanMeta {
     languages: [],
   };
 }
+
+describe("figureWidth", () => {
+  it("reserves the digits of the widest figure, and a column for a sign", () => {
+    expect(figureWidth(4_740_957, false)).toBe(9);
+    expect(figureWidth(4_740_957, true)).toBe(10);
+    expect(figureWidth(0, false)).toBe(1);
+  });
+});
 
 describe("documentTitle", () => {
   it("names the scanned folder", () => {

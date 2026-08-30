@@ -741,6 +741,7 @@ function buildSummary(
   index: ScanIndex,
   aggregation: Aggregation,
   baseline: number,
+  widestWeight: number,
   scopeRoot: FolderNode,
   scopeBaseline: number,
   visibleScopeWeight: number,
@@ -763,6 +764,7 @@ function buildSummary(
     projectWeight: baseline,
     scopePath: scopeRoot.path,
     scopeWeight: scopeBaseline,
+    widestWeight,
     selectedWeight: scopeTotals.weight,
     selectedAdded: scopeTotals.added,
     selectedRemoved: scopeTotals.removed,
@@ -784,6 +786,11 @@ export function buildView(index: ScanIndex, request: ViewRequest): ViewResponse 
   } = prepareView(index, request);
   // The whole tree, unfiltered, which the ribbon states as `project`.
   const baseline = unfilteredWeight(index, "", fields.baseline);
+  // Churn is the widest any figure of this measure can be, because every other
+  // side is a part of it. A scan has one content, so its whole weight is.
+  const widestWeight = unfilteredWeight(
+    index, "", weightField(request.measure, index.meta.diff !== null ? "churn" : "after"),
+  );
   const scopeBaseline = unfilteredWeight(index, scopeRoot.path, fields.baseline);
   const scopeTotals = aggregation.subtree.get(scopeRoot.path) ?? emptyTotals();
   // One scale for every band, so a row's length means the same wherever it sits
@@ -802,7 +809,7 @@ export function buildView(index: ScanIndex, request: ViewRequest): ViewResponse 
     measure: request.measure,
     aspect,
     rankMetric,
-    summary: buildSummary(index, aggregation, baseline, scopeRoot, scopeBaseline, visibleScopeWeight),
+    summary: buildSummary(index, aggregation, baseline, widestWeight, scopeRoot, scopeBaseline, visibleScopeWeight),
     tree: buildTree(index, modeRequest, aggregation, exclusions, scopeRoot, visibleScopeWeight, visibleChurn),
     detail: buildDetail(
       index, modeRequest, aggregation, visibleScopeWeight,
