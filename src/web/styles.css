@@ -956,7 +956,7 @@ button { cursor: pointer; }
   align-items: center;
   gap: 6px;
   padding: 5px 11px 5px 8px;
-  border: 1px solid var(--rule);
+  border: 1px solid var(--control-rule);
   border-radius: 999px;
   background: var(--surface);
   color: var(--ink-faint);
@@ -965,7 +965,7 @@ button { cursor: pointer; }
   transition: border-color 120ms ease, color 120ms ease;
 }
 .chip input { accent-color: var(--chip-color); margin: 0; }
-.chip[data-on="true"] { color: var(--ink); border-color: color-mix(in oklab, var(--chip-color) 45%, var(--rule)); }
+.chip[data-on="true"] { color: var(--ink); border-color: color-mix(in oklab, var(--chip-color) 70%, var(--control-rule)); }
 .chip[data-flavor="code"] { --chip-color: var(--flavor-code); }
 .chip[data-flavor="test"] { --chip-color: var(--flavor-test); }
 .chip[data-flavor="text"] { --chip-color: var(--flavor-text); }
