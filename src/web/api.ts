@@ -1,7 +1,8 @@
 import type {
   AgentsResponse, AskListResponse, AskRequest, AskTask, CommitSpine, CompareRequest, ComparisonRequest,
-  DismissAskRequest, OpenRootRequest, RepositoryRefs, SkillInstallResponse, SourceResponse, ViewRequest,
-  ViewResponse,
+  DismissAskRequest, FileListResponse, OpenInApplication, OpenInOptionsResponse, OpenInRequest,
+  OpenInResponse, OpenRootRequest, RepositoryRefs, SkillInstallResponse, SourceResponse, ReviewMode,
+  ReviewModeRequest, ViewRequest, ViewResponse,
 } from "../shared/api.ts";
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
@@ -37,6 +38,11 @@ export function fetchView(view: ViewRequest, signal?: AbortSignal): Promise<View
   return postJson<ViewResponse>("/api/view", view, signal);
 }
 
+/** Load every file matched by the panel for the Read-all preview. */
+export function fetchFileList(view: ViewRequest, signal?: AbortSignal): Promise<FileListResponse> {
+  return postJson<FileListResponse>("/api/files", view, signal);
+}
+
 /** Re-read the source tree from disk, then aggregate the current scope. */
 export function rescan(view: ViewRequest): Promise<ViewResponse> {
   return postJson<ViewResponse>("/api/rescan", view);
@@ -48,10 +54,27 @@ export function openRoot(root: string, view: ViewRequest): Promise<ViewResponse>
   return postJson<ViewResponse>("/api/open", body);
 }
 
+/** Fixed applications offered by the operating system that hosts the scan. */
+export function fetchOpenInOptions(): Promise<OpenInOptionsResponse> {
+  return request<OpenInOptionsResponse>("/api/open-in");
+}
+
+/** Open the project root, or its drilled folder, in one local application. */
+export function openIn(application: OpenInApplication, drillPath: string): Promise<OpenInResponse> {
+  const body: OpenInRequest = { application, drillPath };
+  return postJson<OpenInResponse>("/api/open-in", body);
+}
+
 /** Compare something else in the same repository, then aggregate the current scope. */
 export function compare(comparison: ComparisonRequest, view: ViewRequest): Promise<ViewResponse> {
   const body: CompareRequest = { comparison, view };
   return postJson<ViewResponse>("/api/compare", body);
+}
+
+/** Rescan the change or one complete repository image in the active review. */
+export function switchReviewMode(mode: ReviewMode, view: ViewRequest): Promise<ViewResponse> {
+  const body: ReviewModeRequest = { mode, view };
+  return postJson<ViewResponse>("/api/review-mode", body);
 }
 
 /** Branches, remote branches, and tags the comparison picker offers. */

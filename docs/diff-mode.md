@@ -109,6 +109,29 @@ A revision the repository does not hold is answered with 400 and the message fro
 A new comparison replaces the file list, so the client clears the exclusions, the drill, and the selection before it asks.
 `tests/diff-server.test.ts` covers the route and the ref list.
 
+## Reading the repository around a change
+
+The Before / Diff / After switch in `InstrumentBar` changes the question without losing the comparison.
+Diff measures only the paths the change touched.
+Before and After measure every accepted source file in that side of the repository, so a reviewer can see where the change sits in the complete tree and return to the change itself.
+
+Every choice rescans.
+`POST /api/review-mode` keeps the active `Comparison` and installs either its diff producer or a `reviewSide` producer.
+`ScanMeta.review` keeps the comparison and the active choice visible while `ScanMeta.diff` stays `null` in a repository view.
+The diff remains the only mode that reports churn.
+A review is what the wordmark and the tab name, not the mode inside it, so both say "Slopsplorer diff" in all three views and nothing beside the title moves when the switch moves.
+The tab adds the image it holds, because before and after draw the same comparison with different figures.
+
+`scanReviewSide()` in `src/scanner/scan.ts` reads a revision without checking it out.
+`listRevisionFiles()` asks `git ls-tree` for the complete path list, and `GitObjectReader` asks `git cat-file --batch` for each `<revision>:<path>` blob.
+The index uses `git ls-files --cached` and `:<path>` blobs.
+A working-tree side uses the normal filesystem scan, because uncommitted and untracked files have no Git object.
+`openSourceReader()` uses the same source for a file preview, so the full-tree figures and the text beside them describe one repository image.
+
+Opening another folder leaves the review and installs a plain scan.
+Changing the comparison from a repository-side view measures the new diff first.
+A static snapshot offers none of these choices because each one needs a new index.
+
 ## The file list
 
 `git diff --name-status -z -M <base> <target>` gives the changed paths, the status letter, and the rename pairs.
@@ -188,6 +211,9 @@ Measure  = tokens | lines | codeLines
 Aspect   = churn | net | added | removed | after
 ```
 
+`ASPECTS` holds the four a comparison offers.
+`after` is not one of them: it is the aspect a scan resolves to, and "how large is this now" is a question about the whole repository, which the review's After view answers.
+
 `weightField(measure, aspect)` returns a whole field name, such as `churnLines`.
 The table holds every name in full.
 Building a name from fragments would save a few lines and would break the rule that every name worth searching for appears whole in the source.
@@ -240,7 +266,7 @@ The Git letter in the file table carries the change status instead, one file at 
 
 ## How a folder is summarised
 
-The head of `FolderDetail` states every aspect at once, as one strip of `Readout` figures: added, removed, net, churn, after, and the file count.
+The head of `FolderDetail` states every aspect at once, as one strip of `Readout` figures: added, removed, net, churn, and the file count.
 The switch above moves the emphasis along that strip and never changes its shape, so the panel keeps its height and the reader keeps their place.
 Only the selected figure keeps full ink and its hue, and the rest are muted, because a strip of equal numbers gives the reader nothing to hold.
 The strip is a grid of equal tracks, so a figure stays in the same place when the reader opens the next folder.
@@ -252,9 +278,9 @@ The server is not asked for a fifth field it can already imply.
 
 ## Where the aspect is chosen
 
-`FilterBar` draws it as a switch beside the unit, and only inside a comparison.
-The two read as one phrase, the side and then the unit: "net tokens".
-The switch lists the five sides in the order of `ASPECTS`, which is the order the file tables draw them in, and a page opens on net.
+`FilterBar` draws it as a switch after the unit, and only inside a comparison.
+It comes second because it is the switch that appears and goes away, so the unit switch does not move when a review changes mode.
+The switch lists the four sides in the order of `ASPECTS`, which is the order the file tables draw them in, and a page opens on net.
 A second widget that could also set it would give the page two owners of what it counts.
 
 Every numeric column of `FileTable` is a `RankMetric`, and the diff columns are the five aspects plus the two structure counts.
@@ -271,8 +297,11 @@ One aligner serves every row it was opened for through one size batch and one ob
 One producer means the preview and the numbers beside it can never describe different changes, and it reaches an untracked file, which `git diff` cannot show at all.
 `tests/linediff.test.ts` reads each side back out of one alignment over a random corpus and requires the two files again.
 
-`Read all` above the file table opens the whole list instead of one file, in path order, as `FileStack` draws it.
+The file table shows 100 changes on each page and provides previous and next controls.
+`Read all` opens every matching change, independent of the open table page.
+The modal requests the complete list and draws it in path order with `FileStack`.
 Each file keeps its own head, which states the Git letter and both sides of its change, and folds the file away.
+`Collapse all` folds every file, which turns a wide comparison into a list of its changed paths and the figures of each.
 The two dialog switches move the whole stack, so a comparison of fifty files reads as one page.
 
 The route sends the file whole, unchanged lines included, because hunks answer a question the reader did not ask.

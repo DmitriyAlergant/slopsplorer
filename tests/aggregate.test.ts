@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { FileKind, TreeRow, ViewRequest, ViewResponse } from "../src/shared/api.ts";
 import { scanSourceTree, type ScanIndex } from "../src/scanner/scan.ts";
-import { buildView, parseViewRequest } from "../src/server/aggregate.ts";
+import { buildFileList, buildView, parseViewRequest } from "../src/server/aggregate.ts";
 
 const SCAN_TIMEOUT_MS = 60_000;
 
@@ -108,7 +108,7 @@ function request(overrides: Partial<ViewRequest> = {}): ViewRequest {
     treeSort: "name",
     drillPath: "",
     selected: { rowKind: "folder", path: "" },
-    rank: { metric: "tokens", minWeight: 0, limit: 100 },
+    rank: { metric: "tokens", minWeight: 0, limit: 100, offset: 0 },
     measure: "tokens",
     ...overrides,
   });
@@ -131,6 +131,27 @@ function filesRow(rows: readonly TreeRow[], folderPath: string): TreeRow | undef
 }
 
 describe("folder aggregation", () => {
+  it("keeps folders navigable when their files belong only to disabled flavors", () => {
+    const view = buildView(index, request({ kinds: ["text"], expanded: ["", "src", "src/deep", "tests"] }));
+
+    expect(folderRow(view.tree, "src")).toMatchObject({ weight: 0, hasChildren: true, filteredOut: true });
+    expect(folderRow(view.tree, "src/deep")).toMatchObject({ weight: 0, filteredOut: true });
+    expect(folderRow(view.tree, "tests")).toMatchObject({ weight: 0, filteredOut: true });
+  });
+
+  it("keeps a folder's virtual direct-files row when its flavors are disabled", () => {
+    const view = buildView(index, request({ kinds: ["text"], expanded: ["", "src"] }));
+
+    expect(filesRow(view.tree, "src")).toMatchObject({ weight: 0, filteredOut: true });
+  });
+
+  it("still removes folders that do not match the path search", () => {
+    const view = buildView(index, request({ kinds: ["text"], query: "README" }));
+
+    expect(folderRow(view.tree, "src")).toBeUndefined();
+    expect(folderRow(view.tree, "tests")).toBeUndefined();
+  });
+
   it("reports a folder's weight as exactly the sum of the files beneath it", () => {
     const view = buildView(index, request());
     const src = folderRow(view.tree, "src")!;
@@ -205,20 +226,20 @@ describe("folder aggregation", () => {
 });
 
 describe("visibility switches", () => {
-  it("hiding a file kind removes its weight from the totals and its folder from the tree", () => {
+  it("hiding a file kind removes its weight but keeps its folder in the tree", () => {
     const withTests = buildView(index, request());
     const withoutTests = buildView(index, request({ kinds: ["code", "text", "i18n", "data", "other"] }));
     expect(withoutTests.summary.selectedWeight).toBe(
       withTests.summary.selectedWeight - tokensOf("tests/main.test.ts"),
     );
     expect(folderRow(withTests.tree, "tests")).toBeDefined();
-    expect(folderRow(withoutTests.tree, "tests")).toBeUndefined();
+    expect(folderRow(withoutTests.tree, "tests")).toMatchObject({ weight: 0 });
   });
 
   it("generated output is left out of the totals until it is asked for", () => {
     const hidden = buildView(index, request());
     const shown = buildView(index, request({ showGenerated: true }));
-    expect(folderRow(hidden.tree, "dist")).toBeUndefined();
+    expect(folderRow(hidden.tree, "dist")).toMatchObject({ weight: 0 });
     expect(folderRow(shown.tree, "dist")!.weight).toBe(tokensOf("dist/bundle.js"));
     expect(shown.summary.selectedWeight).toBe(hidden.summary.selectedWeight + tokensOf("dist/bundle.js"));
   });
@@ -287,10 +308,10 @@ describe("search", () => {
 
 describe("file ranking", () => {
   it("ranks by the chosen metric, so a comment-heavy file can top the list a token ranking would bury", () => {
-    const byTokens = buildView(index, request({ rank: { metric: "tokens", minWeight: 0, limit: 100 } }));
+    const byTokens = buildView(index, request({ rank: { metric: "tokens", minWeight: 0, limit: 100, offset: 0 } }));
     expect(byTokens.ranked[0]!.path).toBe("src/main.ts");
 
-    const byComments = buildView(index, request({ rank: { metric: "commentLines", minWeight: 0, limit: 100 } }));
+    const byComments = buildView(index, request({ rank: { metric: "commentLines", minWeight: 0, limit: 100, offset: 0 } }));
     expect(byComments.ranked[0]!.path).toBe("src/util.ts");
     expect(byComments.ranked[0]!.commentLines).toBe(10);
   });
@@ -298,35 +319,43 @@ describe("file ranking", () => {
   it("drops files below the token floor so a long tail of tiny files does not crowd out the real weight", () => {
     const helper = index.files.find((file) => file.path === "src/deep/helper.ts")!;
     const view = buildView(index, request({
-      rank: { metric: "tokens", minWeight: helper.tokens + 1, limit: 100 },
+      rank: { metric: "tokens", minWeight: helper.tokens + 1, limit: 100, offset: 0 },
     }));
     expect(view.ranked.map((file) => file.path)).not.toContain("src/deep/helper.ts");
     expect(view.ranked.map((file) => file.path)).toContain("src/main.ts");
     expect(view.rankedTotal).toBe(view.ranked.length);
   });
 
-  it("truncates the list but still reports how many files matched, so the count is not a lie", () => {
-    const view = buildView(index, request({ rank: { metric: "tokens", minWeight: 0, limit: 2 } }));
+  it("returns one table page and reports how many files match across all pages", () => {
+    const view = buildView(index, request({ rank: { metric: "tokens", minWeight: 0, limit: 2, offset: 0 } }));
     expect(view.ranked).toHaveLength(2);
     expect(view.rankedTotal).toBe(5);
+  });
+
+  it("pages the table without constraining the complete list used by Read all", () => {
+    const paged = request({ rank: { metric: "tokens", minWeight: 0, limit: 2, offset: 2 } });
+    const view = buildView(index, paged);
+    expect(view.ranked).toHaveLength(2);
+    expect(view.rankedOffset).toBe(2);
+    expect(buildFileList(index, paged).rows).toHaveLength(5);
   });
 
   it("orders a folder's own files by the same column the subtree list uses", () => {
     const byTokens = buildView(index, request({
       selected: { rowKind: "files", path: "src" },
-      rank: { metric: "tokens", minWeight: 0, limit: 100 },
+      rank: { metric: "tokens", minWeight: 0, limit: 100, offset: 0 },
     }));
     expect(byTokens.ranked.map((file) => file.path)).toEqual(["src/main.ts", "src/util.ts"]);
 
     const byComments = buildView(index, request({
       selected: { rowKind: "files", path: "src" },
-      rank: { metric: "commentLines", minWeight: 0, limit: 100 },
+      rank: { metric: "commentLines", minWeight: 0, limit: 100, offset: 0 },
     }));
     expect(byComments.ranked.map((file) => file.path)).toEqual(["src/util.ts", "src/main.ts"]);
   });
 
   it("orders by file name A to Z, so a reader who knows the path can find the row", () => {
-    const view = buildView(index, request({ rank: { metric: "name", minWeight: 0, limit: 100 } }));
+    const view = buildView(index, request({ rank: { metric: "name", minWeight: 0, limit: 100, offset: 0 } }));
     expect(view.ranked.map((file) => file.path)).toEqual([
       "README.md", "src/deep/helper.ts", "src/main.ts", "src/util.ts", "tests/main.test.ts",
     ]);
@@ -334,8 +363,8 @@ describe("file ranking", () => {
   });
 
   it("cuts a name-sorted list by weight, so ordering the rows A to Z cannot bury the heavy ones", () => {
-    const byTokens = buildView(index, request({ rank: { metric: "tokens", minWeight: 0, limit: 2 } }));
-    const byName = buildView(index, request({ rank: { metric: "name", minWeight: 0, limit: 2 } }));
+    const byTokens = buildView(index, request({ rank: { metric: "tokens", minWeight: 0, limit: 2, offset: 0 } }));
+    const byName = buildView(index, request({ rank: { metric: "name", minWeight: 0, limit: 2, offset: 0 } }));
     expect(byName.ranked.map((file) => file.path))
       .toEqual(byTokens.ranked.map((file) => file.path).sort());
     expect(byName.rankedTotal).toBe(5);
@@ -376,7 +405,7 @@ describe("request parsing", () => {
     expect(parsed.drillPath).toBe("");
     expect(parsed.selected).toEqual({ rowKind: "folder", path: "" });
     expect(parsed.measure).toBe("tokens");
-    expect(parsed.rank).toEqual({ metric: "tokens", minWeight: 0, limit: 100 });
+    expect(parsed.rank).toEqual({ metric: "tokens", minWeight: 0, limit: 100, offset: 0 });
     expect(() => buildView(index, parsed)).not.toThrow();
   });
 
@@ -425,6 +454,8 @@ describe("request parsing", () => {
     expect(parseViewRequest({ rank: { limit: Number.NaN } }).rank.limit).toBe(100);
     expect(parseViewRequest({ rank: { limit: "many" } }).rank.limit).toBe(100);
     expect(parseViewRequest({ rank: { minWeight: -42 } }).rank.minWeight).toBe(0);
+    expect(parseViewRequest({ rank: { offset: -5 } }).rank.offset).toBe(0);
+    expect(parseViewRequest({ rank: { offset: 2.9 } }).rank.offset).toBe(2);
   });
 });
 
@@ -479,7 +510,7 @@ describe("primary measure", () => {
     const helper = index.files.find((file) => file.path === "src/deep/helper.ts")!;
     const view = buildView(index, request({
       measure: "lines",
-      rank: { metric: "lines", minWeight: helper.lines + 1, limit: 100 },
+      rank: { metric: "lines", minWeight: helper.lines + 1, limit: 100, offset: 0 },
     }));
 
     expect(helper.lines).toBeLessThan(helper.tokens);
@@ -502,19 +533,17 @@ describe("primary measure", () => {
     }
   });
 
-  it("keeps generated output out of the bars, even when the page counts it", () => {
+  it("splits generated output into a band of its own, so a bar states the whole it counts", () => {
     const view = buildView(index, request({ cardColumns: 6, showGenerated: true }));
     const generated = view.detail.cards.find((card) => card.name === "dist")!;
     expect(generated.weight).toBe(tokensOf("dist/bundle.js"));
-    expect(generated.flavors).toEqual([]);
-    const sliced = view.detail.cards.flatMap((card) => card.flavors.map((slice) => slice.flavor));
-    expect(sliced).not.toContain("generated");
+    expect(generated.flavors).toEqual([{ flavor: "generated", weight: tokensOf("dist/bundle.js") }]);
   });
 
   it("measures the tile baseline over every flavor, so turning one off only shortens bars", () => {
     const everything = buildView(index, request());
     const codeOnly = buildView(index, request({ kinds: ["code"] }));
-    // Generated output is never in the whole, whether the page counts it or not.
+    // The whole answers to no switch, generated output included.
     const withGenerated = buildView(index, request({ showGenerated: true }));
 
     expect(codeOnly.detail.flavorBaseline).toBe(everything.detail.flavorBaseline);
@@ -619,9 +648,9 @@ describe("drill scope", () => {
     expect(drilled.summary.selectedFiles).toBe(3);
     expect(drilled.summary.selectedTokens).toBe(scopeTokens);
 
-    // The bar splits the scope the tree beside it is showing: the child folder,
-    // then the pseudo-segment for the files sitting directly in src.
-    expect(drilled.summary.ribbon.map((segment) => segment.name)).toEqual(["deep", "."]);
+    // The bar splits the scope the tree beside it is showing, heaviest first:
+    // the files sitting directly in src outweigh its one child folder.
+    expect(drilled.summary.ribbon.map((segment) => segment.name)).toEqual([".", "deep"]);
     expect(drilled.summary.ribbon.reduce((total, segment) => total + segment.weight, 0)).toBe(scopeTokens);
     const deepSegment = drilled.summary.ribbon.find((segment) => segment.path === "src/deep")!;
     expect(deepSegment.weight).toBe(tokensOf("src/deep/helper.ts"));
@@ -657,6 +686,49 @@ describe("drill scope", () => {
 });
 
 describe("ranking scope", () => {
+  it("reports every flavor in the file-list scope and marks which switches keep it", () => {
+    const view = buildView(index, request({ kinds: ["code"], showGenerated: false }));
+
+    expect(view.detail.shownFiles).toBe(3);
+    expect(view.detail.availableFiles).toBe(6);
+    expect(view.detail.flavorStats).toEqual([
+      { flavor: "code", weight: tokensOf("src/main.ts", "src/util.ts", "src/deep/helper.ts"), enabled: true },
+      { flavor: "test", weight: tokensOf("tests/main.test.ts"), enabled: false },
+      { flavor: "text", weight: tokensOf("README.md"), enabled: false },
+      { flavor: "i18n", weight: 0, enabled: false },
+      { flavor: "data", weight: 0, enabled: false },
+      { flavor: "other", weight: 0, enabled: false },
+      { flavor: "generated", weight: tokensOf("dist/bundle.js"), enabled: false },
+    ]);
+  });
+
+  it("narrows flavor stats with the same folder-only switch as the file list", () => {
+    const subtree = buildView(index, request({ selected: { rowKind: "folder", path: "src" } }));
+    const folder = buildView(index, request({ selected: { rowKind: "folder", path: "src" }, fileScope: "folder" }));
+
+    expect(subtree.detail.flavorStats.find(({ flavor }) => flavor === "code")?.weight).toBe(
+      tokensOf("src/main.ts", "src/util.ts", "src/deep/helper.ts"),
+    );
+    expect(folder.detail.flavorStats.find(({ flavor }) => flavor === "code")?.weight).toBe(
+      tokensOf("src/main.ts", "src/util.ts"),
+    );
+  });
+
+  it("keeps the direct-files card when filtering leaves it empty", () => {
+    const view = buildView(index, request({
+      kinds: ["text"],
+      selected: { rowKind: "folder", path: "src" },
+      cardColumns: 6,
+    }));
+
+    expect(view.detail.cards.find((card) => card.rowKind === "files")).toMatchObject({
+      name: ".",
+      path: "src",
+      files: 0,
+      weight: 0,
+    });
+  });
+
   it("ranks only files inside the selected folder, so the panel label is truthful", () => {
     const wholeTree = buildView(index, request());
     const justSrc = buildView(index, request({ selected: { rowKind: "folder", path: "src" } }));
@@ -736,25 +808,37 @@ describe("folder tile grid", () => {
     expect(view.detail.cards.some((card) => card.path === null)).toBe(false);
   });
 
-  it("ranks a folder's own files among the tiles rather than pinning them", () => {
+  it("keeps a folder's own files in the first tile", () => {
     const view = buildView(index, request({ cardColumns: 6 }));
-    const ownFiles = view.detail.cards.find((card) => card.rowKind === "files")!;
-    expect(ownFiles.name).toBe(".");
-    expect(ownFiles.path).toBe("");
+    const ownFiles = view.detail.cards[0]!;
+    expect(ownFiles).toMatchObject({ rowKind: "files", path: "", name: "." });
     expect(ownFiles.weight).toBe(tokensOf("README.md"));
-    // Lightest of the three, and last, because nothing pins it to the front.
-    expect(view.detail.cards.at(-1)).toBe(ownFiles);
-    const weights = view.detail.cards.map((card) => Math.abs(card.weight));
-    expect([...weights].sort((left, right) => right - left)).toEqual(weights);
   });
 
-  it("collapses the entries past the first row into one tile", () => {
+  it("collapses the entries past the first row into the last tile", () => {
     // src, tests, dist, and the root's own files, in four tiles worth of order.
     const view = buildView(index, request({ cardColumns: 2, showGenerated: true }));
     expect(view.detail.cards).toHaveLength(2);
+    expect(view.detail.cards[0]).toMatchObject({ rowKind: "files", path: "", name: "." });
     expect(view.detail.cards[1]!.path).toBeNull();
-    // Not "3 more folders": the pile holds the own-files tile as well.
-    expect(view.detail.cards[1]!.name).toBe("3 more");
+    expect(view.detail.cards[1]!.name).toBe("3 more folders");
+  });
+
+  it("opens with direct files and closes with the collapsed tile at every measured capacity", () => {
+    for (const cardColumns of [1, 2, 3, 6]) {
+      const view = buildView(index, request({ cardColumns, showGenerated: true }));
+      expect(view.detail.cards[0]).toMatchObject({ rowKind: "files", path: "", name: "." });
+      const collapsed = view.detail.cards.filter((card) => card.path === null);
+      expect(collapsed.length).toBeLessThanOrEqual(1);
+      if (collapsed.length === 1) expect(view.detail.cards.at(-1)).toBe(collapsed[0]);
+    }
+  });
+
+  it("ranks the child folder tiles between them, heaviest first", () => {
+    const view = buildView(index, request({ cardColumns: 6, showGenerated: true }));
+    const folders = view.detail.cards.filter((card) => card.rowKind === "folder");
+    const weights = folders.map((card) => Math.abs(card.weight));
+    expect(weights).toEqual([...weights].sort((left, right) => right - left));
   });
 
   it("draws a folder's own files as a tile, so a folder with no subfolders still has a row", () => {
@@ -823,5 +907,152 @@ describe("folder heading", () => {
     expect(view.detail.title).toBe(".");
     expect(view.detail.trail.map((crumb) => crumb.name)).toEqual([index.meta.rootName]);
     expect(view.detail.weight).toBe(tokensOf("README.md"));
+  });
+});
+
+describe("a folder with no loose files of its own", () => {
+  // `shell` holds only subfolders and one doc, so a flavor filter can empty its
+  // own-files tile without emptying the folder.
+  const NESTED_FIXTURE = {
+    "README.md": "# Nested\n\nA tree whose middle folder holds no code of its own.\n",
+    "shell/README.md": "# Shell\n\nThe folder's one loose file.\n",
+    "shell/app/main.ts": "export const start = (): number => 1;\n",
+    "shell/lib/util.ts": "export const helper = (value: number): number => value + 1;\n",
+  };
+
+  let nestedRoot: string;
+  let nested: ScanIndex;
+
+  beforeAll(async () => {
+    nestedRoot = await mkdtemp(path.join(os.tmpdir(), "slopsplorer-nested-"));
+    for (const [relativePath, contents] of Object.entries(NESTED_FIXTURE)) {
+      const absolute = path.join(nestedRoot, relativePath);
+      await mkdir(path.dirname(absolute), { recursive: true });
+      await writeFile(absolute, contents, "utf8");
+    }
+    nested = await scanSourceTree({
+      root: nestedRoot,
+      tokenizer: "cl100k_base",
+      allFiles: true,
+      exclude: [],
+      maxFileBytes: 2 * 1024 * 1024,
+      concurrency: 8,
+    });
+  }, SCAN_TIMEOUT_MS);
+
+  afterAll(async () => {
+    await rm(nestedRoot, { recursive: true, force: true });
+  });
+
+  function shell(overrides: Partial<ViewRequest> = {}): ViewResponse {
+    return buildView(nested, request({ selected: { rowKind: "folder", path: "shell" }, ...overrides }));
+  }
+
+  it("draws no own-files tile once the scan found no loose file there", () => {
+    const view = shell({ query: "shell/app" });
+    expect(view.detail.cards.map((card) => card.name)).toEqual(["app"]);
+  });
+
+  it("keeps the own-files tile when the path filter keeps the loose file", () => {
+    const names = shell().detail.cards.map((card) => card.name);
+    expect(names[0]).toBe(".");
+    expect(names.slice(1).sort()).toEqual(["app", "lib"]);
+  });
+
+  it("keeps the own-files tile when a flavor filter empties it", () => {
+    const view = shell({ kinds: ["code"] });
+    const ownFiles = view.detail.cards[0]!;
+    expect(ownFiles).toMatchObject({ rowKind: "files", path: "shell", name: "." });
+    expect(ownFiles.files).toBe(0);
+    expect(ownFiles.weight).toBe(0);
+  });
+
+  it("names the same parts as the tree", () => {
+    const view = shell({ query: "shell/app", expanded: ["", "shell"] });
+    const shellPosition = view.tree.findIndex((row) => row.path === "shell" && row.rowKind === "folder");
+    const shellRow = view.tree[shellPosition]!;
+    const after = view.tree.slice(shellPosition + 1);
+    const end = after.findIndex((row) => row.depth <= shellRow.depth);
+    const subtree = end === -1 ? after : after.slice(0, end);
+    const children = subtree.filter((row) => row.depth === shellRow.depth + 1);
+    expect(children.map((row) => row.name).sort()).toEqual(view.detail.cards.map((card) => card.name).sort());
+  });
+
+  it("draws the own-files tile alone rather than an empty row", () => {
+    const view = shell({ kinds: [] });
+    expect(view.detail.cards).toHaveLength(1);
+    expect(view.detail.cards[0]).toMatchObject({ rowKind: "files", path: "shell", name: ".", files: 0 });
+  });
+});
+
+/**
+ * Wide trees: one heavy folder and a long tail of small ones. Drawing the tail
+ * one folder at a time gives a run of hairlines nobody can name, hover, or hit,
+ * so the strip stops and states the rest as one part.
+ */
+describe("the ribbon tail", () => {
+  let tinyTail: ScanIndex;
+  let evenTail: ScanIndex;
+  const roots: string[] = [];
+
+  async function scanFixture(files: Record<string, string>): Promise<ScanIndex> {
+    const fixtureRoot = await mkdtemp(path.join(os.tmpdir(), "slopsplorer-wide-"));
+    roots.push(fixtureRoot);
+    for (const [relativePath, contents] of Object.entries(files)) {
+      const absolute = path.join(fixtureRoot, relativePath);
+      await mkdir(path.dirname(absolute), { recursive: true });
+      await writeFile(absolute, contents, "utf8");
+    }
+    return scanSourceTree({
+      root: fixtureRoot,
+      tokenizer: "cl100k_base",
+      allFiles: true,
+      exclude: [],
+      maxFileBytes: 2 * 1024 * 1024,
+      concurrency: 8,
+    });
+  }
+
+  beforeAll(async () => {
+    // One folder holds so much that every other is under half a percent of it.
+    const tiny: Record<string, string> = { "core/main.ts": MAIN_TS.repeat(12) };
+    for (let position = 0; position < 12; position += 1) {
+      tiny[`tail${String(position).padStart(2, "0")}/index.ts`] = "export const value = 1;\n";
+    }
+    // Every folder is worth drawing, and there are more of them than the strip draws.
+    const even: Record<string, string> = {};
+    for (let position = 0; position < 25; position += 1) {
+      even[`part${String(position).padStart(2, "0")}/index.ts`] = MAIN_TS;
+    }
+    [tinyTail, evenTail] = await Promise.all([scanFixture(tiny), scanFixture(even)]);
+  }, SCAN_TIMEOUT_MS);
+
+  afterAll(async () => {
+    await Promise.all(roots.map((fixtureRoot) => rm(fixtureRoot, { recursive: true, force: true })));
+  });
+
+  it("gathers the folders under the smallest drawn share into one closing segment", () => {
+    const segments = buildView(tinyTail, request()).summary.ribbon;
+    expect(segments.map((segment) => segment.name)).toEqual(["core", "12 more folders"]);
+    expect(segments[1]!.path).toBeNull();
+  });
+
+  it("draws no more folders than the strip can hold, whatever their share", () => {
+    const segments = buildView(evenTail, request()).summary.ribbon;
+    expect(segments).toHaveLength(21);
+    expect(segments[20]).toMatchObject({ name: "5 more folders", path: null });
+  });
+
+  it("still partitions the scope, because the tail keeps the weight it stands for", () => {
+    const view = buildView(tinyTail, request());
+    const rest = view.summary.ribbon[1]!;
+    expect(rest.weight).toBe(view.summary.selectedWeight - view.summary.ribbon[0]!.weight);
+    expect(view.summary.ribbon.reduce((sum, segment) => sum + segment.shareOfScope, 0)).toBeCloseTo(1, 10);
+    expect(view.summary.ribbon.reduce((sum, segment) => sum + segment.files, 0)).toBe(view.summary.selectedFiles);
+  });
+
+  it("splits the closing segment by flavor like any other, so its bands still describe it", () => {
+    const rest = buildView(tinyTail, request()).summary.ribbon[1]!;
+    expect(rest.flavors).toEqual([{ flavor: "code", weight: rest.weight }]);
   });
 });

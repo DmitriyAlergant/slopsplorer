@@ -13,7 +13,15 @@ export type Flavor = FileKind | "generated";
 
 export const FILE_KINDS: readonly FileKind[] = ["code", "test", "text", "i18n", "data", "other"];
 
-interface FileKindDetails {
+/**
+ * Every flavor, in the order each breakdown draws them.
+ *
+ * One order for the whole page, so a band means the same place in every bar and
+ * two folders beside each other can be compared band by band.
+ */
+export const FLAVORS: readonly Flavor[] = [...FILE_KINDS, "generated"];
+
+interface FlavorDetails {
   label: string;
   description: string;
 }
@@ -25,13 +33,14 @@ interface FileKindDetails {
  * names are: the brief an ask sends has to call a flavor what the switch the
  * reader clicked calls it.
  */
-export const FILE_KIND_DETAILS: Readonly<Record<FileKind, FileKindDetails>> = {
+export const FLAVOR_DETAILS: Readonly<Record<Flavor, FlavorDetails>> = {
   code: { label: "Code", description: "Source and application code." },
   test: { label: "Tests", description: "Test code: source files in a test folder, plus anything named by a test convention. Fixtures keep the flavor of their own format." },
   text: { label: "Docs", description: "Markdown and other prose documentation." },
   i18n: { label: "i18n", description: "Translation catalogues and locale files, including source files that are almost entirely translated strings." },
-  data: { label: "Data & Config", description: "Structured data and configuration formats such as JSON, YAML, TOML, XML, CSV, and dependency manifests, plus source files that are almost entirely string literals." },
+  data: { label: "Data & Conf", description: "Structured data and configuration formats such as JSON, YAML, TOML, XML, CSV, and dependency manifests, plus source files that are almost entirely string literals." },
   other: { label: "Other", description: "Scannable text files that do not fit another flavor, such as HTML and stylesheets." },
+  generated: { label: "Generated", description: "Generated output and lockfiles detected from path and filename conventions." },
 };
 
 export type TreeSort = "name" | "weight";
@@ -60,21 +69,25 @@ export const MEASURES: readonly Measure[] = ["tokens", "lines", "codeLines"];
 /**
  * Which side of a change the measure describes.
  *
- * A scanned file has one content, so only `after` means anything. A changed
- * file has two, and every measure splits into what the change added and what
- * it removed. Churn is their sum and is never negative; net is their
- * difference and is signed.
+ * A scanned file has one content, so only `after` means anything, and a scan
+ * resolves to it. A changed file has two, and every measure splits into what
+ * the change added and what it removed. Churn is their sum and is never
+ * negative; net is their difference and is signed. `ASPECTS` holds the four a
+ * comparison offers.
  */
 export type Aspect = "added" | "removed" | "churn" | "net" | "after";
 
 /**
- * Ordered as the change reads: what it put in, what it took out, what that
- * leaves, what it cost, and what the file is now.
+ * The sides a comparison offers, ordered as the change reads: what it put in,
+ * what it took out, what that leaves, and what it cost.
  *
- * The switch in the filter bar and the aspect columns of the file tables both
- * follow this order, so the page presents the five sides in one order only.
+ * The switch in the filter bar, the aspect columns of the file tables, and the
+ * readout strips all follow this order, so the page presents the four sides in
+ * one order only. `after` is not among them: it is the aspect a scan resolves
+ * to, and a review answers "how large is this now" about the whole repository
+ * in its After view, not about the files a change happened to touch.
  */
-export const ASPECTS: readonly Aspect[] = ["added", "removed", "net", "churn", "after"];
+export const ASPECTS: readonly Aspect[] = ["added", "removed", "net", "churn"];
 
 /**
  * A numeric `FileRow` field a weight can be read from.
@@ -224,9 +237,17 @@ export function weightAbbreviation(measure: Measure, aspect: Aspect, isDiff: boo
     : MEASURE_NAMES[measure].abbreviation;
 }
 
-/** Every weight field, so the scanner can build one prefix sum for each. */
+/**
+ * Every weight field, so the scanner can build one prefix sum for each.
+ *
+ * The after-image field is here beside the four sides, because every scan is
+ * measured in it even though no comparison offers it as a side.
+ */
 export const WEIGHT_FIELD_NAMES: readonly WeightField[] =
-  MEASURES.flatMap((measure) => ASPECTS.map((aspect) => weightField(measure, aspect)));
+  MEASURES.flatMap((measure) => [
+    weightField(measure, "after"),
+    ...ASPECTS.map((aspect) => weightField(measure, aspect)),
+  ]);
 
 /**
  * A sortable column of the file tables.
@@ -259,7 +280,7 @@ export const SCAN_RANK_METRICS: readonly MeasuredMetric[] = [
   "tokens", "lines", "codeLines", "commentLines", "functions", "branches",
 ];
 
-/** Columns a diff draws. The five aspect columns are `ASPECTS`, in its order. */
+/** Columns a diff draws. The aspect columns are `ASPECTS`, in its order. */
 export const DIFF_RANK_METRICS: readonly MeasuredMetric[] = [
   ...ASPECTS, "functions", "branches",
 ];
@@ -397,6 +418,8 @@ export interface TreeRow {
   included: boolean;
   indeterminate: boolean;
   disabled: boolean;
+  /** This path exists, but the flavor switches leave it with no matching files. */
+  filteredOut: boolean;
   selected: boolean;
 }
 
@@ -424,12 +447,21 @@ export interface FolderCard {
 /**
  * One flavor's part of a folder, in the active measure and aspect.
  *
- * Generated files are never in one: the bar these draw states what the source
- * of a folder is made of, and a lockfile is not part of that answer.
+ * The slices divide the folder's own weight, so they hold every flavor the
+ * switches count, generated output included. A tile headline and the bar under
+ * it therefore describe the same files.
  */
 export interface FlavorSlice {
-  flavor: FileKind;
+  flavor: Flavor;
   weight: number;
+}
+
+/** One flavor's available weight in the file table's scope. */
+export interface FlavorStat {
+  flavor: Flavor;
+  weight: number;
+  /** Whether the matching flavor switch currently counts these files. */
+  enabled: boolean;
 }
 
 /** One navigable step of the folder heading's path. */
@@ -468,13 +500,19 @@ export interface DetailView {
    */
   shareOfScope: number;
   cards: FolderCard[];
+  /** Files the active flavor switches keep in the file table's path and checkbox scope. */
+  shownFiles: number;
+  /** Files of every flavor in the same path and checkbox scope. */
+  availableFiles: number;
+  /** Every flavor in the file table's scope, including disabled and empty ones. */
+  flavorStats: FlavorStat[];
   /**
    * The whole every tile's bar divides, so all the tiles share one scale.
    *
    * The drill scope as the tree's own checkboxes and the path filter leave it,
-   * with every flavor in it and generated files out of it. The flavor chips
-   * are deliberately not applied: they take slices out of the bars, so turning
-   * one off shortens every bar rather than stretching the rest to fill it.
+   * with every flavor in it, generated output included. The flavor switches are
+   * deliberately not applied: they take slices out of the bars, so turning one
+   * off shortens every bar rather than stretching the rest to fill it.
    */
   flavorBaseline: number;
   /** Fixed column capacity measured from the panel width. */
@@ -493,6 +531,17 @@ export interface SummaryView {
   scopePath: string;
   /** Unfiltered weight of the drill scope, the denominator of "of scope". */
   scopeWeight: number;
+  /**
+   * The widest figure the page can ever state: the project's churn in a
+   * comparison and its whole weight in a scan, in the wider of tokens and
+   * lines.
+   *
+   * Every side is a part of churn and LOC is a part of lines, so this one
+   * figure bounds all of them. A control reserves digit space from it, so
+   * neither walking the tree nor changing the unit or the side resizes the
+   * control that holds the figure.
+   */
+  widestWeight: number;
   /** Drill-scope weight under the active visibility and inclusion switches. */
   selectedWeight: number;
   selectedAdded: number;
@@ -504,12 +553,17 @@ export interface SummaryView {
   selectedChurnTokens: number;
   selectedChurnLines: number;
   selectedChurnCodeLines: number;
-  /** Top-level segments of the drill scope's proportion ribbon. */
+  /**
+   * Top-level segments of the drill scope's proportion ribbon.
+   *
+   * A segment's width is its share of the scope and its `flavors` are the bands
+   * it is drawn in, so one strip states where the weight sits and what it is.
+   */
   ribbon: FolderCard[];
 }
 
 /** Where a scan's file list came from. A diff never runs a walk. */
-export type FileSource = "git-index" | "walk-gitignore" | "walk-all" | "git-diff";
+export type FileSource = "git-index" | "git-tree" | "walk-gitignore" | "walk-all" | "git-diff";
 
 /** What a diff compared, resolved once and echoed on every response. */
 export interface DiffMeta {
@@ -529,6 +583,22 @@ export interface DiffMeta {
   cappedFiles: number;
 }
 
+/** Which full-repository image or change the review page is drawing. */
+export type ReviewMode = "before" | "diff" | "after";
+
+/** The comparison that a repository-image view can return to. */
+export interface ReviewMeta {
+  mode: ReviewMode;
+  /** How the comparison was named on the command line. */
+  spec: string;
+  /** What was asked for, so changing the view never loses the comparison. */
+  request: ComparisonRequest;
+  /** Human label for the before side, such as a short commit or "HEAD". */
+  base: string;
+  /** Human label for the after side, such as "working tree" or a short commit. */
+  target: string;
+}
+
 export interface ScanMeta {
   rootPath: string;
   rootName: string;
@@ -542,6 +612,8 @@ export interface ScanMeta {
   fileSource: FileSource;
   /** What was compared, or `null` when the index is a plain scan. */
   diff: DiffMeta | null;
+  /** Review navigation, or `null` when this scan did not come from a comparison. */
+  review: ReviewMeta | null;
   /** Files skipped for exceeding the per-file byte ceiling. */
   skippedLargeFiles: number;
   /** Grammars that produced structure metrics in this scan. */
@@ -587,7 +659,7 @@ export interface ViewRequest {
    * `minWeight` is a floor on the magnitude in the active measure and aspect,
    * not always in tokens.
    */
-  rank: { metric: RankMetric; minWeight: number; limit: number };
+  rank: { metric: RankMetric; minWeight: number; limit: number; offset: number };
   /**
    * How many tiles fit across the panel at its current width.
    *
@@ -624,10 +696,17 @@ export interface ViewResponse {
    * folder tiles, so the tiles and the rows divide one subject between them.
    */
   ranked: FileRow[];
-  /** Total matches before `rank.limit` was applied. */
+  /** Total matches across all table pages. */
   rankedTotal: number;
+  /** Offset of the returned page after it was clamped to a valid page. */
+  rankedOffset: number;
   /** Every folder the current filters leave visible, so the client can expand all. */
   expandableFolderPaths: string[];
+}
+
+/** The complete matching selection loaded only when the reader asks to read it. */
+export interface FileListResponse {
+  rows: FileRow[];
 }
 
 /** Replace the scan root while retaining the caller's display preferences. */
@@ -635,6 +714,30 @@ export interface OpenRootRequest {
   /** Absolute directory path on the machine running the Slopsplorer server. */
   root: string;
   view: ViewRequest;
+}
+
+/** An application that can receive the folder the page is open on. */
+export const OPEN_IN_APPLICATIONS = ["cursor", "vscode", "fileManager"] as const;
+export type OpenInApplication = typeof OPEN_IN_APPLICATIONS[number];
+
+export interface OpenInOption {
+  id: OpenInApplication;
+  label: string;
+}
+
+/** The fixed applications offered for the server's operating system. */
+export interface OpenInOptionsResponse {
+  options: OpenInOption[];
+}
+
+/** Open the measured root, or the folder the page drilled into. */
+export interface OpenInRequest {
+  application: OpenInApplication;
+  drillPath: string;
+}
+
+export interface OpenInResponse {
+  path: string;
 }
 
 /**
@@ -849,6 +952,12 @@ export interface RepositoryRefs {
 /** Replace the active comparison, keeping the repository and the preferences. */
 export interface CompareRequest {
   comparison: ComparisonRequest;
+  view: ViewRequest;
+}
+
+/** Rescan one view of the active review. */
+export interface ReviewModeRequest {
+  mode: ReviewMode;
   view: ViewRequest;
 }
 

@@ -29,8 +29,8 @@ src/web/       ViewRequest state -> POST /api/view -> render
 src/shared/    api.ts, the wire contract; index.ts, the queryable index shape
 ```
 
-There are two producers of a `ScanIndex` and one consumer of it.
-`scanSourceTree()` measures a tree and `scanDiff()` measures a comparison.
+There are three paths to a `ScanIndex` and one consumer of it.
+`scanSourceTree()` measures the working tree, `scanReviewSide()` measures one complete side of a comparison, and `scanDiff()` measures the change between two sides.
 Both end at `assembleIndex()` in `src/shared/index.ts`, which builds the prefix sums and the lookup maps, so neither producer can grow a table the other one lacks.
 Everything downstream reads the index and does not ask which one made it.
 
@@ -65,6 +65,8 @@ There is no filesystem watcher. A new index is built at startup and again when t
 `scanDiff()` in `src/scanner/diffScan.ts` builds the same structure from a revision pair.
 It shares steps 3 to 5 with the scan, and it shares the acceptance rule in `acceptSourcePaths()`, so the two producers cannot disagree about what a source file is.
 `ScanMeta.diff` is `null` for a scan and describes the comparison for a diff, and it is the only thing that tells the aggregator and the client which mode they are in.
+`ScanMeta.review` is navigation context only.
+It keeps the comparison and the active Before / Diff / After choice while a repository-side scan has no diff figures.
 
 ## Why the files are sorted by path
 
@@ -95,14 +97,15 @@ For the complete path, read [export.md](./export.md).
 
 `buildView()` runs these passes in order:
 
-- Visibility. The flavor switches and the search text decide which files are counted at all.
+- Visibility. The path search decides which paths the tree shows, while the flavor switches decide which matching files carry weight.
 - Inclusion. The tree checkboxes decide which of the visible files count toward the totals. Exclusion is inherited by every folder below the excluded one.
 - Aggregation. Tree rows, folder cards, the folder panel, the headline figures, and the ranked file list are all built from the same totals.
 
 ## The wire contract
 
-`ViewRequest` carries the flavor switches, the search text, the checkbox exclusions, the expanded folders, the drill path, the selection, the file list scope, the sorted column, the measure, and the aspect.
-`ViewResponse` carries the tree rows, the folder panel, its ranked files, the headline figures, and the scan metadata.
+`ViewRequest` carries the flavor switches, the search text, the checkbox exclusions, the expanded folders, the drill path, and the selection.
+It also carries the file scope, the sorted column, the table offset, the measure, and the aspect.
+`ViewResponse` carries the tree rows, the folder panel, one ranked file page, the headline figures, and the scan metadata.
 
 The measured quantity on the wire is always `weight`, never `tokens`.
 `ViewResponse` repeats the measure, the aspect, and the sorted column it used, so a label in the client cannot describe one unit while the numbers beside it are in another unit and a newer request is still in flight.
@@ -119,9 +122,13 @@ A scan has one content per file, so `buildView()` forces the aspect to `after` u
 | Route | Purpose |
 | --- | --- |
 | `POST /api/view` | Aggregate the current index for one `ViewRequest`. |
+| `POST /api/files` | Return all files that match one `ViewRequest` for `Read all`. |
 | `POST /api/rescan` | Scan the same root again. Concurrent calls share one scan. |
 | `POST /api/open` | Replace the root with another absolute directory and scan it. |
+| `GET /api/open-in` | List Cursor, VS Code, and the host operating system's file manager. |
+| `POST /api/open-in` | Open the root or current drill folder in one listed application. |
 | `POST /api/compare` | Replace the comparison, keeping the repository, and measure it again. |
+| `POST /api/review-mode` | Rescan the diff or one complete side of the active comparison. |
 | `GET /api/refs` | Return the branches, remote branches, and tags the comparison picker offers. |
 | `GET /api/source` | Return one file for the source dialog: its text in a scan, its aligned lines in a comparison. |
 | `GET /api/skill-install` | Return the command that installs the bundled agent skill, written for the shell of the host platform. |
@@ -137,6 +144,16 @@ The index is the list of readable files.
 Inside a comparison the file has two contents, so the route returns the file as aligned lines instead, built by the aligner `openDiffAligner()` opens, from the same alignment the file's figures were summed over.
 It sends every line, changed or not, and the page decides how much of the unchanged text to draw.
 
+`/api/open-in` takes `ViewRequest.drillPath`, not the selected row.
+An empty drill opens `ScanMeta.rootPath`, and a non-empty drill opens that folder below the root.
+The route requires the drill to exist in `ScanIndex.folderByPath`, then resolves the root and target before it starts an application, so a changed symlink cannot aim the action outside the measured project.
+`buildOpenInOptions()` and `buildOpenInPlan()` in `src/server/openIn.ts` choose the file manager name and launch command from the server operating system.
+They do not probe installed applications.
+The route reports a launch failure when the chosen editor or system command is absent.
+The browser stores the last chosen application, and `OpenInPicker` uses it for the main half of the split control.
+`FilterBar` draws it, and the agent picker beside it, at the right of the filter bar.
+Both act on the drill scope that bar filters, and the bar holds the top of the page after the header scrolls away.
+
 The skill ships with the package and not with the scan, so `/api/skill-source` reads it by a fixed name instead of through that allowlist, and the same dialog draws it.
 `buildSkillInstall()` writes the install command for the platform the server runs on: `cp` chained with `&&` for a POSIX shell, `Copy-Item` chained with `;` under `$ErrorActionPreference` for PowerShell.
 It copies the skill into `~/.claude/skills`, which Claude Code reads, and into `~/.agents/skills`, which Codex and the other tools that follow the open skill layout read.
@@ -150,13 +167,13 @@ On a failure the command line asks `lsof` who holds each busy port and prints a 
 A directory is not a comparison, so keeping the old one would leave the page reporting churn for a tree nobody compared.
 
 `/api/compare` answers only when the open index is a comparison.
-A scan has no repository against which the page could name a revision, so a scan is refused with 400.
+A repository-side review keeps that comparison, but a plain scan has no repository against which the page could name a revision, so a plain scan is refused with 400.
 It takes a `ComparisonRequest` and verifies it with `verifyComparisonRequest()`, the same check the command line runs.
 `/api/refs` is refused for a scan for the same reason.
 
 A rescan replaces the state only after it succeeds.
 A failed scan leaves the previous index in place, so the page keeps working.
-A running measurement is identified by its root and, for a comparison, its spec, so a second comparison of the same repository cannot join the first one and get the wrong figures back.
+A running measurement is identified by its root, comparison spec, and review mode, so two views of the same repository cannot join and get the wrong figures back.
 
 ## The client
 
@@ -179,29 +196,54 @@ Everything below the workspace describes what the workspace shows, so no part of
 The one deliberate exception is the proportion bar, whose segments select a folder in the folder panel above it.
 The bar is a view of the scope, so selecting from it is the same act as clicking the tree.
 
+The bar draws the drill scope as one strip, and `buildSummary()` in `src/server/aggregate.ts` decides what it holds.
+A segment's width is one part's share of the scope, and the bands stacked inside it are the flavors that part is made of, in the order `FLAVORS` gives.
+So the strip states where the weight sits and what that weight is, and a hovered segment names its own bands with their figures.
+The parts are ranked heaviest first, and the strip stops drawing them one at a time below half a percent of itself or past twenty segments.
+Whatever is left becomes one closing segment that names how many folders it stands for and selects nothing.
+The scope's own files always keep a segment, because no other segment leads to them.
+
 There is one file table, and it is inside the folder panel.
 The panel divides its subject twice: the tiles divide it by part, and the table lists every file under it, heaviest first.
-A part is a child folder or the folder's own files, which take a tile named `.` ranked among the others by weight, so the tiles account for the whole folder and a folder with no subfolders still fills the row.
-The last tile absorbs whatever does not fit one row, and it is named for what it holds.
+A part is a child folder or the folder's own files, which take the first tile named `.`.
+The `.` tile remains when a flavor filter leaves it with zero files and zero weight, so the folder's direct-files path never disappears.
+It is absent when the folder holds no loose file that the path filter keeps, which is the rule the tree uses for the same row, and the two panels name the same parts.
+A folder with only loose files, and a folder the filters empty, still draw that one tile, because a row of no tiles would move the controls under it.
+The child folder tiles come after it, heaviest first.
+The last tile absorbs the child folders that do not fit one row, and it is named for what it holds, so it stands at the end of the order.
+When every part fits, there is no such tile.
 
 Each tile carries a bar, and every bar in the panel divides one whole: `DetailView.flavorBaseline`, the drill scope as the tree's checkboxes and the path filter leave it.
-The flavor chips are not applied to that whole, and generated files are never in it.
+No flavor switch is applied to that whole, and generated output is in it like any other flavor.
 So the bar's length is what the folder holds of the scope, its divisions are the flavors it is made of, and turning a flavor off takes a slice out of every bar instead of stretching the rest to fill the width.
+A tile's slices divide the tile's own weight, so the bar and the figure above it always describe the same files.
 The tiles account for the whole of their folder, so at the top of a scope the bars add up to the scope.
 A separate ranking panel used to repeat the tiles as rows, which put the same subtree on the page twice.
-The strip above the ranked table holds the two controls that belong to the rows below it: how much of the selection the table lists, and the threshold that thins it.
+The strip above the ranked table holds the flavor controls and states the available weight of every flavor in the table scope, including disabled and empty flavors.
+The page does not draw a file-scope control, but the request field remains available for shared links and static snapshots.
 
 `ViewRequest.fileScope` is that first control.
 `subtree` lists every file under the selected folder, and `folder` lists only the files that sit directly in it.
 It moves the table alone: the tiles, the folder head, and the tree all keep describing the whole selection, so a reader can ask what one folder holds without leaving the subtree the panel is about.
 A `.` selection is a folder's own files already, so the switch is not drawn there and `rankFiles()` treats that selection as the narrow scope whatever the field says.
 
-The list is read in two ways.
+The pagination line places borderless previous and next controls around the current row range and the number of files the flavor switches show.
+The line below states how many files are available in the same path, folder, and checkbox scope.
+Compact previous and next controls request the other pages from the same ranked list and stay visibly inert when only one page exists.
+
+The matching list is read in two ways.
 Clicking one file opens it alone in `SourceDialog`.
-`Read all`, in the strip above the table, opens every file the table lists in one scrolling dialog, drawn by `FileStack`.
-That view is always in path order: a ranking would put two files of one folder at opposite ends of a long scroll, and reading a whole selection is a walk of the tree.
-It holds the rows it was opened with, so the list cannot change under a reader while the page behind it answers a later request, and its head says how many of the panel's matches it holds.
-One file is fetched when the reader comes near it, and a file the reader folded away is not fetched at all, so the browser still receives the text one file at a time.
+`Read all`, beside the File column heading, opens every matching file in one scrolling dialog, drawn by `FileStack`.
+The modal requests the complete list through `ExplorerRuntime.fetchFileList`, independent of the open table page.
+The modal always sorts the files by path.
+A rank order can separate files from the same folder, but a path order keeps them together.
+It holds the `ViewRequest` it was opened with, so a later page request cannot change the modal's selection.
+The modal fetches one file when the reader comes near it.
+The modal does not fetch the source of a file that the reader folds.
+When the reader folds an open file, `FileStack` moves the next file header to the same viewport position.
+This keeps the next fold control under the pointer and moves the earlier folded headers up by one row instead of snapping the stack to the top.
+`Collapse all` in the modal head folds every file at once, and reads `Expand all` while any file is folded, so one press always reaches a state the reader can see whole.
+`SourceDialog` holds which paths are folded, because the control that folds them all sits in its head, and a new selection arrives with every file open.
 `FilePreview` draws the body in both dialogs, so a file cannot read one way alone and another way among its neighbours.
 
 The scope strip under the workspace draws the same columns as the folder head, in the same order, and one is read the same way in both places.
@@ -210,12 +252,15 @@ The two figures no other panel can state - how much of the project the scope and
 
 Three controls narrow the view, and they do different things:
 
-- The flavor switches and the search box decide which files are counted at all.
+- The flavor switches decide which files carry weight, while the search box decides which paths the tree and table can show.
 - The tree checkboxes decide which of those count toward the totals.
 - Drill decides which folder the page is about. Drilling moves the whole view: the headline figures, the proportion bar, and the percentage baselines all describe the drilled folder, and one readout keeps the project figure visible.
 
 Ordinary folder selection is navigation inside the drill scope.
 It moves the detail panel and the ranking, and it leaves the headline figures alone.
+The source tree keeps folders that the path search finds even when every file below them has a disabled flavor.
+Such a folder stays navigable, reads as muted, and carries zero active weight.
+The virtual `.` row follows the same rule for files that sit directly in a folder.
 Selection is clamped to the drill scope on both sides.
 `buildView()` puts the scope root in place of a selection that falls outside it, and `readRequest()` does the same to a link, so a panel can never name a folder that its contents do not cover.
 
@@ -223,19 +268,20 @@ A `.` row is its own subject and not a second way to name its folder.
 Selecting it reports the folder's own files: the heading reads `root/folder/.`, the child-folder tiles disappear because they belong to the subtree and not to the loose files, and every figure in the panel is the loose files' own.
 The panel keeps one tile there, the subject itself, so the row still stands and the file table under it does not move.
 In the tree it is the first row of every level it appears in, above the subfolders and whichever order the level is sorted by, because it is the one row that holds files rather than more folders.
-In the tiles and in the ribbon it is ranked by weight like every other part of the folder.
+In the tiles it is the first one, for the same reason, and in the ribbon it is ranked by weight like every other part of the folder.
 
 ## Where the measure is chosen
 
 The measure and the aspect are properties of every figure on the page, so each is chosen once, in the filter bar.
-`FilterBar` draws two switches side by side, the side of the change and then the unit, which is how the pair is read: "net tokens".
-The aspect switch is only drawn inside a comparison, because a scanned file has one content.
+`FilterBar` draws two switches side by side, the unit and then the side of the change.
+The row ends with the two acts on the drill scope, Open in and Ask, which the header held before.
+The aspect switch is only drawn inside a comparison, because a scanned file has one content, and it comes second so that the unit switch keeps its place while a review moves between before, diff, and after.
 A control per panel would let several widgets each claim to decide what the page counts.
 
 `ViewRequest.rank.metric` is the sorted column of the file table, and it is coupled to the measure and the aspect in one direction each way.
-Sorting on `tokens`, `lines`, or `codeLines` makes that column the measure; sorting on `churn`, `net`, `added`, `removed`, or `after` makes that column the aspect.
+Sorting on `tokens`, `lines`, or `codeLines` makes that column the measure; sorting on `churn`, `net`, `added`, or `removed` makes that column the aspect.
 Choosing one moves the sort to it, unless the tables are sorted on a metric it does not cover, such as comment lines or function count, which is a deliberate choice and stays where it is.
-Either way the threshold under the table resets, because a floor of 2,000 tokens is not a floor of 2,000 lines and a floor of 2,000 churn tokens is not a floor of 2,000 net tokens.
+The file order follows a new measure or aspect, so a tokens page cannot keep ranking its files by lines and a net page cannot keep ranking them by churn.
 
 The file column is the one sorted column that holds no figure.
 It orders the rows A to Z by whole path, which keeps the files of one folder together, and it moves neither the measure nor the aspect.

@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import type { AgentTool, ComparisonRequest, FileSource, ScanMeta, SnapshotBacklink } from "../../shared/api.ts";
+import type {
+  ComparisonRequest, FileSource, ReviewMode, ScanMeta, SnapshotBacklink,
+} from "../../shared/api.ts";
 import { countOf, since } from "../format.ts";
-import { AgentPicker } from "./AgentPicker.tsx";
 import { ComparisonPicker } from "./ComparisonPicker.tsx";
 import { Tooltip, tooltipHandlers } from "./Tooltip.tsx";
 
@@ -17,16 +18,13 @@ interface Props {
   onRescan: () => void;
   onOpen: (root: string) => void;
   onCompare: (comparison: ComparisonRequest) => void;
-  /** Agents this host can run. No agent, no control: there is nothing to ask. */
-  agents: readonly AgentTool[];
-  agentId: string;
-  onChooseAgent: (agentId: string) => void;
-  onAsk: () => void;
+  onReviewMode: (mode: ReviewMode) => void;
 }
 
 /** Where a file list came from, named in the reader's terms rather than ours. */
 const FILE_SOURCE_LABELS: Readonly<Record<FileSource, string>> = {
   "git-index": "git index",
+  "git-tree": "git tree",
   "walk-gitignore": "walk + gitignore",
   "walk-all": "walk, all files",
   "git-diff": "git diff",
@@ -35,12 +33,13 @@ const FILE_SOURCE_LABELS: Readonly<Record<FileSource, string>> = {
 /** The fixed readout strip: what was measured, how, and how long ago. */
 export function InstrumentBar({
   meta, staticSnapshot = false, backlink = null, rescanning, scanning,
-  onRescan, onOpen, onCompare, agents, agentId, onChooseAgent, onAsk,
+  onRescan, onOpen, onCompare, onReviewMode,
 }: Props): React.JSX.Element {
   const [editingPath, setEditingPath] = useState(false);
   const [pathValue, setPathValue] = useState(meta?.rootPath ?? "");
   const pathInput = useRef<HTMLInputElement>(null);
   const diff = meta?.diff ?? null;
+  const review = meta?.review ?? null;
 
   useEffect(() => {
     if (!editingPath) setPathValue(meta?.rootPath ?? "");
@@ -81,8 +80,11 @@ export function InstrumentBar({
       <div className="instrument__identity">
         <div className="instrument__title">
           {/* The wordmark says which of the two questions the page answers,
-              because every figure below it means something different in each. */}
-          <h1 className="wordmark">{diff ? "Slopsplorer diff" : "Slopsplorer"}</h1>
+              because every figure below it means something different in each.
+              A review keeps the word through before and after, which are its
+              two other views: the name would otherwise change width under the
+              switch that changed it, and move every control beside it. */}
+          <h1 className="wordmark">{diff || review ? "Slopsplorer diff" : "Slopsplorer"}</h1>
           {staticSnapshot ? <span className="instrument__snapshot">Static snapshot</span> : null}
           {staticSnapshot && backlink ? (
             <a
@@ -100,10 +102,26 @@ export function InstrumentBar({
           ) : null}
           {/* What is compared outranks every other fact in the strip, so it
               sits beside the wordmark rather than among them. */}
-          {diff ? (
+          {review ? (
             staticSnapshot
-              ? <span className="instrument__comparison">{diff.base} &rarr; {diff.target}</span>
-              : <ComparisonPicker diff={diff} disabled={scanning} onCompare={onCompare} />
+              ? <span className="instrument__comparison">{review.base} &rarr; {review.target}</span>
+              : <ComparisonPicker comparison={review} disabled={scanning} onCompare={onCompare} />
+          ) : null}
+          {!staticSnapshot && review ? (
+            <div className="switch instrument__review-switch" role="group" aria-label="Review view">
+              {(["before", "diff", "after"] as const).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  className="switch__option"
+                  aria-pressed={review.mode === mode}
+                  disabled={scanning}
+                  onClick={() => onReviewMode(mode)}
+                >
+                  {mode === "diff" ? "Diff" : mode === "before" ? "Before" : "After"}
+                </button>
+              ))}
+            </div>
           ) : null}
           {/* Measuring again is the same act on either side of what it re-reads,
               so it stays beside what it would re-read rather than across the bar. */}
@@ -142,7 +160,7 @@ export function InstrumentBar({
             re-aimed at another folder. */}
         {staticSnapshot ? (
           <p className="instrument__root">{meta?.rootName ?? "Static source tree"}</p>
-        ) : diff ? (
+        ) : review ? (
           <p className="instrument__root">{meta ? meta.rootPath : ""}</p>
         ) : editingPath ? (
           <form className="instrument__path-form" onSubmit={submitPath}>
@@ -176,27 +194,20 @@ export function InstrumentBar({
         )}
       </div>
 
-      <div className="instrument__right">
-        {/* Beside the facts about the measurement, because asking is an act on
-            the whole page rather than on any one panel of it. */}
-        {agents.length > 0 ? (
-          <AgentPicker agents={agents} agentId={agentId} onChoose={onChooseAgent} onAsk={onAsk} />
-        ) : null}
-        <dl className="instrument__facts">
-          <div className="fact">
-            <dt>Tokenizer</dt>
-            <dd>{meta?.tokenizer ?? "-"}</dd>
-          </div>
-          <div className="fact">
-            <dt>Source</dt>
-            <dd>{meta ? FILE_SOURCE_LABELS[meta.fileSource] : "-"}</dd>
-          </div>
-          <div className="fact">
-            <dt>Scanned</dt>
-            <dd>{meta ? since(meta.scannedAt) : "-"}</dd>
-          </div>
-        </dl>
-      </div>
+      <dl className="instrument__facts">
+        <div className="fact">
+          <dt>Tokenizer</dt>
+          <dd>{meta?.tokenizer ?? "-"}</dd>
+        </div>
+        <div className="fact">
+          <dt>Source</dt>
+          <dd>{meta ? FILE_SOURCE_LABELS[meta.fileSource] : "-"}</dd>
+        </div>
+        <div className="fact">
+          <dt>Scanned</dt>
+          <dd>{meta ? since(meta.scannedAt) : "-"}</dd>
+        </div>
+      </dl>
 
       {meta && meta.skippedLargeFiles > 0 ? (
         <p className="instrument__note">

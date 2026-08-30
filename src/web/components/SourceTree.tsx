@@ -170,6 +170,7 @@ export function SourceTree({
               data-kind={row.rowKind}
               data-selected={row.selected}
               data-muted={!row.included}
+              data-filtered={row.filteredOut}
               style={{
                 "--indent": row.depth,
                 "--mass": row.shareOfScope,

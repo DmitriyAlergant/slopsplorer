@@ -66,6 +66,13 @@ function makeIndex(specs: readonly FileSpec[], diff: DiffMeta | null = null): Sc
     durationMs: 0,
     fileSource: diff === null ? "git-index" : "git-diff",
     diff,
+    review: diff === null ? null : {
+      mode: "diff",
+      spec: diff.spec,
+      request: diff.request,
+      base: diff.base,
+      target: diff.target,
+    },
     skippedLargeFiles: 0,
     languages: [],
   }, files, folders);

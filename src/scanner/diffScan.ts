@@ -338,6 +338,13 @@ export async function scanDiff(options: DiffScanOptions): Promise<ScanIndex> {
     durationMs: Date.now() - startedAt,
     fileSource: "git-diff",
     diff,
+    review: {
+      mode: "diff",
+      spec: comparison.spec,
+      request: comparison.request,
+      base: comparison.baseLabel,
+      target: comparison.targetLabel,
+    },
     skippedLargeFiles,
     languages,
   };

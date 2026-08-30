@@ -75,7 +75,7 @@ describe("a static scan index", () => {
           kinds: ["code", "test", "text", "i18n", "data", "other"],
           measure,
           aspect,
-          rank: { metric: aspect, minWeight: 0, limit: 100 },
+          rank: { metric: aspect, minWeight: 0, limit: 100, offset: 0 },
           expanded: [""],
         });
         expect(buildView(hydrated, request)).toEqual({ ...buildView(diffIndex, request), meta: published.meta });
@@ -92,7 +92,7 @@ describe("a static scan index", () => {
       parseViewRequest({
         kinds: ["code", "test"], showGenerated: true, measure: "lines", treeSort: "weight",
         drillPath: "src", selected: { rowKind: "files", path: "src" }, fileScope: "folder",
-        excludedDirectFiles: ["tests"], rank: { metric: "name", minWeight: 0, limit: 10 },
+        excludedDirectFiles: ["tests"], rank: { metric: "name", minWeight: 0, limit: 10, offset: 0 },
       }),
     ];
 
@@ -365,7 +365,7 @@ describe("a static scan index", () => {
       await rm(changingRoot, { recursive: true, force: true });
       await rm(outsideRoot, { recursive: true, force: true });
     }
-  });
+  }, SCAN_TIMEOUT_MS);
 
   it("reads an accepted file whose name starts with two dots", async () => {
     const dottedRoot = await mkdtemp(path.join(os.tmpdir(), "slopsplorer-dotted-source-"));
@@ -433,7 +433,7 @@ describe("a static scan index", () => {
       await rm(path.dirname(output), { recursive: true, force: true });
     }
   });
-});
+}, SCAN_TIMEOUT_MS);
 
 describe("the snapshot entry document", () => {
   const entry = path.join(import.meta.dirname, "..", "src", "web", "snapshot.html");

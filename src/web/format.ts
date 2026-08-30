@@ -84,6 +84,19 @@ export function weightCount(value: number, aspect: Aspect): string {
   return aspect === "net" ? signed(value) : count(value);
 }
 
+/**
+ * Characters to reserve for a figure, from the widest one its surface can
+ * state.
+ *
+ * A control that holds a figure of the scope the reader is in would otherwise
+ * resize on every step through the tree. Reserving from the project figure
+ * fixes its width for the whole visit, and the sign takes a column of its own
+ * so a signed figure keeps its digits in the same place as an unsigned one.
+ */
+export function figureWidth(widest: number, signed: boolean): number {
+  return count(widest).length + (signed ? 1 : 0);
+}
+
 /** How a figure is coloured. Direction is drawn beside the hue, never by it. */
 export type FigureSign = "positive" | "negative" | "zero" | "none";
 
@@ -140,12 +153,16 @@ export function comparisonLabel(request: ComparisonRequest): string {
  *
  * The subject comes first, because a tab is cut from the right and the folder
  * is what tells two Slopsplorer windows apart. The product name follows it in
- * the form the wordmark uses, so the tab and the strip name one mode.
+ * the form the wordmark uses, so the tab and the strip name one mode: a review
+ * keeps the word through before and after, and the tab adds which of the two
+ * images it holds, because they draw the same comparison and different figures.
  */
 export function documentTitle(meta: ScanMeta | null): string {
   if (meta === null) return "Slopsplorer";
-  if (meta.diff === null) return `${meta.rootName} - Slopsplorer`;
-  return `${meta.rootName}: ${comparisonLabel(meta.diff.request)} - Slopsplorer diff`;
+  const review = meta.review;
+  if (review === null) return `${meta.rootName} - Slopsplorer`;
+  const image = review.mode === "diff" ? "" : `, ${review.mode}`;
+  return `${meta.rootName}: ${comparisonLabel(review.request)}${image} - Slopsplorer diff`;
 }
 
 /**

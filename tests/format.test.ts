@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ComparisonRequest, DiffMeta, ScanMeta } from "../src/shared/api.ts";
-import { aspectFigure, comparisonLabel, countOf, documentTitle, shortRevision } from "../src/web/format.ts";
+import { aspectFigure, comparisonLabel, countOf, documentTitle, figureWidth, shortRevision } from "../src/web/format.ts";
 
 const FULL_SHA = "87d1e8b76cece130474a7fcc6093528f3c20cd4c";
 
@@ -73,10 +73,25 @@ function meta(rootName: string, request: ComparisonRequest | null): ScanMeta {
     durationMs: 0,
     fileSource: request === null ? "git-index" : "git-diff",
     diff,
+    review: diff === null ? null : {
+      mode: "diff",
+      spec: diff.spec,
+      request: diff.request,
+      base: diff.base,
+      target: diff.target,
+    },
     skippedLargeFiles: 0,
     languages: [],
   };
 }
+
+describe("figureWidth", () => {
+  it("reserves the digits of the widest figure, and a column for a sign", () => {
+    expect(figureWidth(4_740_957, false)).toBe(9);
+    expect(figureWidth(4_740_957, true)).toBe(10);
+    expect(figureWidth(0, false)).toBe(1);
+  });
+});
 
 describe("documentTitle", () => {
   it("names the scanned folder", () => {
@@ -100,6 +115,18 @@ describe("documentTitle", () => {
     };
     expect(documentTitle(meta("slopsplorer", request)))
       .toBe("slopsplorer: origin/main -> PR 14 - Slopsplorer diff");
+  });
+
+  // A review keeps the word "diff" through its other two views, exactly as the
+  // wordmark does, and names which image it is drawing.
+  it("names the image a review is drawing", () => {
+    const scan = meta("slopsplorer", { kind: "mergeBase", base: "origin/main", target: "dev" });
+    const before: ScanMeta = { ...scan, diff: null, review: { ...scan.review!, mode: "before" } };
+    expect(documentTitle(before))
+      .toBe("slopsplorer: origin/main -> dev, from the merge base, before - Slopsplorer diff");
+    const after: ScanMeta = { ...scan, diff: null, review: { ...scan.review!, mode: "after" } };
+    expect(documentTitle(after))
+      .toBe("slopsplorer: origin/main -> dev, from the merge base, after - Slopsplorer diff");
   });
 
   it("falls back to the product name before the first response", () => {

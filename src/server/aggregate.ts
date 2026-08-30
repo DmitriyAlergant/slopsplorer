@@ -1,9 +1,9 @@
 import type {
-  Aspect, DetailView, FileKind, FileRow, FileScope, Flavor, FlavorSlice, FolderCard, Measure, PathCrumb,
-  MeasuredMetric, RankMetric, RowKind, SummaryView, TreeRow, ViewRequest, ViewResponse, WeightField,
+  Aspect, DetailView, FileRow, FileScope, Flavor, FlavorSlice, FlavorStat, FolderCard, Measure, PathCrumb,
+  FileListResponse, MeasuredMetric, RankMetric, RowKind, SummaryView, TreeRow, ViewRequest, ViewResponse, WeightField,
 } from "../shared/api.ts";
 import {
-  ASPECTS, FILE_KINDS, FILE_SCOPES, MAX_CARD_COLUMNS, MEASURES, MIN_CARD_COLUMNS, RANK_METRICS,
+  ASPECTS, FILE_KINDS, FILE_SCOPES, FLAVORS, MAX_CARD_COLUMNS, MEASURES, MIN_CARD_COLUMNS, RANK_METRICS,
   TREE_SORTS, defaultRankMetric, sortMetricsFor, weightField,
 } from "../shared/api.ts";
 import type { FolderNode, ScanIndex } from "../scanner/scan.ts";
@@ -76,8 +76,8 @@ interface Totals {
   churnLines: number;
   churnCodeLines: number;
   files: number;
-  /** Magnitude per flavor, for the tile bars. Generated files are not in it. */
-  flavors: Map<FileKind, number>;
+  /** Magnitude per flavor, for the tile bars and the ribbon bands. */
+  flavors: Map<Flavor, number>;
 }
 
 function emptyTotals(): Totals {
@@ -103,13 +103,12 @@ function addFile(totals: Totals, file: FileRow, fields: ActiveFields): void {
   totals.files += 1;
   // Slices are drawn from magnitude: a net of -400 is 400 of ink, and the sign
   // is carried by the figure beside the bar rather than folded into its width.
-  if (!file.generated) {
-    totals.flavors.set(file.kind, (totals.flavors.get(file.kind) ?? 0) + Math.abs(weight));
-  }
+  const flavor = flavorOf(file);
+  totals.flavors.set(flavor, (totals.flavors.get(flavor) ?? 0) + Math.abs(weight));
 }
 
 function flavorSlices(totals: Totals): FlavorSlice[] {
-  return FILE_KINDS
+  return FLAVORS
     .filter((flavor) => (totals.flavors.get(flavor) ?? 0) > 0)
     .map((flavor) => ({ flavor, weight: totals.flavors.get(flavor)! }));
 }
@@ -153,21 +152,21 @@ function computeCategoryVisibility(index: ScanIndex, request: ViewRequest): Cate
   const kinds = new Set(request.kinds);
   const query = request.query.trim().toLowerCase();
   const categoryVisible = new Uint8Array(index.files.length);
-  const flavorBaselineVisible = new Uint8Array(index.files.length);
+  const pathVisible = new Uint8Array(index.files.length);
   for (const [position, file] of index.files.entries()) {
     if (query && !file.path.toLowerCase().includes(query)) continue;
-    if (!file.generated) flavorBaselineVisible[position] = 1;
+    pathVisible[position] = 1;
     const passesKind = file.generated ? request.showGenerated : kinds.has(file.kind);
     if (passesKind) categoryVisible[position] = 1;
   }
-  return { categoryVisible, flavorBaselineVisible };
+  return { categoryVisible, pathVisible };
 }
 
 interface CategoryMasks {
-  /** Files the flavor chips and the path filter keep. */
+  /** Files the flavor switches and the path filter keep. */
   categoryVisible: Uint8Array;
-  /** The same files with every flavor kept, and generated files always dropped. */
-  flavorBaselineVisible: Uint8Array;
+  /** Files the path search keeps, before flavor switches are applied. */
+  pathVisible: Uint8Array;
 }
 
 interface ExclusionState {
@@ -218,10 +217,16 @@ function computeExclusions(index: ScanIndex, request: ViewRequest): ExclusionSta
 interface Aggregation {
   /** Files passing the category filters, before scope exclusions. */
   categoryVisible: Uint8Array;
+  /** Files passing the path search, before flavor switches and scope exclusions. */
+  pathVisible: Uint8Array;
+  /** Files passing the path search and scope exclusions, before flavor switches. */
+  available: Uint8Array;
   /** Files passing category filters *and* scope exclusions. */
   included: Uint8Array;
   /** Category-visible file count per folder subtree, keyed by folder path. */
   categoryCount: Map<string, number>;
+  /** Path-search matches per subtree, before flavor switches. */
+  pathCount: Map<string, number>;
   /** Category-visible weight per folder subtree, before scope exclusions. */
   categorySubtreeWeight: Map<string, number>;
   /** Category-visible weight for files sitting directly in a folder. */
@@ -237,24 +242,25 @@ interface Aggregation {
 function aggregate(
   index: ScanIndex, request: ViewRequest, exclusions: ExclusionState, fields: ActiveFields,
 ): Aggregation {
-  const { categoryVisible, flavorBaselineVisible } = computeCategoryVisibility(index, request);
+  const { categoryVisible, pathVisible } = computeCategoryVisibility(index, request);
   const excludedDirectFiles = new Set(request.excludedDirectFiles);
 
   const included = new Uint8Array(index.files.length);
-  const flavorBaselineIncluded = new Uint8Array(index.files.length);
+  const available = new Uint8Array(index.files.length);
   for (const folder of index.folders) {
     const folderExcluded = exclusions.excluded.has(folder.path);
     const directExcluded = folderExcluded || excludedDirectFiles.has(folder.path);
     if (directExcluded) continue;
     for (const fileIndex of folder.directFileIndices) {
       if (categoryVisible[fileIndex]) included[fileIndex] = 1;
-      if (flavorBaselineVisible[fileIndex]) flavorBaselineIncluded[fileIndex] = 1;
+      if (pathVisible[fileIndex]) available[fileIndex] = 1;
     }
   }
 
   const direct = new Map<string, Totals>();
   const subtree = new Map<string, Totals>();
   const categoryCount = new Map<string, number>();
+  const pathCount = new Map<string, number>();
   const categorySubtreeWeight = new Map<string, number>();
   const categoryDirectWeight = new Map<string, number>();
   const flavorBaseline = new Map<string, number>();
@@ -264,6 +270,7 @@ function aggregate(
     const folder = index.folders[position]!;
     const directTotals = emptyTotals();
     let visibleBelow = 0;
+    let pathMatchesBelow = 0;
     let visibleDirectWeight = 0;
     let baselineWeight = 0;
     for (const fileIndex of folder.directFileIndices) {
@@ -273,7 +280,10 @@ function aggregate(
         visibleBelow += 1;
         visibleDirectWeight += Math.abs(file[fields.weight]);
       }
-      if (flavorBaselineIncluded[fileIndex]) baselineWeight += Math.abs(file[fields.weight]);
+      if (pathVisible[fileIndex]) pathMatchesBelow += 1;
+      // The tile bars divide every flavor the scope holds, so their whole is the
+      // available set: the switches shorten a bar rather than move its scale.
+      if (available[fileIndex]) baselineWeight += Math.abs(file[fields.weight]);
     }
     direct.set(folder.path, directTotals);
 
@@ -284,11 +294,13 @@ function aggregate(
       const childTotals = subtree.get(childPath);
       if (childTotals) mergeTotals(subtreeTotals, childTotals);
       visibleBelow += categoryCount.get(childPath) ?? 0;
+      pathMatchesBelow += pathCount.get(childPath) ?? 0;
       visibleSubtreeWeight += categorySubtreeWeight.get(childPath) ?? 0;
       baselineWeight += flavorBaseline.get(childPath) ?? 0;
     }
     subtree.set(folder.path, subtreeTotals);
     categoryCount.set(folder.path, visibleBelow);
+    pathCount.set(folder.path, pathMatchesBelow);
     categoryDirectWeight.set(folder.path, visibleDirectWeight);
     categorySubtreeWeight.set(folder.path, visibleSubtreeWeight);
     flavorBaseline.set(folder.path, baselineWeight);
@@ -296,8 +308,11 @@ function aggregate(
 
   return {
     categoryVisible,
+    pathVisible,
+    available,
     included,
     categoryCount,
+    pathCount,
     categorySubtreeWeight,
     categoryDirectWeight,
     flavorBaseline,
@@ -357,14 +372,15 @@ function buildTree(
   const rows: TreeRow[] = [];
 
   const walk = (folder: FolderNode, depth: number): void => {
-    if ((aggregation.categoryCount.get(folder.path) ?? 0) === 0) return;
+    if ((aggregation.pathCount.get(folder.path) ?? 0) === 0) return;
     const totals = aggregation.subtree.get(folder.path) ?? emptyTotals();
     const directTotals = aggregation.direct.get(folder.path) ?? emptyTotals();
     const childFolders = folder.childPaths
       .map((childPath) => index.folderByPath.get(childPath))
       .filter((child): child is FolderNode => child !== undefined)
-      .filter((child) => (aggregation.categoryCount.get(child.path) ?? 0) > 0);
-    const hasVisibleDirectFiles = folder.directFileIndices.some((fileIndex) => aggregation.categoryVisible[fileIndex] === 1);
+      .filter((child) => (aggregation.pathCount.get(child.path) ?? 0) > 0);
+    const hasPathVisibleDirectFiles = folder.directFileIndices.some((fileIndex) => aggregation.pathVisible[fileIndex] === 1);
+    const hasCategoryVisibleDirectFiles = folder.directFileIndices.some((fileIndex) => aggregation.categoryVisible[fileIndex] === 1);
     const children: TreeChild[] = childFolders.map((child) => ({
       rowKind: "folder",
       folder: child,
@@ -372,7 +388,7 @@ function buildTree(
       weight: (aggregation.subtree.get(child.path) ?? emptyTotals()).weight,
       sortWeight: Math.abs(aggregation.categorySubtreeWeight.get(child.path) ?? 0),
     }));
-    if (hasVisibleDirectFiles) {
+    if (hasPathVisibleDirectFiles) {
       children.push({
         rowKind: "files",
         name: DIRECT_FILES_LABEL,
@@ -406,6 +422,7 @@ function buildTree(
       included: !exclusions.excluded.has(folder.path),
       indeterminate: exclusions.indeterminate.has(folder.path),
       disabled: exclusions.disabled.has(folder.path),
+      filteredOut: (aggregation.categoryCount.get(folder.path) ?? 0) === 0,
       selected: request.selected.rowKind === "folder" && request.selected.path === folder.path,
     });
 
@@ -433,6 +450,7 @@ function buildTree(
         included: !folderExcluded && !excludedDirectFiles.has(folder.path),
         indeterminate: false,
         disabled: folderExcluded,
+        filteredOut: !hasCategoryVisibleDirectFiles,
         selected: request.selected.rowKind === "files" && request.selected.path === folder.path,
       });
     }
@@ -480,44 +498,67 @@ function buildDetail(
   const directFilesOnly = request.selected.rowKind === "files";
   const folder = index.folderByPath.get(request.selected.path) ?? index.folderByPath.get("")!;
   const totals = (directFilesOnly ? aggregation.direct : aggregation.subtree).get(folder.path) ?? emptyTotals();
+  const kinds = new Set(request.kinds);
+  const flavorWeights = new Map<Flavor, number>();
+  let shownFiles = 0;
+  let availableFiles = 0;
+  const addFlavor = (fileIndex: number): void => {
+    if (aggregation.available[fileIndex] !== 1) return;
+    availableFiles += 1;
+    if (aggregation.included[fileIndex] === 1) shownFiles += 1;
+    const file = index.files[fileIndex]!;
+    const flavor = flavorOf(file);
+    flavorWeights.set(flavor, (flavorWeights.get(flavor) ?? 0) + Math.abs(file[weightField(request.measure, request.aspect)]));
+  };
+  if (directFilesOnly || request.fileScope === "folder") {
+    for (const fileIndex of folder.directFileIndices) addFlavor(fileIndex);
+  } else {
+    for (let fileIndex = folder.start; fileIndex < folder.end; fileIndex += 1) addFlavor(fileIndex);
+  }
+  const flavorStats: FlavorStat[] = FLAVORS.map((flavor) => ({
+    flavor,
+    weight: flavorWeights.get(flavor) ?? 0,
+    enabled: flavor === "generated" ? request.showGenerated : kinds.has(flavor),
+  }));
 
   const cards: FolderCard[] = [];
   const cardColumns = request.cardColumns;
-  // The folder's own files are a tile like any other, ranked among the child
-  // folders rather than pinned, because the row divides the folder completely
-  // and every part of it is read the same way. A `.` selection is already only
-  // those files, so it draws that one tile and no subtree beside it.
+  // The folder's own files keep a tile of their own so their navigation target
+  // cannot disappear when the flavor filters leave them empty or child folders
+  // fill the row. The tree hides the same row when the path filter leaves the
+  // folder no loose file, so the tile goes with it and the two panels name the
+  // same parts. A `.` selection is already only those files, so it draws that
+  // one tile.
   const directTotals = aggregation.direct.get(folder.path) ?? emptyTotals();
   const subfolders = directFilesOnly ? [] : folder.childPaths
     .map((childPath) => ({ node: index.folderByPath.get(childPath), totals: aggregation.subtree.get(childPath) }))
     .filter((entry): entry is { node: FolderNode; totals: Totals } => entry.node !== undefined && entry.totals !== undefined)
     .filter((entry) => entry.totals.files > 0)
     .map((entry) => ({ name: entry.node.name, path: entry.node.path, rowKind: "folder" as const, totals: entry.totals }));
-  const entries = directTotals.files > 0
-    ? [...subfolders, { name: DIRECT_FILES_LABEL, path: folder.path, rowKind: "files" as const, totals: directTotals }]
-    : subfolders;
-  entries.sort((left, right) => byMagnitude(left.totals.weight, right.totals.weight));
+  subfolders.sort((left, right) => byMagnitude(left.totals.weight, right.totals.weight));
 
   // One row, so the tiles take a fixed height whatever the folder holds and the
-  // table below them starts in the same place. The measured capacity stays fixed
-  // even when one entry exists, so a lone card keeps the width of a full row's
-  // tile instead of stretching across the panel. The last tile absorbs whatever
-  // does not fit.
-  const tiles = Math.min(entries.length, cardColumns);
-  const shown = tiles < entries.length ? tiles - 1 : entries.length;
-  for (const entry of entries.slice(0, shown)) {
+  // table below them starts in the same place. The direct-files tile opens the
+  // row, where the tree also puts it, and the collapsed tile stands for every
+  // part past the row, so it closes it. The child folders sit between them,
+  // heaviest first. A folder with no loose file of its own draws no `.` tile,
+  // unless that tile is the only one the row would have: the row is never empty,
+  // because the controls under it would move.
+  const drawsDirect = folder.directFileIndices.some((fileIndex) => aggregation.pathVisible[fileIndex] === 1)
+    || subfolders.length === 0;
+  const folderCapacity = drawsDirect ? cardColumns - 1 : cardColumns;
+  const shownFolders = subfolders.length <= folderCapacity ? subfolders.length : Math.max(folderCapacity - 1, 0);
+  if (drawsDirect) {
+    cards.push(buildFolderCard(DIRECT_FILES_LABEL, folder.path, "files", directTotals, visibleScopeWeight));
+  }
+  for (const entry of subfolders.slice(0, shownFolders)) {
     cards.push(buildFolderCard(entry.name, entry.path, entry.rowKind, entry.totals, visibleScopeWeight));
   }
-  const collapsed = entries.slice(shown);
-  if (collapsed.length > 0) {
+  const collapsed = subfolders.slice(shownFolders);
+  if (collapsed.length > 0 && folderCapacity >= 1) {
     const rest = emptyTotals();
     for (const entry of collapsed) mergeTotals(rest, entry.totals);
-    // Named for what it holds: the own-files tile can fall into it like any
-    // other entry, and then "folders" would not describe the pile.
-    const name = collapsed.every((entry) => entry.rowKind === "folder")
-      ? `${collapsed.length} more folders`
-      : `${collapsed.length} more`;
-    cards.push(buildFolderCard(name, null, "folder", rest, visibleScopeWeight));
+    cards.push(buildFolderCard(`${collapsed.length} more folders`, null, "folder", rest, visibleScopeWeight));
   }
 
   // The heading already names its own subject, so the trail stops one step
@@ -549,6 +590,9 @@ function buildDetail(
     churnCodeLines: totals.churnCodeLines,
     shareOfScope: share(totals.weight, visibleScopeWeight),
     cards,
+    shownFiles,
+    availableFiles,
+    flavorStats,
     flavorBaseline,
     cardColumns,
   };
@@ -589,9 +633,9 @@ function byMetric(metric: RankMetric, measure: Measure, fields: ActiveFields): F
  * row selects for the whole panel. Because descendants are contiguous in the
  * path-sorted array, the subtree is a range rather than a scan of the project.
  */
-function rankFiles(
+function matchingFiles(
   index: ScanIndex, request: ViewRequest, aggregation: Aggregation, fields: ActiveFields,
-): { rows: FileRow[]; total: number } {
+): FileRow[] {
   const folder = index.folderByPath.get(request.selected.path) ?? index.folderByPath.get("")!;
   const directFilesOnly = request.selected.rowKind === "files" || request.fileScope === "folder";
   const matches: FileRow[] = [];
@@ -612,9 +656,90 @@ function rankFiles(
   // must not decide which files a curtailed list holds. It orders the survivors.
   const sortsByName = request.rank.metric === "name";
   matches.sort(sortsByName ? byWeight(fields) : byMetric(request.rank.metric, request.measure, fields));
-  const rows = matches.slice(0, Math.max(0, request.rank.limit));
-  if (sortsByName) rows.sort(byPath);
-  return { rows, total: matches.length };
+  return matches;
+}
+
+function rankFiles(
+  index: ScanIndex, request: ViewRequest, aggregation: Aggregation, fields: ActiveFields,
+): { rows: FileRow[]; total: number; offset: number } {
+  const matches = matchingFiles(index, request, aggregation, fields);
+  const limit = request.rank.limit;
+  const requestedPage = Math.floor(request.rank.offset / limit) * limit;
+  const lastPage = matches.length === 0 ? 0 : Math.floor((matches.length - 1) / limit) * limit;
+  const offset = Math.min(requestedPage, lastPage);
+  const rows = matches.slice(offset, offset + limit);
+  if (request.rank.metric === "name") rows.sort(byPath);
+  return { rows, total: matches.length, offset };
+}
+
+interface PreparedView {
+  scopeRoot: FolderNode;
+  scopePrefix: string;
+  modeRequest: ViewRequest;
+  aspect: Aspect;
+  rankMetric: RankMetric;
+  fields: ActiveFields;
+  exclusions: ExclusionState;
+  aggregation: Aggregation;
+}
+
+/** Resolve the mode and scope once for the table page and the complete list. */
+function prepareView(index: ScanIndex, request: ViewRequest): PreparedView {
+  const projectRoot = index.folderByPath.get("")!;
+  const scopeRoot = index.folderByPath.get(request.drillPath) ?? projectRoot;
+  const selectedFolder = index.folderByPath.get(request.selected.path);
+  const scopePrefix = scopeRoot.path ? `${scopeRoot.path}/` : "";
+  const selectionInsideScope = selectedFolder !== undefined && (
+    selectedFolder.path === scopeRoot.path || scopePrefix === "" || selectedFolder.path.startsWith(scopePrefix)
+  );
+  const effectiveRequest: ViewRequest = selectionInsideScope
+    ? request
+    : { ...request, selected: { rowKind: "folder", path: scopeRoot.path } };
+  const aspect: Aspect = index.meta.diff !== null ? request.aspect : "after";
+  const rankMetric = sortMetricsFor(index.meta.diff !== null).includes(request.rank.metric)
+    ? request.rank.metric
+    : defaultRankMetric(index.meta.diff !== null);
+  const fields = resolveFields(request.measure, aspect);
+  const modeRequest: ViewRequest = {
+    ...effectiveRequest,
+    aspect,
+    rank: { ...effectiveRequest.rank, metric: rankMetric },
+  };
+  const exclusions = computeExclusions(index, request);
+  return {
+    scopeRoot,
+    scopePrefix,
+    modeRequest,
+    aspect,
+    rankMetric,
+    fields,
+    exclusions,
+    aggregation: aggregate(index, request, exclusions, fields),
+  };
+}
+
+/** Build the complete file selection only when the reader invokes Read all. */
+export function buildFileList(index: ScanIndex, request: ViewRequest): FileListResponse {
+  const { modeRequest, aggregation, fields } = prepareView(index, request);
+  return { rows: matchingFiles(index, modeRequest, aggregation, fields) };
+}
+
+/**
+ * Where the ribbon stops drawing one folder at a time.
+ *
+ * The parts are sorted heaviest first, so the tail is a run of hairlines that
+ * carry no name, no figure, and no reachable target. One segment states the
+ * whole tail instead, and the tree below is where that tail is read.
+ */
+const MIN_RIBBON_SHARE = 0.005;
+const MAX_RIBBON_SEGMENTS = 20;
+
+/** One part of the drill scope, before the strip decides whether to draw it alone. */
+interface RibbonPart {
+  name: string;
+  path: string;
+  rowKind: RowKind;
+  totals: Totals;
 }
 
 /**
@@ -630,28 +755,40 @@ function buildSummary(
   index: ScanIndex,
   aggregation: Aggregation,
   baseline: number,
+  widestWeight: number,
   scopeRoot: FolderNode,
   scopeBaseline: number,
   visibleScopeWeight: number,
 ): SummaryView {
   const scopeTotals = aggregation.subtree.get(scopeRoot.path) ?? emptyTotals();
-  const ribbon: FolderCard[] = [];
-  const children = scopeRoot.childPaths
+  const scopeDirect = aggregation.direct.get(scopeRoot.path) ?? emptyTotals();
+  // The scope's own files are one part of it like any folder, so they take
+  // their place by weight and the strip reads widest to narrowest throughout.
+  const parts = scopeRoot.childPaths
     .map((childPath) => ({ node: index.folderByPath.get(childPath), totals: aggregation.subtree.get(childPath) }))
     .filter((entry): entry is { node: FolderNode; totals: Totals } => entry.node !== undefined && entry.totals !== undefined)
+    .map((entry): RibbonPart => ({ name: entry.node.name, path: entry.node.path, rowKind: "folder", totals: entry.totals }))
+    .concat({ name: DIRECT_FILES_LABEL, path: scopeRoot.path, rowKind: "files", totals: scopeDirect })
     .filter((entry) => entry.totals.weight !== 0)
     .sort((left, right) => byMagnitude(left.totals.weight, right.totals.weight));
-  for (const entry of children) {
-    ribbon.push(buildFolderCard(entry.node.name, entry.node.path, "folder", entry.totals, visibleScopeWeight));
-  }
-  const scopeDirect = aggregation.direct.get(scopeRoot.path) ?? emptyTotals();
-  if (scopeDirect.weight !== 0) {
-    ribbon.push(buildFolderCard(DIRECT_FILES_LABEL, scopeRoot.path, "files", scopeDirect, visibleScopeWeight));
+  const strip = parts.reduce((sum, entry) => sum + Math.abs(entry.totals.weight), 0);
+  // The scope's own files always keep a segment: they are the one part of the
+  // strip that no other segment can lead to.
+  const drawn = parts.filter((entry, rank) => entry.rowKind === "files"
+    || (rank < MAX_RIBBON_SEGMENTS && Math.abs(entry.totals.weight) / strip >= MIN_RIBBON_SHARE));
+  const ribbon = drawn
+    .map((entry) => buildFolderCard(entry.name, entry.path, entry.rowKind, entry.totals, visibleScopeWeight));
+  const curtailed = parts.filter((entry) => !drawn.includes(entry));
+  if (curtailed.length > 0) {
+    const rest = emptyTotals();
+    for (const entry of curtailed) mergeTotals(rest, entry.totals);
+    ribbon.push(buildFolderCard(`${curtailed.length} more folders`, null, "folder", rest, visibleScopeWeight));
   }
   return {
     projectWeight: baseline,
     scopePath: scopeRoot.path,
     scopeWeight: scopeBaseline,
+    widestWeight,
     selectedWeight: scopeTotals.weight,
     selectedAdded: scopeTotals.added,
     selectedRemoved: scopeTotals.removed,
@@ -668,30 +805,19 @@ function buildSummary(
 
 /** Build every surface the client renders, for one scope request. */
 export function buildView(index: ScanIndex, request: ViewRequest): ViewResponse {
-  const projectRoot = index.folderByPath.get("")!;
-  const scopeRoot = index.folderByPath.get(request.drillPath) ?? projectRoot;
-  const selectedFolder = index.folderByPath.get(request.selected.path);
-  const scopePrefix = scopeRoot.path ? `${scopeRoot.path}/` : "";
-  const selectionInsideScope = selectedFolder !== undefined && (
-    selectedFolder.path === scopeRoot.path || scopePrefix === "" || selectedFolder.path.startsWith(scopePrefix)
-  );
-  const effectiveRequest: ViewRequest = selectionInsideScope
-    ? request
-    : { ...request, selected: { rowKind: "folder", path: scopeRoot.path } };
-  // A scan has one content per file, so only the after-image aspect means
-  // anything there. Clamping here is what keeps a pasted link from asking a
-  // scan for churn and getting a page of zeroes.
-  const isDiff = index.meta.diff !== null;
-  const aspect: Aspect = isDiff ? request.aspect : "after";
-  const rankMetric = sortMetricsFor(isDiff).includes(request.rank.metric)
-    ? request.rank.metric
-    : defaultRankMetric(isDiff);
-  const fields = resolveFields(request.measure, aspect);
-  const modeRequest: ViewRequest = { ...effectiveRequest, aspect, rank: { ...effectiveRequest.rank, metric: rankMetric } };
-  const exclusions = computeExclusions(index, request);
-  const aggregation = aggregate(index, request, exclusions, fields);
+  const {
+    scopeRoot, scopePrefix, modeRequest, aspect, rankMetric, fields, exclusions, aggregation,
+  } = prepareView(index, request);
   // The whole tree, unfiltered, which the ribbon states as `project`.
   const baseline = unfilteredWeight(index, "", fields.baseline);
+  // The widest figure the page can state. Every side is a part of churn, and
+  // LOC is a part of lines, so the wider of tokens and lines bounds them all.
+  // Tokens is nearly always the wider one, and taking both costs one lookup.
+  const widestAspect: Aspect = index.meta.diff !== null ? "churn" : "after";
+  const widestWeight = Math.max(
+    unfilteredWeight(index, "", weightField("tokens", widestAspect)),
+    unfilteredWeight(index, "", weightField("lines", widestAspect)),
+  );
   const scopeBaseline = unfilteredWeight(index, scopeRoot.path, fields.baseline);
   const scopeTotals = aggregation.subtree.get(scopeRoot.path) ?? emptyTotals();
   // One scale for every band, so a row's length means the same wherever it sits
@@ -710,7 +836,7 @@ export function buildView(index: ScanIndex, request: ViewRequest): ViewResponse 
     measure: request.measure,
     aspect,
     rankMetric,
-    summary: buildSummary(index, aggregation, baseline, scopeRoot, scopeBaseline, visibleScopeWeight),
+    summary: buildSummary(index, aggregation, baseline, widestWeight, scopeRoot, scopeBaseline, visibleScopeWeight),
     tree: buildTree(index, modeRequest, aggregation, exclusions, scopeRoot, visibleScopeWeight, visibleChurn),
     detail: buildDetail(
       index, modeRequest, aggregation, visibleScopeWeight,
@@ -718,10 +844,11 @@ export function buildView(index: ScanIndex, request: ViewRequest): ViewResponse 
     ),
     ranked: ranked.rows,
     rankedTotal: ranked.total,
+    rankedOffset: ranked.offset,
     expandableFolderPaths: index.folders
       .filter((folder) => (
         folder.path === scopeRoot.path || scopePrefix === "" || folder.path.startsWith(scopePrefix)
-      ) && (aggregation.categoryCount.get(folder.path) ?? 0) > 0)
+      ) && (aggregation.pathCount.get(folder.path) ?? 0) > 0)
       .map((folder) => folder.path),
   };
 }
@@ -757,7 +884,10 @@ export function parseViewRequest(body: unknown): ViewRequest {
     rank: {
       metric,
       minWeight: Number.isFinite(rank["minWeight"]) ? Math.max(0, Number(rank["minWeight"])) : 0,
-      limit: Number.isFinite(rank["limit"]) ? Math.min(1000, Math.max(1, Number(rank["limit"]))) : 100,
+      limit: Number.isFinite(rank["limit"])
+        ? Math.min(1000, Math.max(1, Math.trunc(Number(rank["limit"]))))
+        : 100,
+      offset: Number.isFinite(rank["offset"]) ? Math.max(0, Math.trunc(Number(rank["offset"]))) : 0,
     },
     cardColumns: Number.isFinite(raw["cardColumns"])
       ? Math.min(MAX_CARD_COLUMNS, Math.max(MIN_CARD_COLUMNS, Math.trunc(Number(raw["cardColumns"]))))

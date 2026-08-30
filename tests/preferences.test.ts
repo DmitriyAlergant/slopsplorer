@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   readChangedLinesOnly,
+  readOpenInApplication,
   readPreferences,
   readTreePanelRatio,
   readWorkspaceHeight,
   readWrapLines,
   writeChangedLinesOnly,
+  writeOpenInApplication,
   writePreferences,
   writeTreePanelRatio,
   writeWorkspaceHeight,
@@ -117,5 +119,14 @@ describe("view preferences", () => {
     expect(readWrapLines(storage)).toBe(true);
     writeWrapLines(storage, false);
     expect(readWrapLines(storage)).toBe(false);
+  });
+
+  it("persists the application used to open a folder and defaults an unknown value to Cursor", () => {
+    const storage = new MemoryStorage();
+    expect(readOpenInApplication(storage)).toBe("cursor");
+    writeOpenInApplication(storage, "vscode");
+    expect(readOpenInApplication(storage)).toBe("vscode");
+    storage.value = "unknown";
+    expect(readOpenInApplication(storage)).toBe("cursor");
   });
 });

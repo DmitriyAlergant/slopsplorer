@@ -7,7 +7,7 @@ The destination can be missing or empty.
 The command refuses a non-empty destination, so it never deletes or mixes with files from an older export.
 
 The snapshot is fixed at export time.
-It cannot rescan, open another folder, change a comparison, install the local skill, or run a local coding agent.
+It cannot rescan, open another folder, open a local application, change a comparison, install the local skill, or run a local coding agent.
 A commit band is read-only because another span needs another measured index.
 
 ## Command flow
@@ -51,7 +51,8 @@ The bundle contains no host policy or deployment metadata.
 
 `App` receives an `ExplorerRuntime`.
 The live runtime calls the HTTP routes.
-The snapshot runtime sends view and source requests to `snapshotWorker.ts`, over the message types the worker module exports, so the two sides of the wire cannot drift apart.
+The snapshot runtime sends view, file-list, and source requests to `snapshotWorker.ts`.
+The worker module exports the message types, so the two sides of the wire cannot drift apart.
 The worker keeps full-index work away from React and returns the same `ViewResponse` the HTTP server returns.
 It remembers only a successful index load, so a fetch that failed once is retried by the next request.
 A worker that fired its `error` event never answers again, so the runtime rejects every later request at once instead of leaving the page waiting.
@@ -62,6 +63,6 @@ It needs an HTTP server because browser modules, workers, and data fetches do no
 A `file://` document runs no module, so `snapshot.html` carries the notice that says so inside `#root`, and one classic inline script shows it only on that protocol.
 React clears the notice on its first render, so a served page never draws it.
 
-Snapshot capability checks remove remeasure, root editing, comparison picking, agent controls, and skill installation.
+Snapshot capability checks remove remeasure, root editing, local application controls, comparison picking, agent controls, and skill installation.
 The header names the page as a static snapshot and shows the root name instead of a local path.
 When the context holds a backlink, the header also shows a compact link to the pull request or merge request.

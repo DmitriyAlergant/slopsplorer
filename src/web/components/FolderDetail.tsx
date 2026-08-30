@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import type { Aspect, DetailView, FileRow, FileScope, Measure, RankMetric, RowKind, ViewRequest } from "../../shared/api.ts";
+import type { Aspect, DetailView, FileKind, FileRow, FileScope, Measure, RankMetric, RowKind, ViewRequest } from "../../shared/api.ts";
 import {
-  ASPECTS, FILE_SCOPES, MAX_CARD_COLUMNS, MEASURES, MIN_CARD_COLUMNS, aspectTotals, measureHeading,
+  ASPECTS, FILE_SCOPES, FLAVOR_DETAILS, MAX_CARD_COLUMNS, MEASURES, MIN_CARD_COLUMNS, aspectTotals, measureHeading,
   weightAbbreviation, weightHeading, weightName,
 } from "../../shared/api.ts";
-import { aspectFigure, count, countOf, percent, weightCount } from "../format.ts";
+import { aspectFigure, count, countOf, figureWidth, percent, weightCount } from "../format.ts";
 import { CopyPathButton } from "./CopyPathButton.tsx";
 import { FileTable } from "./FileTable.tsx";
 import { FlavorBar } from "./FlavorBar.tsx";
@@ -13,14 +13,18 @@ import { Tooltip, tooltipHandlers } from "./Tooltip.tsx";
 
 interface Props {
   detail: DetailView | null;
-  /** The selection's files, heaviest first, already cut to the threshold and the limit. */
+  /** One page of the selection's files, in the active rank order. */
   files: readonly FileRow[];
-  /** How many files matched before the limit, so a curtailed list can say so. */
+  /** How many files match across all pages. */
   filesTotal: number;
+  /** Offset of the page the server returned. */
+  filesOffset: number;
   /** The measure the figures are in, taken from the response rather than the pending request. */
   measure: Measure;
   /** The side of the change the figures describe. */
   aspect: Aspect;
+  /** Widest figure the page can state, which the flavor controls reserve their digits from. */
+  widestWeight: number;
   isDiff: boolean;
   /** Sorted column of the file table, shared with the ranking panel below. */
   sort: RankMetric;
@@ -34,9 +38,10 @@ interface Props {
   /** How much of the selected folder the file list holds. */
   fileScope: FileScope;
   onFileScopeChange: (fileScope: FileScope) => void;
+  onToggleKind: (kind: FileKind) => void;
+  onToggleGenerated: () => void;
   canDrill: boolean;
   onDrill: () => void;
-  /** The threshold under the file list, in the active measure and aspect. */
   rank: ViewRequest["rank"];
   onRankChange: (change: Partial<ViewRequest["rank"]>) => void;
   onOpenSource: (path: string) => void;
@@ -46,8 +51,8 @@ interface Props {
   onCapacityChange: (cardColumns: number) => void;
 }
 
-/** Narrower than this and a tile can no longer hold its name and figures. */
-const CARD_MIN_WIDTH = 210;
+/** The width of every tile: narrower and a tile can no longer hold its name and figures. */
+const CARD_WIDTH = 210;
 const CARD_GAP = 8;
 const CARD_PADDING = 40;
 
@@ -63,22 +68,17 @@ const FILE_SCOPE_DETAILS: Record<FileScope, { label: string; description: string
   },
 };
 
-/** A round step for each measure, so the spinner moves by a useful amount. */
-const THRESHOLD_STEPS: Record<Measure, number> = { tokens: 500, lines: 50, codeLines: 50 };
+/** Kept as a one-line reversible frontend choice while folder-only scope remains supported by the request contract. */
+const SHOW_FILE_SCOPE_CONTROL = false;
 
 /** The selected folder: its weight, how its children divide it, and its own files. */
 export function FolderDetail({
-  detail, files, filesTotal, measure, aspect, isDiff, sort, onSortChange, path, onSelect,
-  directFilesOnly, fileScope, onFileScopeChange, canDrill, onDrill, rank, onRankChange,
+  detail, files, filesTotal, filesOffset, measure, aspect, widestWeight, isDiff, sort, onSortChange, path, onSelect,
+  directFilesOnly, fileScope, onFileScopeChange, onToggleKind, onToggleGenerated, canDrill, onDrill, rank, onRankChange,
   onOpenSource, onOpenListed, onCapacityChange,
 }: Props): React.JSX.Element {
   const panelRef = useRef<HTMLElement>(null);
   const [columns, setColumns] = useState(3);
-  // What the reader has typed, which is not the threshold: an empty box is a
-  // legal thing to type and means nothing yet, while the threshold is always a
-  // number. Holding only the number would write a 0 back into a box the reader
-  // just cleared, and the next digit would land after it.
-  const [thresholdDraft, setThresholdDraft] = useState<string | null>(null);
 
   // Measure rather than guess: the panel is a fraction of a resizable window,
   // so the number of tiles that fit is not knowable from a breakpoint.
@@ -88,7 +88,7 @@ export function FolderDetail({
     const observer = new ResizeObserver((entries) => {
       const width = entries[0]?.contentRect.width ?? 0;
       const usable = width - CARD_PADDING + CARD_GAP;
-      const fitted = Math.floor(usable / (CARD_MIN_WIDTH + CARD_GAP));
+      const fitted = Math.floor(usable / (CARD_WIDTH + CARD_GAP));
       setColumns(Math.max(MIN_CARD_COLUMNS, Math.min(MAX_CARD_COLUMNS, fitted)));
     });
     observer.observe(node);
@@ -111,6 +111,8 @@ export function FolderDetail({
   // A `.` selection is a folder's own files already, so the panel is narrowed
   // to them whatever the switch says, and the switch is not drawn.
   const listsFolderOnly = directFilesOnly || fileScope === "folder";
+  const hasPreviousPage = filesOffset > 0;
+  const hasNextPage = filesOffset + files.length < filesTotal;
 
   return (
     <section ref={panelRef} className="panel detail" aria-label="Folder detail">
@@ -196,7 +198,10 @@ export function FolderDetail({
       {/* Always drawn, one row high, so the table below starts in the same place
           whether the folder has children or not. A folder's own files are one of
           the tiles, so a folder without subfolders still has a row to draw. */}
-      <div className="cards" style={{ "--card-columns": detail.cardColumns } as React.CSSProperties}>
+      <div
+        className="cards"
+        style={{ "--card-columns": detail.cardColumns, "--card-width": `${CARD_WIDTH}px` } as React.CSSProperties}
+      >
         {detail.cards.map((card, index) => {
           const added = aspectFigure("added", card.added);
           const removed = aspectFigure("removed", card.removed);
@@ -261,47 +266,79 @@ export function FolderDetail({
         })}
       </div>
 
-      {/* The tiles divide the subject by folder and the rows divide it by file,
-          so the caption says which of the two the rows below are, and the
-          threshold that thins them stands with them. */}
+      {/* The tiles divide the subject by folder and the rows divide it by file.
+          The flavor and scope controls stand with the rows they change. */}
       <div className="detail__files-head">
-        <p className="detail__caption">
-          {listsFolderOnly
-            ? isDiff ? "Heaviest changes in this folder" : "Heaviest files in this folder"
-            : isDiff ? "Heaviest changes below here" : "Heaviest files below here"}
-          {files.length < filesTotal ? (
-            <>
-              {" "}
-              <span className="detail__caption-note">
-                showing {count(files.length)} of {countOf(filesTotal, "match")}
-              </span>
-            </>
-          ) : null}
-        </p>
+        {/* Every figure here is reserved the digits of the project's widest and,
+            in a comparison, a column for the sign, so neither walking the tree
+            nor changing the unit or the side resizes the controls. */}
+        <div
+          className="chips detail__flavor-stats"
+          role="group"
+          aria-label="Available weight by flavor"
+          style={{ "--figure-width": `${figureWidth(widestWeight, isDiff)}ch` } as React.CSSProperties}
+        >
+          {detail.flavorStats.map((stat) => {
+            const { label: fullLabel, description } = FLAVOR_DETAILS[stat.flavor];
+            return (
+              <label
+                key={stat.flavor}
+                className="chip detail__flavor-stat"
+                data-flavor={stat.flavor}
+                data-on={stat.enabled}
+                {...tooltipHandlers}
+              >
+                <input
+                  type="checkbox"
+                  checked={stat.enabled}
+                  aria-label={fullLabel}
+                  onChange={() => (stat.flavor === "generated" ? onToggleGenerated() : onToggleKind(stat.flavor))}
+                />
+                <span className="detail__flavor-copy">
+                  <span>{fullLabel}</span>
+                  <span className="detail__flavor-weight">{weightCount(stat.weight, aspect)}</span>
+                </span>
+                <Tooltip>{`${description} ${count(stat.weight)} ${unit} available in this scope.`}</Tooltip>
+              </label>
+            );
+          })}
+        </div>
         <div className="detail__files-controls">
-          {/* The rows end to end, which is the other way to read the same list.
-              Always drawn, muted with nothing to read, because a control that
-              came and went would move the two beside it. */}
-          <button
-            type="button"
-            className="button button--tiny"
-            onClick={() => { if (files.length > 0) onOpenListed(); }}
-            // `aria-disabled` rather than `disabled`: a disabled button gets no
-            // mouse events, and the tooltip is what says why it is inert.
-            aria-disabled={files.length === 0}
-            {...tooltipHandlers}
-          >
-            Read all
-            <Tooltip>
+          <div className="detail__pager" role="group" aria-label="File table pages">
+            <button
+              type="button"
+              className="detail__page"
+              aria-label="Previous file page"
+              aria-disabled={!hasPreviousPage}
+              onClick={() => { if (hasPreviousPage) onRankChange({ offset: filesOffset - rank.limit }); }}
+              {...tooltipHandlers}
+            >
+              &lt;
+              <Tooltip compact>Previous {count(rank.limit)} files</Tooltip>
+            </button>
+            <span className="detail__file-range">
               {files.length === 0
-                ? "No files are listed to read"
-                : `Open all ${count(files.length)} listed files in one scrolling preview, in path order`}
-            </Tooltip>
-          </button>
+                ? "0"
+                : `${count(filesOffset + 1)}-${count(filesOffset + files.length)}`}
+            </span>
+            <button
+              type="button"
+              className="detail__page"
+              aria-label="Next file page"
+              aria-disabled={!hasNextPage}
+              onClick={() => { if (hasNextPage) onRankChange({ offset: filesOffset + rank.limit }); }}
+              {...tooltipHandlers}
+            >
+              &gt;
+              <Tooltip compact>Next {count(rank.limit)} files</Tooltip>
+            </button>
+            <span className="detail__file-count">{`of ${count(detail.shownFiles)} files`}</span>
+          </div>
+          <span className="detail__file-total">total {count(detail.availableFiles)} files scanned</span>
           {/* Not drawn for a `.` row: that selection is the folder's own files,
               and a switch offering the subtree would contradict every figure
               above it. */}
-          {directFilesOnly ? null : (
+          {!SHOW_FILE_SCOPE_CONTROL || directFilesOnly ? null : (
             <div className="switch switch--compact" role="group" aria-label="How much of the folder the file list holds">
               {FILE_SCOPES.map((candidate) => (
                 <button
@@ -318,22 +355,6 @@ export function FolderDetail({
               ))}
             </div>
           )}
-          <label className="detail__threshold">
-            <span>Minimum {unit}</span>
-            <input
-              type="number"
-              min={0}
-              step={THRESHOLD_STEPS[measure]}
-              value={thresholdDraft ?? String(rank.minWeight)}
-              onChange={(event) => {
-                setThresholdDraft(event.target.value);
-                onRankChange({ minWeight: Math.max(0, Number(event.target.value) || 0) });
-              }}
-              // Leaving the box gives it back to the threshold, so anything the
-              // reader left half-typed reads as the number the table was cut by.
-              onBlur={() => setThresholdDraft(null)}
-            />
-          </label>
         </div>
       </div>
 
@@ -346,10 +367,11 @@ export function FolderDetail({
         onSortChange={onSortChange}
         displayRoot={path}
         onOpenSource={onOpenSource}
+        onOpenListed={onOpenListed}
         emptyMessage={
           listsFolderOnly
-            ? `No files sit directly in this folder under the current filters and the minimum ${unit} threshold.`
-            : `No files match the current filters, scope, and minimum ${unit} threshold.`
+            ? "No files sit directly in this folder under the current filters."
+            : "No files match the current filters and scope."
         }
       />
     </section>

@@ -5,7 +5,7 @@ import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { scanSourceTree } from "../src/scanner/scan.ts";
 import { createSlopsplorerServer, isAddressInUse, type SlopsplorerServer } from "../src/server/server.ts";
-import type { SkillInstallResponse, SourceResponse, ViewResponse } from "../src/shared/api.ts";
+import type { OpenInApplication, OpenInOptionsResponse, SkillInstallResponse, SourceResponse, ViewResponse } from "../src/shared/api.ts";
 
 const SCAN_TIMEOUT_MS = 60_000;
 
@@ -14,6 +14,7 @@ let initialRoot: string;
 let nextRoot: string;
 let server: SlopsplorerServer;
 let serverUrl: string;
+const openedIn: Array<{ application: OpenInApplication; targetPath: string }> = [];
 
 /** Open the same upgraded socket Vite's browser client holds, without a WebSocket dependency. */
 function openHotReloadSocket(host: string, port: number): Promise<Socket> {
@@ -54,8 +55,10 @@ beforeAll(async () => {
   nextRoot = path.join(fixtureRoot, "next");
   await mkdir(initialRoot);
   await mkdir(nextRoot);
+  await mkdir(path.join(nextRoot, "src"));
   await writeFile(path.join(initialRoot, "initial.ts"), "export const initial = true;\n", "utf8");
   await writeFile(path.join(nextRoot, "next.ts"), "export const next = true;\n", "utf8");
+  await writeFile(path.join(nextRoot, "src", "deep.ts"), "export const deep = true;\n", "utf8");
 
   const scanOptions = {
     root: initialRoot,
@@ -66,7 +69,14 @@ beforeAll(async () => {
     concurrency: 2,
   };
   const index = await scanSourceTree(scanOptions);
-  server = createSlopsplorerServer({ index, producer: { kind: "scan", options: scanOptions }, host: "127.0.0.1", port: 0, portAttempts: 1 });
+  server = createSlopsplorerServer({
+    index,
+    producer: { kind: "scan", options: scanOptions },
+    host: "127.0.0.1",
+    port: 0,
+    portAttempts: 1,
+    openIn: async (application, targetPath) => { openedIn.push({ application, targetPath }); },
+  });
   serverUrl = (await server.listen()).url;
 }, SCAN_TIMEOUT_MS);
 
@@ -88,8 +98,8 @@ describe("opening a scan root", () => {
     expect(openResponse.status).toBe(200);
     const view = await openResponse.json() as ViewResponse;
     expect(view.meta.rootPath).toBe(nextRoot);
-    expect(view.meta.fileCount).toBe(1);
-    expect(view.ranked.map((file) => file.path)).toEqual(["next.ts"]);
+    expect(view.meta.fileCount).toBe(2);
+    expect(view.ranked.map((file) => file.path)).toEqual(["next.ts", "src/deep.ts"]);
 
     const sourceResponse = await fetch(`${serverUrl}/api/source?path=next.ts`);
     expect(sourceResponse.status).toBe(200);
@@ -98,6 +108,33 @@ describe("opening a scan root", () => {
 
     const oldSourceResponse = await fetch(`${serverUrl}/api/source?path=initial.ts`);
     expect(oldSourceResponse.status).toBe(404);
+  });
+
+  it("opens the drilled folder, or the project root when there is no drill", async () => {
+    const optionsResponse = await fetch(`${serverUrl}/api/open-in`);
+    expect(optionsResponse.status).toBe(200);
+    const options = await optionsResponse.json() as OpenInOptionsResponse;
+    expect(options.options.map(({ id }) => id)).toEqual(["cursor", "vscode", "fileManager"]);
+
+    const open = async (application: OpenInApplication, drillPath: string): Promise<Response> => fetch(
+      `${serverUrl}/api/open-in`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ application, drillPath }),
+      },
+    );
+
+    expect((await open("vscode", "src")).status).toBe(200);
+    expect((await open("fileManager", "")).status).toBe(200);
+    expect(openedIn).toEqual([
+      { application: "vscode", targetPath: path.join(nextRoot, "src") },
+      { application: "fileManager", targetPath: nextRoot },
+    ]);
+
+    const outside = await open("cursor", "../outside");
+    expect(outside.status).toBe(400);
+    await expect(outside.json()).resolves.toEqual({ error: "`drillPath` must name a folder in the open index" });
   });
 
   it("rejects a relative path without replacing the active scan", async () => {
@@ -127,6 +164,16 @@ describe("opening a scan root", () => {
 
     const refsResponse = await fetch(`${serverUrl}/api/refs`);
     expect(refsResponse.status).toBe(400);
+
+    const reviewResponse = await fetch(`${serverUrl}/api/review-mode`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode: "before", view: {} }),
+    });
+    expect(reviewResponse.status).toBe(400);
+    await expect(reviewResponse.json()).resolves.toEqual({
+      error: "the open index is a scan, so it has no review views",
+    });
   });
 });
 

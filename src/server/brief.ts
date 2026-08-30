@@ -1,5 +1,5 @@
 import type { AskRequest, ViewRequest } from "../shared/api.ts";
-import { FILE_KIND_DETAILS, FILE_KINDS, weightName } from "../shared/api.ts";
+import { FILE_KINDS, FLAVOR_DETAILS, weightName } from "../shared/api.ts";
 import type { ScanIndex } from "../scanner/scan.ts";
 import { buildView } from "./aggregate.ts";
 
@@ -19,7 +19,7 @@ function formatWeight(value: number, signed: boolean): string {
 /** The flavors the switches keep, named as the switches name them. */
 function describeFlavors(request: ViewRequest): string {
   const kept = FILE_KINDS.filter((kind) => request.kinds.includes(kind))
-    .map((kind) => FILE_KIND_DETAILS[kind].label);
+    .map((kind) => FLAVOR_DETAILS[kind].label);
   const flavors = kept.length === 0 ? "none" : kept.join(", ");
   return request.showGenerated ? `${flavors}, and generated files` : flavors;
 }

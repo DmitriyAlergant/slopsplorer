@@ -72,11 +72,11 @@ export function AnswerDialog({ task, onClose }: Props): React.JSX.Element {
         </div>
         <div className="viewer__actions">
           {task?.answer != null ? (
-            <button type="button" className="button button--quiet" onClick={copy}>
+            <button type="button" className="button" onClick={copy}>
               {copied ? "Copied" : "Copy question and answer"}
             </button>
           ) : null}
-          <button type="button" className="button button--quiet" onClick={onClose}>Close</button>
+          <button type="button" className="button" onClick={onClose}>Close</button>
         </div>
       </header>
 

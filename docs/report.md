@@ -18,7 +18,7 @@ For what a comparison measures, read [diff-mode.md](./diff-mode.md).
 | --- | --- |
 | `--report` | Print the report and exit. Every other flag that decides the index applies: the positionals, `-C`, `--diff`, `--staged`, `--exclude`, `--all-files`, `--tokenizer`, `--max-file-bytes`. |
 | `--unit tokens\|lines\|loc` | The unit of every figure. Default `tokens`. |
-| `--aspect churn\|net\|added\|removed\|after` | The side of the change the figures describe. Default `churn`. A comparison only. |
+| `--aspect churn\|net\|added\|removed` | The side of the change the figures describe. Default `churn`. A comparison only. A scan report is always the after-image. |
 | `--threshold <percent>` | The share of its section at which a node is expanded. Default 3. |
 
 `readReportOptions()` in `src/cli.ts` reads these.

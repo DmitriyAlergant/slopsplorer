@@ -1,18 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
-  AgentTool, Aspect, AskTask, CommitSpine, ComparisonRequest, FileKind, Measure, RankMetric, RowKind,
-  SnapshotBacklink, TreeRow, ViewRequest, ViewResponse,
+  AgentTool, Aspect, AskTask, CommitSpine, ComparisonRequest, FileKind, Measure, OpenInApplication,
+  OpenInOption, RankMetric, RowKind, ReviewMode, SnapshotBacklink, TreeRow, ViewRequest, ViewResponse,
 } from "../shared/api.ts";
 import { ASPECTS, MEASURES, spansRequest } from "../shared/api.ts";
 import {
-  compare, dismissAsk, fetchAgents, fetchAsks, openRoot, rescan, startAsk,
+  compare, dismissAsk, fetchAgents, fetchAsks, fetchOpenInOptions, openIn, openRoot, rescan, startAsk,
+  switchReviewMode,
 } from "./api.ts";
 import { liveRuntime, type ExplorerRuntime } from "./runtime.ts";
 import {
   DEFAULT_SPINE_HEIGHT, DEFAULT_WORKSPACE_HEIGHT, MAX_WORKSPACE_HEIGHT, MIN_WORKSPACE_HEIGHT,
-  browserStorage, readAskAgent, readPreferences, readSpineExpanded, readSpineHeight,
+  browserStorage, readAskAgent, readOpenInApplication, readPreferences, readSpineExpanded, readSpineHeight,
   readTreePanelRatio, readWorkspaceHeight, writeAskAgent, writePreferences, writeSpineExpanded,
-  writeSpineHeight, writeTreePanelRatio, writeWorkspaceHeight,
+  writeOpenInApplication, writeSpineHeight, writeTreePanelRatio, writeWorkspaceHeight,
 } from "./preferences.ts";
 import { isInsideFolder } from "./displayPath.ts";
 import { comparisonLabel, documentTitle, messageOf } from "./format.ts";
@@ -79,7 +80,13 @@ export function App({ runtime = liveRuntime, backlink = null }: Props = {}): Rea
   const [busy, setBusy] = useState(false);
   const [rescanning, setRescanning] = useState(false);
   const [openingRoot, setOpeningRoot] = useState<string | null>(null);
+  const [openInOptions, setOpenInOptions] = useState<readonly OpenInOption[]>([]);
+  const [openInApplication, setOpenInApplication] = useState<OpenInApplication>(
+    () => readOpenInApplication(browserStorage()),
+  );
+  const [openingIn, setOpeningIn] = useState<OpenInApplication | null>(null);
   const [comparingLabel, setComparingLabel] = useState<string | null>(null);
+  const [reviewModeTarget, setReviewModeTarget] = useState<ReviewMode | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [skillOpen, setSkillOpen] = useState(false);
   const [agents, setAgents] = useState<readonly AgentTool[]>([]);
@@ -102,6 +109,7 @@ export function App({ runtime = liveRuntime, backlink = null }: Props = {}): Rea
   );
   const requestRef = useRef(request);
   requestRef.current = request;
+  const displayedRequestRef = useRef(request);
   const spineRef = useRef(spine);
   spineRef.current = spine;
   const lastSelectionRef = useRef(selectionKey(request));
@@ -163,6 +171,7 @@ export function App({ runtime = liveRuntime, backlink = null }: Props = {}): Rea
       setBusy(true);
       runtime.fetchView(request, controller.signal)
         .then((next) => {
+          displayedRequestRef.current = request;
           setView(next);
           setError(null);
         })
@@ -196,6 +205,7 @@ export function App({ runtime = liveRuntime, backlink = null }: Props = {}): Rea
     };
     fetchAgents().then((found) => { if (!cancelled) setAgents(found.agents); }, fail);
     fetchAsks().then((held) => { if (!cancelled) setTasks(held.tasks); }, fail);
+    fetchOpenInOptions().then((found) => { if (!cancelled) setOpenInOptions(found.options); }, fail);
     return () => { cancelled = true; };
   }, [staticSnapshot]);
 
@@ -222,15 +232,27 @@ export function App({ runtime = liveRuntime, backlink = null }: Props = {}): Rea
   useEffect(closeTooltip, [view]);
 
   const patch = useCallback((change: Partial<ViewRequest>) => {
-    setRequest((previous) => ({ ...previous, ...change }));
+    const resetsPage = Object.keys(change).some((field) => ![
+      "expanded", "treeSort", "cardColumns",
+    ].includes(field));
+    setRequest((previous) => ({
+      ...previous,
+      ...change,
+      ...(resetsPage ? { rank: { ...previous.rank, offset: 0 } } : {}),
+    }));
   }, []);
 
   // A scan and a diff draw different columns, so a stored or linked sort can
   // name one the open index has not got. The server clamps it and echoes what
   // it used; adopting that is what keeps the caret under a real heading.
   useEffect(() => {
-    if (!view || view.rankMetric === requestRef.current.rank.metric) return;
-    setRequest((previous) => ({ ...previous, rank: { ...previous.rank, metric: view.rankMetric } }));
+    if (!view) return;
+    const current = requestRef.current.rank;
+    if (view.rankMetric === current.metric && view.rankedOffset === current.offset) return;
+    setRequest((previous) => ({
+      ...previous,
+      rank: { ...previous.rank, metric: view.rankMetric, offset: view.rankedOffset },
+    }));
   }, [view]);
 
   /**
@@ -276,6 +298,7 @@ export function App({ runtime = liveRuntime, backlink = null }: Props = {}): Rea
     setRescanning(true);
     rescan(requestRef.current)
       .then((next) => {
+        displayedRequestRef.current = requestRef.current;
         setView(next);
         setError(null);
       })
@@ -333,22 +356,20 @@ export function App({ runtime = liveRuntime, backlink = null }: Props = {}): Rea
   /**
    * Read the panel's whole file list end to end, in path order.
    *
-   * The rows are the ones the panel lists, so the two views of the selection
-   * hold the same files and only the order and the depth differ. They are taken
-   * from the response rather than named again, because a fresh list would be
-   * the answer to a later question than the one the reader is looking at.
+   * The modal holds the request that produced the visible page.
+   * It uses that request to load all matches, independent of the table offset.
    */
   const openListedFiles = useCallback(() => {
     if (view === null || view.ranked.length === 0) return;
     setPreview({
       kind: "files",
-      title: request.selected.path || view.meta.rootName,
-      rows: view.ranked,
+      title: displayedRequestRef.current.selected.path || view.meta.rootName,
+      request: displayedRequestRef.current,
       total: view.rankedTotal,
       measure: view.measure,
       isDiff: view.meta.diff !== null,
     });
-  }, [view, request.selected.path]);
+  }, [view]);
 
   /**
    * Aim the page at a new index, and reset what only the old one could mean.
@@ -373,6 +394,7 @@ export function App({ runtime = liveRuntime, backlink = null }: Props = {}): Rea
     };
     start(nextRequest)
       .then((next) => {
+        displayedRequestRef.current = nextRequest;
         setRequest(nextRequest);
         setView(next);
         setPreview(null);
@@ -387,10 +409,26 @@ export function App({ runtime = liveRuntime, backlink = null }: Props = {}): Rea
     reaim((view) => openRoot(root, view), () => setOpeningRoot(null));
   }, [reaim]);
 
+  const handleOpenIn = useCallback((application: OpenInApplication) => {
+    setOpenInApplication(application);
+    writeOpenInApplication(browserStorage(), application);
+    setOpeningIn(application);
+    openIn(application, requestRef.current.drillPath)
+      .then(() => setError(null))
+      .catch((cause: unknown) => setError(messageOf(cause)))
+      .finally(() => setOpeningIn(null));
+  }, []);
+
   const handleCompare = useCallback((comparison: ComparisonRequest, keepPlace = false) => {
     setComparingLabel(comparisonLabel(comparison));
     reaim((view) => compare(comparison, view), () => setComparingLabel(null), keepPlace);
   }, [reaim]);
+
+  const handleReviewMode = useCallback((mode: ReviewMode) => {
+    if (view?.meta.review?.mode === mode) return;
+    setReviewModeTarget(mode);
+    reaim((request) => switchReviewMode(mode, request), () => setReviewModeTarget(null));
+  }, [reaim, view?.meta.review?.mode]);
 
   /** Walking the band never leaves the range, so it never loses the reader's place. */
   const handleSpan = useCallback((comparison: ComparisonRequest) => {
@@ -413,6 +451,7 @@ export function App({ runtime = liveRuntime, backlink = null }: Props = {}): Rea
       kinds: previous.kinds.includes(kind)
         ? previous.kinds.filter((candidate) => candidate !== kind)
         : [...previous.kinds, kind],
+      rank: { ...previous.rank, offset: 0 },
     }));
   }, []);
 
@@ -441,6 +480,7 @@ export function App({ runtime = liveRuntime, backlink = null }: Props = {}): Rea
         drillPath: insideDrill ? previous.drillPath : "",
         selected: { rowKind, path },
         expanded: [...ancestors],
+        rank: { ...previous.rank, offset: 0 },
       };
     });
   }, []);
@@ -451,6 +491,7 @@ export function App({ runtime = liveRuntime, backlink = null }: Props = {}): Rea
       drillPath: path,
       selected: { rowKind: "folder", path },
       expanded: [path],
+      rank: { ...previous.rank, offset: 0 },
     }));
   }, []);
 
@@ -470,6 +511,7 @@ export function App({ runtime = liveRuntime, backlink = null }: Props = {}): Rea
           ...previous,
           excludedFolders: previous.excludedFolders.filter((candidate) => !inSubtree(candidate)),
           excludedDirectFiles: previous.excludedDirectFiles.filter((candidate) => !inSubtree(candidate)),
+          rank: { ...previous.rank, offset: 0 },
         };
       }
       if (row.disabled) return previous;
@@ -477,6 +519,7 @@ export function App({ runtime = liveRuntime, backlink = null }: Props = {}): Rea
         ...previous,
         excludedFolders: [...previous.excludedFolders.filter((candidate) => !inSubtree(candidate)), row.path],
         excludedDirectFiles: previous.excludedDirectFiles.filter((candidate) => !inSubtree(candidate)),
+        rank: { ...previous.rank, offset: 0 },
       };
     });
   }, []);
@@ -487,6 +530,7 @@ export function App({ runtime = liveRuntime, backlink = null }: Props = {}): Rea
       excludedDirectFiles: previous.excludedDirectFiles.includes(row.path)
         ? previous.excludedDirectFiles.filter((candidate) => candidate !== row.path)
         : [...previous.excludedDirectFiles, row.path],
+      rank: { ...previous.rank, offset: 0 },
     }));
   }, []);
 
@@ -496,7 +540,11 @@ export function App({ runtime = liveRuntime, backlink = null }: Props = {}): Rea
   }, []);
 
   const setRank = useCallback((change: Partial<ViewRequest["rank"]>) => {
-    setRequest((previous) => ({ ...previous, rank: { ...previous.rank, ...change } }));
+    const changesList = Object.keys(change).some((field) => field !== "offset");
+    setRequest((previous) => ({
+      ...previous,
+      rank: { ...previous.rank, ...change, ...(changesList ? { offset: 0 } : {}) },
+    }));
   }, []);
 
   /**
@@ -506,9 +554,8 @@ export function App({ runtime = liveRuntime, backlink = null }: Props = {}): Rea
    * unchanged measure still moves the sort. The file tables follow, because a
    * page counting code lines that ranks its files by tokens reads as a bug. A
    * sort on a metric outside the measures, such as comment lines, is a
-   * deliberate choice and stays where it is. The threshold resets, since a
-   * floor of 2,000 tokens is not a floor of 2,000 lines and carrying the number
-   * across would silently empty the list.
+   * deliberate choice and stays where it is. A threshold from a shared link
+   * resets because its unit has changed.
    */
   const setMeasure = useCallback((measure: Measure) => {
     setRequest((previous) => {
@@ -524,6 +571,7 @@ export function App({ runtime = liveRuntime, backlink = null }: Props = {}): Rea
           ...previous.rank,
           metric: followsMeasure ? measure : previous.rank.metric,
           minWeight: 0,
+          offset: 0,
         },
       };
     });
@@ -552,6 +600,7 @@ export function App({ runtime = liveRuntime, backlink = null }: Props = {}): Rea
           ...previous.rank,
           metric,
           minWeight: measureChanges || aspectChanges ? 0 : previous.rank.minWeight,
+          offset: 0,
         },
       };
     });
@@ -561,9 +610,9 @@ export function App({ runtime = liveRuntime, backlink = null }: Props = {}): Rea
    * Switch which side of a change every figure describes.
    *
    * The switch beside the unit owns it, and it moves the same three things the
-   * unit does: the tree onto its numbers column, the file tables onto the
-   * matching column, and the threshold back to zero, because a floor of 2,000
-   * churn tokens is not a floor of 2,000 net tokens.
+   * unit does: the tree onto its numbers column and the file tables onto the
+   * matching column. A threshold from a shared link resets because its side
+   * has changed.
    */
   const setAspect = useCallback((aspect: Aspect) => {
     setRequest((previous) => {
@@ -579,6 +628,7 @@ export function App({ runtime = liveRuntime, backlink = null }: Props = {}): Rea
           ...previous.rank,
           metric: followsAspect ? aspect : previous.rank.metric,
           minWeight: 0,
+          offset: 0,
         },
       };
     });
@@ -599,7 +649,12 @@ export function App({ runtime = liveRuntime, backlink = null }: Props = {}): Rea
   // Taken from the response rather than the pending request, so a heading
   // never claims a mode the numbers beside it are not in.
   const isDiff = view?.meta.diff != null;
-  const scanning = rescanning || openingRoot !== null || comparingLabel !== null;
+  // The flavor switches as the answered request left them, from the one place
+  // that already states them per flavor.
+  const countedFlavors = (view?.detail.flavorStats ?? [])
+    .filter((stat) => stat.enabled)
+    .map((stat) => stat.flavor);
+  const scanning = rescanning || openingRoot !== null || comparingLabel !== null || reviewModeTarget !== null;
   // Re-aiming replaces the whole data model, so the stale page stays covered
   // until the new figures arrive.
   const reaiming = openingRoot !== null
@@ -614,11 +669,29 @@ export function App({ runtime = liveRuntime, backlink = null }: Props = {}): Rea
         subject: comparingLabel,
         hint: "Reading both sides and measuring the change. A wide comparison can take a moment.",
       }
+      : reviewModeTarget !== null
+        ? {
+          title: reviewModeTarget === "diff" ? "Opening diff" : `Opening ${reviewModeTarget} view`,
+          subject: view?.meta.review?.spec ?? view?.meta.rootPath ?? "Repository",
+          hint: reviewModeTarget === "diff"
+            ? "Rescanning and measuring the change."
+            : "Rescanning and measuring the complete repository image.",
+        }
       : null;
   const aspect = view?.aspect ?? request.aspect;
+  // Open in and Ask both act on the drilled folder, which is the page's subject.
+  const actionTarget = view?.meta
+    ? (request.drillPath ? `${view.meta.rootName}/${request.drillPath}` : view.meta.rootName)
+    : null;
 
   return (
-    <main className="app" data-busy={busy || scanning}>
+    <main
+      className="app"
+      data-busy={busy || scanning}
+      // The tree column is set here rather than on the workspace, because the
+      // path filter above it takes the same width and follows the same drag.
+      style={{ "--tree-panel-width": `${treePanelRatio * 100}%` } as React.CSSProperties}
+    >
       <InstrumentBar
         meta={view?.meta ?? null}
         staticSnapshot={staticSnapshot}
@@ -628,13 +701,7 @@ export function App({ runtime = liveRuntime, backlink = null }: Props = {}): Rea
         onRescan={handleRescan}
         onOpen={handleOpen}
         onCompare={handleCompare}
-        agents={agents}
-        agentId={chosenAgentId ?? ""}
-        onChooseAgent={chooseAgent}
-        onAsk={() => {
-          setAskFailure(null);
-          setAskOpen(true);
-        }}
+        onReviewMode={handleReviewMode}
       />
 
       {view && view.meta.diff && spine === null && spineLoading ? <PendingSpineBand /> : null}
@@ -656,21 +723,28 @@ export function App({ runtime = liveRuntime, backlink = null }: Props = {}): Rea
       <FilterBar
         request={request}
         isDiff={isDiff}
-        onToggleKind={toggleKind}
-        onToggleGenerated={() => patch({ showGenerated: !request.showGenerated })}
         onQueryChange={(query) => patch({ query })}
         onMeasureChange={setMeasure}
         onAspectChange={setAspect}
+        actionTarget={actionTarget}
+        openInOptions={openInOptions}
+        openInApplication={openInApplication}
+        openingIn={openingIn}
+        onOpenIn={handleOpenIn}
+        agents={agents}
+        agentId={chosenAgentId ?? ""}
+        onChooseAgent={chooseAgent}
+        onAsk={() => {
+          setAskFailure(null);
+          setAskOpen(true);
+        }}
       />
 
       {error ? <p className="error-banner" role="status">{error}</p> : null}
 
       <div
         className="workspace"
-        style={{
-          "--tree-panel-width": `${treePanelRatio * 100}%`,
-          "--workspace-height": `${workspaceHeight}px`,
-        } as React.CSSProperties}
+        style={{ "--workspace-height": `${workspaceHeight}px` } as React.CSSProperties}
       >
         <SourceTree
           rows={view?.tree ?? []}
@@ -697,8 +771,10 @@ export function App({ runtime = liveRuntime, backlink = null }: Props = {}): Rea
           detail={view?.detail ?? null}
           files={view?.ranked ?? []}
           filesTotal={view?.rankedTotal ?? 0}
+          filesOffset={view?.rankedOffset ?? 0}
           measure={view?.measure ?? request.measure}
           aspect={aspect}
+          widestWeight={view?.summary.widestWeight ?? 0}
           isDiff={isDiff}
           sort={request.rank.metric}
           onSortChange={setRankMetric}
@@ -707,6 +783,8 @@ export function App({ runtime = liveRuntime, backlink = null }: Props = {}): Rea
           directFilesOnly={request.selected.rowKind === "files"}
           fileScope={request.fileScope}
           onFileScopeChange={(fileScope) => patch({ fileScope })}
+          onToggleKind={toggleKind}
+          onToggleGenerated={() => patch({ showGenerated: !request.showGenerated })}
           canDrill={request.selected.rowKind === "folder" && request.selected.path !== request.drillPath}
           onDrill={() => drill(request.selected.path)}
           rank={request.rank}
@@ -721,7 +799,6 @@ export function App({ runtime = liveRuntime, backlink = null }: Props = {}): Rea
         height={workspaceHeight}
         onHeightChange={setWorkspaceHeight}
         label="Resize both workspace panels"
-        hint="Drag to resize both panels. Double-click to reset."
         minimum={MIN_WORKSPACE_HEIGHT}
         maximum={MAX_WORKSPACE_HEIGHT}
         defaultHeight={DEFAULT_WORKSPACE_HEIGHT}
@@ -734,6 +811,7 @@ export function App({ runtime = liveRuntime, backlink = null }: Props = {}): Rea
         measure={view?.measure ?? request.measure}
         aspect={aspect}
         isDiff={isDiff}
+        countedFlavors={countedFlavors}
         selected={request.selected}
         onSelect={select}
       />
@@ -768,7 +846,12 @@ export function App({ runtime = liveRuntime, backlink = null }: Props = {}): Rea
         onClose={() => setOpenAnswerId(null)}
       />
 
-      <SourceDialog preview={preview} onClose={() => setPreview(null)} loadSource={runtime.fetchSource} />
+      <SourceDialog
+        preview={preview}
+        onClose={() => setPreview(null)}
+        loadSource={runtime.fetchSource}
+        loadFileList={runtime.fetchFileList}
+      />
       {staticSnapshot ? null : (
         <SkillInstallDialog
           open={skillOpen}

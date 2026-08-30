@@ -2,13 +2,15 @@ import { readFile, realpath } from "node:fs/promises";
 import path from "node:path";
 import { StringDecoder } from "node:string_decoder";
 import { openDiffAligner, type DiffScanOptions } from "../scanner/diffScan.ts";
-import type { ScanIndex } from "../scanner/scan.ts";
+import { GitObjectReader, type DiffSide } from "../scanner/gitdiff.ts";
+import type { ReviewSideScanOptions, ScanIndex } from "../scanner/scan.ts";
 import type { DiffLine, FileRow, SourceResponse } from "../shared/api.ts";
 
-/** Enough producer state to read a file from either kind of index. */
+/** Enough producer state to read a file from every kind of index. */
 export type SourceProducer =
   | { kind: "scan"; root: string }
-  | { kind: "diff"; options: DiffScanOptions };
+  | { kind: "diff"; options: DiffScanOptions }
+  | { kind: "review"; options: ReviewSideScanOptions };
 
 export class SourceReadError extends Error {
   readonly statusCode: 403 | 404;
@@ -73,6 +75,28 @@ async function readScanSource(root: string, requestedPath: string, row: FileRow)
   };
 }
 
+function reviewSide(options: ReviewSideScanOptions): DiffSide {
+  return options.side === "before" ? options.comparison.base : options.comparison.target;
+}
+
+function reviewObjectSpec(side: Exclude<DiffSide, { kind: "worktree" }>, requestedPath: string): string {
+  return side.kind === "index" ? `:${requestedPath}` : `${side.rev}:${requestedPath}`;
+}
+
+function sourceFromBuffer(row: FileRow, buffer: Buffer): SourceResponse {
+  const truncated = buffer.byteLength > MAX_SOURCE_BYTES;
+  return {
+    path: row.path,
+    content: truncated
+      ? new StringDecoder("utf8").write(buffer.subarray(0, MAX_SOURCE_BYTES))
+      : buffer.toString("utf8"),
+    mode: "source",
+    truncated,
+    totalBytes: buffer.byteLength,
+    language: row.language,
+  };
+}
+
 /** Resolve an existing file and enforce the scan-root boundary. */
 async function resolveInsideRoot(root: string, requestedPath: string): Promise<string | null> {
   const scanRoot = path.resolve(root);
@@ -108,6 +132,28 @@ export async function openSourceReader(
       dispose: () => {
         // A scan reads straight from disk and holds nothing to release.
       },
+    };
+  }
+
+  if (producer.kind === "review") {
+    const side = reviewSide(producer.options);
+    if (side.kind === "worktree") {
+      return {
+        read: (requestedPath) => readScanSource(
+          producer.options.root, requestedPath, rowOf(index, requestedPath),
+        ),
+        dispose: () => undefined,
+      };
+    }
+    const reader = new GitObjectReader(producer.options.root);
+    return {
+      read: async (requestedPath) => {
+        const row = rowOf(index, requestedPath);
+        const buffer = await reader.read(reviewObjectSpec(side, requestedPath));
+        if (buffer === null) throw new SourceReadError("file is no longer readable", 404);
+        return sourceFromBuffer(row, buffer);
+      },
+      dispose: () => reader.dispose(),
     };
   }
 

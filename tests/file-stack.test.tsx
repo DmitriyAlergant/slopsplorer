@@ -1,7 +1,8 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { FileRow } from "../src/shared/api.ts";
-import { FileStack, inPathOrder } from "../src/web/components/FileStack.tsx";
+import { parseViewRequest } from "../src/server/aggregate.ts";
+import { FileStack, alignNextFileAfterCollapse, foldedAfterFoldAll, inPathOrder } from "../src/web/components/FileStack.tsx";
 import { SourceDialog } from "../src/web/components/SourceDialog.tsx";
 
 function row(path: string, figures: Partial<FileRow> = {}): FileRow {
@@ -32,9 +33,21 @@ const RANKED: FileRow[] = [
   row("src/web/api.ts", { tokens: 120 }),
 ];
 
+const NONE_FOLDED: ReadonlySet<string> = new Set();
 const loadSource = (): Promise<never> => new Promise(() => undefined);
+const loadFileList = async () => ({ rows: RANKED });
+const request = parseViewRequest({ kinds: ["code"] });
 
 describe("reading a whole selection", () => {
+  it("moves the next file header to the collapsed header's viewport position", () => {
+    const scroll = { scrollTop: 420 };
+    const nextHeader = { getBoundingClientRect: () => ({ top: 608 }) };
+
+    alignNextFileAfterCollapse(scroll, 560, nextHeader);
+
+    expect(scroll.scrollTop).toBe(468);
+  });
+
   it("orders the files by path whatever order they were ranked in", () => {
     expect(inPathOrder(RANKED).map((file) => file.path)).toEqual([
       "src/cli.ts", "src/web/api.ts", "src/web/App.tsx",
@@ -50,7 +63,7 @@ describe("reading a whole selection", () => {
 
   it("draws one section for each file, in path order, none of them read yet", () => {
     const html = renderToStaticMarkup(
-      <FileStack rows={RANKED} measure="tokens" isDiff={false} changedOnly={false} loadSource={loadSource} />,
+      <FileStack rows={RANKED} measure="tokens" isDiff={false} changedOnly={false} loadSource={loadSource} folded={NONE_FOLDED} onToggleFile={() => undefined} />,
     );
     const paths = [...html.matchAll(/stack__file" aria-label="([^"]+)"/g)].map((match) => match[1]);
     expect(paths).toEqual(["src/cli.ts", "src/web/api.ts", "src/web/App.tsx"]);
@@ -61,16 +74,40 @@ describe("reading a whole selection", () => {
 
   it("states each file's own figure in the measure the page was in", () => {
     const html = renderToStaticMarkup(
-      <FileStack rows={RANKED} measure="tokens" isDiff={false} changedOnly={false} loadSource={loadSource} />,
+      <FileStack rows={RANKED} measure="tokens" isDiff={false} changedOnly={false} loadSource={loadSource} folded={NONE_FOLDED} onToggleFile={() => undefined} />,
     );
     expect(html).toContain("900");
     expect(html).toContain("tok");
   });
 
+  it("draws a folded file as a closed section with no body to load", () => {
+    const html = renderToStaticMarkup(
+      <FileStack
+        rows={RANKED}
+        measure="tokens"
+        isDiff={false}
+        changedOnly={false}
+        loadSource={loadSource}
+        folded={new Set(["src/cli.ts"])}
+        onToggleFile={() => undefined}
+      />,
+    );
+    expect(html.match(/aria-expanded="true"/g)).toHaveLength(2);
+    expect(html.match(/aria-expanded="false"/g)).toHaveLength(1);
+    expect(html.match(/data-pending="true"/g)).toHaveLength(2);
+  });
+
+  it("folds every file when none is folded, and unfolds every file otherwise", () => {
+    expect([...foldedAfterFoldAll(RANKED, new Set())])
+      .toEqual(["src/web/App.tsx", "src/cli.ts", "src/web/api.ts"]);
+    expect([...foldedAfterFoldAll(RANKED, new Set(["src/cli.ts"]))]).toEqual([]);
+    expect([...foldedAfterFoldAll(RANKED, new Set(RANKED.map((file) => file.path)))]).toEqual([]);
+  });
+
   it("states both sides of a compared file beside its Git letter", () => {
     const changed = [row("src/cli.ts", { addedTokens: 12, removedTokens: 5, status: "renamed", previousPath: "old.ts" })];
     const html = renderToStaticMarkup(
-      <FileStack rows={changed} measure="tokens" isDiff changedOnly loadSource={loadSource} />,
+      <FileStack rows={changed} measure="tokens" isDiff changedOnly loadSource={loadSource} folded={NONE_FOLDED} onToggleFile={() => undefined} />,
     );
     expect(html).toContain("+12");
     expect(html).toContain("-5");
@@ -82,9 +119,10 @@ describe("the preview dialog of a whole selection", () => {
   it("counts the files it holds and says they are in path order", () => {
     const html = renderToStaticMarkup(
       <SourceDialog
-        preview={{ kind: "files", title: "src/web", rows: RANKED, total: 3, measure: "tokens", isDiff: false }}
+        preview={{ kind: "files", title: "src/web", request, total: 3, measure: "tokens", isDiff: false }}
         onClose={() => undefined}
         loadSource={loadSource}
+        loadFileList={loadFileList}
       />,
     );
     expect(html).toContain("3 files, in path order");
@@ -92,15 +130,16 @@ describe("the preview dialog of a whole selection", () => {
     expect(html).not.toContain("Only changed lines");
   });
 
-  it("says how much of the panel's list it holds when the list was curtailed", () => {
+  it("states the complete match count before the modal loads its own list", () => {
     const html = renderToStaticMarkup(
       <SourceDialog
-        preview={{ kind: "files", title: "src", rows: RANKED, total: 348, measure: "tokens", isDiff: true }}
+        preview={{ kind: "files", title: "src", request, total: 348, measure: "tokens", isDiff: true }}
         onClose={() => undefined}
         loadSource={loadSource}
+        loadFileList={loadFileList}
       />,
     );
-    expect(html).toContain("3 of 348 matches, in path order");
+    expect(html).toContain("348 files, in path order");
     expect(html).toContain("Only changed lines");
   });
 });

@@ -86,7 +86,7 @@ describe("the brief an ask sends", () => {
     expect(kept).toContain("Flavors counted: Code\n");
 
     const withGenerated = composeBrief(index, askFor({ kinds: ["code", "data"], showGenerated: true }));
-    expect(withGenerated).toContain("Flavors counted: Code, Data & Config, and generated files");
+    expect(withGenerated).toContain("Flavors counted: Code, Data & Conf, and generated files");
   });
 
   it("forces the aspect of a scan, because a scanned file has one content", () => {

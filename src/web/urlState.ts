@@ -82,6 +82,7 @@ export function readRequest(search: string, stored: ViewPreferences | null = nul
       metric: metric ?? preferred("rankMetric"),
       minWeight: Math.max(0, Number(params.get("min")) || 0),
       limit: RANK_LIMIT,
+      offset: 0,
     },
     // Layout capacity, measured by the panel rather than carried in the link.
     cardColumns: 3,

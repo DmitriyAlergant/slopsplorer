@@ -1,4 +1,4 @@
-import type { CommitSpine, SourceResponse, ViewResponse } from "../shared/api.ts";
+import type { CommitSpine, FileListResponse, SourceResponse, ViewResponse } from "../shared/api.ts";
 import type { ExplorerRuntime } from "./runtime.ts";
 import type { SnapshotRequest, SnapshotRequestBody, SnapshotResponse } from "./snapshotWorker.ts";
 
@@ -63,6 +63,7 @@ export function createSnapshotRuntime(): ExplorerRuntime {
   return {
     kind: "snapshot",
     fetchView: (view, signal) => request<ViewResponse>({ kind: "view", view }, signal),
+    fetchFileList: (view, signal) => request<FileListResponse>({ kind: "files", view }, signal),
     fetchSource: (path) => request<SourceResponse>({ kind: "source", path }),
     fetchSpine: () => request<CommitSpine | null>({ kind: "spine" }),
   };

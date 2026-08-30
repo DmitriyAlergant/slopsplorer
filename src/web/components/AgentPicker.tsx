@@ -50,19 +50,19 @@ export function AgentPicker({ agents, agentId, onChoose, onAsk }: Props): React.
   }, [open]);
 
   return (
-    <div className="agent-picker" ref={groupRef}>
-      <button type="button" className="agent-picker__ask" onClick={onAsk} {...tooltipHandlers}>
+    <div className="split-picker agent-picker" ref={groupRef}>
+      <button type="button" className="split-picker__primary" onClick={onAsk} {...tooltipHandlers}>
         <AgentMark agentId={chosen.id} />
         Ask
-        <Tooltip>
+        <Tooltip compact singleLine>
           {chosen.signedIn
-            ? `Ask ${chosen.label} about what you are looking at.`
-            : `Ask ${chosen.label} about what you are looking at. It reported no sign-in, so the ask can fail.`}
+            ? `Ask with ${chosen.label}`
+            : `Ask with ${chosen.label}; it reported no sign-in and can fail.`}
         </Tooltip>
       </button>
       <button
         type="button"
-        className="agent-picker__more"
+        className="split-picker__more"
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label="Choose the agent that answers"
@@ -70,17 +70,17 @@ export function AgentPicker({ agents, agentId, onChoose, onAsk }: Props): React.
         {...tooltipHandlers}
       >
         <MenuChevron />
-        <Tooltip compact>{chosen.label}</Tooltip>
+        <Tooltip compact singleLine>Choose agent</Tooltip>
       </button>
 
       {open ? (
-        <div className="agent-picker__panel" role="menu">
+        <div className="split-picker__panel" role="menu">
           {agents.map((agent) => (
             <button
               key={agent.id}
               type="button"
               role="menuitem"
-              className="agent-picker__option"
+              className="split-picker__option"
               aria-current={agent.id === chosen.id}
               onClick={() => {
                 setOpen(false);
@@ -88,7 +88,7 @@ export function AgentPicker({ agents, agentId, onChoose, onAsk }: Props): React.
               }}
             >
               <AgentMark agentId={agent.id} size={15} />
-              <span className="agent-picker__option-name">{agent.label}</span>
+              <span className="split-picker__option-name">{agent.label}</span>
               <span className="agent-picker__option-note" data-signed-in={agent.signedIn}>
                 {signInWord(agent)}
               </span>

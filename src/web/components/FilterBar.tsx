@@ -1,21 +1,31 @@
 import {
-  ASPECTS, FILE_KINDS, FILE_KIND_DETAILS, MEASURES, aspectDescription, aspectHeading, measureHeading,
-  type Aspect, type FileKind, type Measure, type ViewRequest,
+  ASPECTS, MEASURES, aspectDescription, aspectHeading, measureHeading,
+  type AgentTool, type Aspect, type Measure, type OpenInApplication, type OpenInOption,
+  type ViewRequest,
 } from "../../shared/api.ts";
+import { AgentPicker } from "./AgentPicker.tsx";
+import { OpenInPicker } from "./OpenInPicker.tsx";
 import { Tooltip, tooltipHandlers } from "./Tooltip.tsx";
 
 interface Props {
   request: ViewRequest;
   /** Only a comparison has sides, so only a comparison offers the aspect switch. */
   isDiff: boolean;
-  onToggleKind: (kind: FileKind) => void;
-  onToggleGenerated: () => void;
   onQueryChange: (query: string) => void;
   onMeasureChange: (measure: Measure) => void;
   onAspectChange: (aspect: Aspect) => void;
+  /** The folder both actions act on, or null while no scan is loaded. */
+  actionTarget: string | null;
+  openInOptions: readonly OpenInOption[];
+  openInApplication: OpenInApplication;
+  openingIn: OpenInApplication | null;
+  onOpenIn: (application: OpenInApplication) => void;
+  /** Agents this host can run. No agent, no control: there is nothing to ask. */
+  agents: readonly AgentTool[];
+  agentId: string;
+  onChooseAgent: (agentId: string) => void;
+  onAsk: () => void;
 }
-
-const GENERATED_DESCRIPTION = "Generated output and lockfiles detected from path and filename conventions.";
 
 const MEASURE_DESCRIPTIONS: Record<Measure, string> = {
   tokens: "Tokenizer count for the whole file, comments and whitespace included.",
@@ -24,19 +34,25 @@ const MEASURE_DESCRIPTIONS: Record<Measure, string> = {
 };
 
 /**
- * What is counted, and the quantity it is counted in.
+ * The quantity every figure is counted in, what is counted, and the two acts
+ * that take the whole page somewhere else.
  *
- * The two switches read as one phrase, side then unit: "net tokens". They sit
- * beside the visibility chips and not inside them, because both are orthogonal
- * to every chip: they change what a figure says, never which files are behind
- * it. One place owns each, so no two widgets can claim to decide what the page
- * counts.
+ * The unit switch comes first because a scan has no side to pick: the aspect
+ * switch appears only in a comparison, so putting it last keeps the units in
+ * one place while the page moves between before, diff, and after. They sit
+ * above the workspace because they change what every figure says.
+ * Flavor controls sit above the file table with the scope totals they change.
+ *
+ * Open in and Ask end the row. Both act on the drilled folder, which this bar
+ * scopes, and the bar holds the top of the page once the header scrolls away.
  */
 export function FilterBar({
-  request, isDiff, onToggleKind, onToggleGenerated, onQueryChange, onMeasureChange, onAspectChange,
+  request, isDiff, onQueryChange, onMeasureChange, onAspectChange,
+  actionTarget, openInOptions, openInApplication, openingIn, onOpenIn,
+  agents, agentId, onChooseAgent, onAsk,
 }: Props): React.JSX.Element {
   return (
-    <section className="filters" aria-label="Scope filters">
+    <section className="filters" aria-label="Page controls">
       <label className="search">
         <span className="visually-hidden">Search folders and files</span>
         <input
@@ -48,6 +64,22 @@ export function FilterBar({
       </label>
 
       <div className="filters__switches">
+        <div className="switch" role="group" aria-label="Unit every figure is expressed in">
+          {MEASURES.map((candidate) => (
+            <button
+              key={candidate}
+              type="button"
+              className="switch__option"
+              aria-pressed={candidate === request.measure}
+              onClick={() => onMeasureChange(candidate)}
+              {...tooltipHandlers}
+            >
+              {measureHeading(candidate)}
+              <Tooltip>{MEASURE_DESCRIPTIONS[candidate]}</Tooltip>
+            </button>
+          ))}
+        </div>
+
         {isDiff ? (
           <div className="switch" role="group" aria-label="Side of the change every figure describes">
             {ASPECTS.map((candidate) => (
@@ -65,61 +97,21 @@ export function FilterBar({
             ))}
           </div>
         ) : null}
-
-        <div className="switch" role="group" aria-label="Unit every figure is expressed in">
-          {MEASURES.map((candidate) => (
-            <button
-              key={candidate}
-              type="button"
-              className="switch__option"
-              aria-pressed={candidate === request.measure}
-              onClick={() => onMeasureChange(candidate)}
-              {...tooltipHandlers}
-            >
-              {measureHeading(candidate)}
-              <Tooltip>{MEASURE_DESCRIPTIONS[candidate]}</Tooltip>
-            </button>
-          ))}
-        </div>
       </div>
 
-      <div className="chips" role="group" aria-label="File kinds counted">
-        {FILE_KINDS.map((kind) => {
-          const { label, description } = FILE_KIND_DETAILS[kind];
-          return (
-            <label
-              key={kind}
-              className="chip"
-              data-flavor={kind}
-              data-on={request.kinds.includes(kind)}
-              {...tooltipHandlers}
-            >
-              <input
-                type="checkbox"
-                checked={request.kinds.includes(kind)}
-                aria-describedby={`flavor-tooltip-${kind}`}
-                onChange={() => onToggleKind(kind)}
-              />
-              {label}
-              <Tooltip id={`flavor-tooltip-${kind}`}>{description}</Tooltip>
-            </label>
-          );
-        })}
-        <label
-          className="chip"
-          data-flavor="generated"
-          data-on={request.showGenerated}
-          {...tooltipHandlers}
-        >
-          <input
-            type="checkbox"
-            checked={request.showGenerated}
-            aria-describedby="flavor-tooltip-generated"
-            onChange={onToggleGenerated}
+      <div className="filters__actions">
+        {openInOptions.length > 0 && actionTarget ? (
+          <OpenInPicker
+            options={openInOptions}
+            application={openInApplication}
+            targetLabel={actionTarget}
+            opening={openingIn}
+            onOpen={onOpenIn}
           />
-          Generated
-          <Tooltip id="flavor-tooltip-generated">{GENERATED_DESCRIPTION}</Tooltip>
-        </label>
+        ) : null}
+        {agents.length > 0 ? (
+          <AgentPicker agents={agents} agentId={agentId} onChoose={onChooseAgent} onAsk={onAsk} />
+        ) : null}
       </div>
     </section>
   );
