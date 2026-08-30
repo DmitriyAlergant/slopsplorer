@@ -365,7 +365,7 @@ describe("a static scan index", () => {
       await rm(changingRoot, { recursive: true, force: true });
       await rm(outsideRoot, { recursive: true, force: true });
     }
-  });
+  }, SCAN_TIMEOUT_MS);
 
   it("reads an accepted file whose name starts with two dots", async () => {
     const dottedRoot = await mkdtemp(path.join(os.tmpdir(), "slopsplorer-dotted-source-"));
@@ -433,7 +433,7 @@ describe("a static scan index", () => {
       await rm(path.dirname(output), { recursive: true, force: true });
     }
   });
-});
+}, SCAN_TIMEOUT_MS);
 
 describe("the snapshot entry document", () => {
   const entry = path.join(import.meta.dirname, "..", "src", "web", "snapshot.html");

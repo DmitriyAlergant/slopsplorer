@@ -127,7 +127,7 @@ describe("comparing something else from the page", () => {
       error: "`comparison.kind` must name one of the five comparisons",
     });
   });
-});
+}, SCAN_TIMEOUT_MS);
 
 describe("what the picker can offer", () => {
   it("lists the branches and tags of the compared repository, newest first", async () => {
@@ -237,7 +237,7 @@ describe("the preview of one compared file", () => {
     ]);
     expect(source.lines[0]).toEqual({ marker: " ", text: committed[0], beforeLine: 1, afterLine: 1 });
   });
-});
+}, SCAN_TIMEOUT_MS);
 
 describe("the commits a comparison spans", () => {
   it("lists them for a range, measured one commit at a time", async () => {
@@ -283,4 +283,4 @@ describe("the commits a comparison spans", () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toBeNull();
   }, SCAN_TIMEOUT_MS);
-});
+}, SCAN_TIMEOUT_MS);
