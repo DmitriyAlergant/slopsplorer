@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { readFile, stat } from "node:fs/promises";
+import { readFile, realpath, stat } from "node:fs/promises";
 import { createServer as createHttpServer } from "node:http";
 import type { IncomingMessage, Server, ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -16,11 +16,13 @@ import { scanReviewSide, scanSourceTree } from "../scanner/scan.ts";
 import type { ReviewSideScanOptions, ScanIndex, ScanOptions } from "../scanner/scan.ts";
 import type {
   AgentsResponse, AskListResponse, AskRequest, CommitSpine, CompareRequest, ComparisonRequest,
-  OpenRootRequest, ReviewMode, ReviewModeRequest, SkillInstallResponse, SourceResponse,
+  OpenInApplication, OpenInOptionsResponse, OpenInResponse, OpenRootRequest,
+  ReviewMode, ReviewModeRequest, SkillInstallResponse, SourceResponse,
 } from "../shared/api.ts";
 import { spansRequest } from "../shared/api.ts";
 import { buildFileList, buildView, parseViewRequest } from "./aggregate.ts";
 import { composeBrief } from "./brief.ts";
+import { buildOpenInOptions, launchOpenIn } from "./openIn.ts";
 import { readIndexedSource, SourceReadError } from "./source.ts";
 
 /** Ceiling on `POST` bodies. A view request is a few kilobytes even for a huge tree. */
@@ -136,6 +138,8 @@ export interface SlopsplorerServerOptions {
    * started. Empty when none answered, which hides the ask control.
    */
   agents?: readonly AvailableAgent[];
+  /** Application launcher, replaceable by an embedding host or a test. */
+  openIn?: (application: OpenInApplication, targetPath: string) => Promise<void>;
 }
 
 export interface ServerAddress {
@@ -394,6 +398,10 @@ export function createSlopsplorerServer(options: SlopsplorerServerOptions): Slop
   let vite: ViteDevServer | null = null;
   const agents = options.agents ?? [];
   const askStore = createAskStore();
+  const openInOptions = buildOpenInOptions(process.platform);
+  const openIn = options.openIn ?? ((application, targetPath) => (
+    launchOpenIn(process.platform, application, targetPath)
+  ));
 
   /**
    * What a running measurement is of, so a repeat of it can join it.
@@ -504,6 +512,39 @@ export function createSlopsplorerServer(options: SlopsplorerServerOptions): Slop
     return { root: path.resolve(requestedRoot), view: parseViewRequest(candidate.view) };
   }
 
+  async function openInApplication(body: unknown): Promise<OpenInResponse> {
+    if (typeof body !== "object" || body === null) throw new BadRequestError("request body must be an object");
+    const candidate = body as { application?: unknown; drillPath?: unknown };
+    const option = openInOptions.find(({ id }) => id === candidate.application);
+    if (option === undefined) throw new BadRequestError("`application` must name Cursor, VS Code, or the file manager");
+    if (typeof candidate.drillPath !== "string" || !scanState.index.folderByPath.has(candidate.drillPath)) {
+      throw new BadRequestError("`drillPath` must name a folder in the open index");
+    }
+
+    const rootPath = scanState.index.meta.rootPath;
+    const targetPath = path.resolve(rootPath, ...candidate.drillPath.split("/").filter(Boolean));
+    let resolvedRoot: string;
+    let resolvedTarget: string;
+    try {
+      [resolvedRoot, resolvedTarget] = await Promise.all([realpath(rootPath), realpath(targetPath)]);
+      if (!(await stat(resolvedTarget)).isDirectory()) throw new Error("not a directory");
+    } catch {
+      throw new BadRequestError(`folder does not exist or is not readable: ${targetPath}`);
+    }
+    const relative = path.relative(resolvedRoot, resolvedTarget);
+    if (relative.startsWith("..") || path.isAbsolute(relative)) {
+      throw new BadRequestError("the folder resolves outside the measured project");
+    }
+
+    try {
+      await openIn(option.id, targetPath);
+    } catch (cause) {
+      const detail = cause instanceof Error ? cause.message : String(cause);
+      throw new BadRequestError(`${option.label} could not open ${targetPath}: ${detail}`);
+    }
+    return { path: targetPath };
+  }
+
   function parseCompareRequest(body: unknown): CompareRequest {
     if (typeof body !== "object" || body === null) throw new BadRequestError("request body must be an object");
     const candidate = body as { comparison?: unknown; view?: unknown };
@@ -572,6 +613,16 @@ export function createSlopsplorerServer(options: SlopsplorerServerOptions): Slop
         const viewRequest = parseViewRequest(await readJsonBody(request));
         const rescanned = await rescan();
         sendJson(response, 200, buildView(rescanned, viewRequest));
+        return;
+      }
+      case "/api/open-in": {
+        if (request.method === "GET") {
+          const listed: OpenInOptionsResponse = { options: openInOptions };
+          sendJson(response, 200, listed);
+          return;
+        }
+        if (request.method !== "POST") throw new MethodNotAllowedError("use GET or POST");
+        sendJson(response, 200, await openInApplication(await readJsonBody(request)));
         return;
       }
       case "/api/open": {

@@ -125,6 +125,8 @@ A scan has one content per file, so `buildView()` forces the aspect to `after` u
 | `POST /api/files` | Return all files that match one `ViewRequest` for `Read all`. |
 | `POST /api/rescan` | Scan the same root again. Concurrent calls share one scan. |
 | `POST /api/open` | Replace the root with another absolute directory and scan it. |
+| `GET /api/open-in` | List Cursor, VS Code, and the host operating system's file manager. |
+| `POST /api/open-in` | Open the root or current drill folder in one listed application. |
 | `POST /api/compare` | Replace the comparison, keeping the repository, and measure it again. |
 | `POST /api/review-mode` | Rescan the diff or one complete side of the active comparison. |
 | `GET /api/refs` | Return the branches, remote branches, and tags the comparison picker offers. |
@@ -141,6 +143,14 @@ The index is the list of readable files.
 `/api/source` serves a path only if the current scan contains it, then resolves the real path and refuses anything that is outside the scan root, so a symlink added after the scan cannot read another part of the disk.
 Inside a comparison the file has two contents, so the route returns the file as aligned lines instead, built by the aligner `openDiffAligner()` opens, from the same alignment the file's figures were summed over.
 It sends every line, changed or not, and the page decides how much of the unchanged text to draw.
+
+`/api/open-in` takes `ViewRequest.drillPath`, not the selected row.
+An empty drill opens `ScanMeta.rootPath`, and a non-empty drill opens that folder below the root.
+The route requires the drill to exist in `ScanIndex.folderByPath`, then resolves the root and target before it starts an application, so a changed symlink cannot aim the action outside the measured project.
+`buildOpenInOptions()` and `buildOpenInPlan()` in `src/server/openIn.ts` choose the file manager name and launch command from the server operating system.
+They do not probe installed applications.
+The route reports a launch failure when the chosen editor or system command is absent.
+The browser stores the last chosen application, and `OpenInPicker` uses it for the main half of the split control.
 
 The skill ships with the package and not with the scan, so `/api/skill-source` reads it by a fixed name instead of through that allowlist, and the same dialog draws it.
 `buildSkillInstall()` writes the install command for the platform the server runs on: `cp` chained with `&&` for a POSIX shell, `Copy-Item` chained with `;` under `$ErrorActionPreference` for PowerShell.

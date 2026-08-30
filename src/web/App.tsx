@@ -1,18 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
-  AgentTool, Aspect, AskTask, CommitSpine, ComparisonRequest, FileKind, Measure, RankMetric, RowKind,
-  ReviewMode, SnapshotBacklink, TreeRow, ViewRequest, ViewResponse,
+  AgentTool, Aspect, AskTask, CommitSpine, ComparisonRequest, FileKind, Measure, OpenInApplication,
+  OpenInOption, RankMetric, RowKind, ReviewMode, SnapshotBacklink, TreeRow, ViewRequest, ViewResponse,
 } from "../shared/api.ts";
 import { ASPECTS, MEASURES, spansRequest } from "../shared/api.ts";
 import {
-  compare, dismissAsk, fetchAgents, fetchAsks, openRoot, rescan, startAsk, switchReviewMode,
+  compare, dismissAsk, fetchAgents, fetchAsks, fetchOpenInOptions, openIn, openRoot, rescan, startAsk,
+  switchReviewMode,
 } from "./api.ts";
 import { liveRuntime, type ExplorerRuntime } from "./runtime.ts";
 import {
   DEFAULT_SPINE_HEIGHT, DEFAULT_WORKSPACE_HEIGHT, MAX_WORKSPACE_HEIGHT, MIN_WORKSPACE_HEIGHT,
-  browserStorage, readAskAgent, readPreferences, readSpineExpanded, readSpineHeight,
+  browserStorage, readAskAgent, readOpenInApplication, readPreferences, readSpineExpanded, readSpineHeight,
   readTreePanelRatio, readWorkspaceHeight, writeAskAgent, writePreferences, writeSpineExpanded,
-  writeSpineHeight, writeTreePanelRatio, writeWorkspaceHeight,
+  writeOpenInApplication, writeSpineHeight, writeTreePanelRatio, writeWorkspaceHeight,
 } from "./preferences.ts";
 import { isInsideFolder } from "./displayPath.ts";
 import { comparisonLabel, documentTitle, messageOf } from "./format.ts";
@@ -79,6 +80,11 @@ export function App({ runtime = liveRuntime, backlink = null }: Props = {}): Rea
   const [busy, setBusy] = useState(false);
   const [rescanning, setRescanning] = useState(false);
   const [openingRoot, setOpeningRoot] = useState<string | null>(null);
+  const [openInOptions, setOpenInOptions] = useState<readonly OpenInOption[]>([]);
+  const [openInApplication, setOpenInApplication] = useState<OpenInApplication>(
+    () => readOpenInApplication(browserStorage()),
+  );
+  const [openingIn, setOpeningIn] = useState<OpenInApplication | null>(null);
   const [comparingLabel, setComparingLabel] = useState<string | null>(null);
   const [reviewModeTarget, setReviewModeTarget] = useState<ReviewMode | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
@@ -199,6 +205,7 @@ export function App({ runtime = liveRuntime, backlink = null }: Props = {}): Rea
     };
     fetchAgents().then((found) => { if (!cancelled) setAgents(found.agents); }, fail);
     fetchAsks().then((held) => { if (!cancelled) setTasks(held.tasks); }, fail);
+    fetchOpenInOptions().then((found) => { if (!cancelled) setOpenInOptions(found.options); }, fail);
     return () => { cancelled = true; };
   }, [staticSnapshot]);
 
@@ -401,6 +408,16 @@ export function App({ runtime = liveRuntime, backlink = null }: Props = {}): Rea
     setOpeningRoot(root);
     reaim((view) => openRoot(root, view), () => setOpeningRoot(null));
   }, [reaim]);
+
+  const handleOpenIn = useCallback((application: OpenInApplication) => {
+    setOpenInApplication(application);
+    writeOpenInApplication(browserStorage(), application);
+    setOpeningIn(application);
+    openIn(application, requestRef.current.drillPath)
+      .then(() => setError(null))
+      .catch((cause: unknown) => setError(messageOf(cause)))
+      .finally(() => setOpeningIn(null));
+  }, []);
 
   const handleCompare = useCallback((comparison: ComparisonRequest, keepPlace = false) => {
     setComparingLabel(comparisonLabel(comparison));
@@ -659,7 +676,13 @@ export function App({ runtime = liveRuntime, backlink = null }: Props = {}): Rea
   const aspect = view?.aspect ?? request.aspect;
 
   return (
-    <main className="app" data-busy={busy || scanning}>
+    <main
+      className="app"
+      data-busy={busy || scanning}
+      // The tree column is set here rather than on the workspace, because the
+      // path filter above it takes the same width and follows the same drag.
+      style={{ "--tree-panel-width": `${treePanelRatio * 100}%` } as React.CSSProperties}
+    >
       <InstrumentBar
         meta={view?.meta ?? null}
         staticSnapshot={staticSnapshot}
@@ -670,6 +693,11 @@ export function App({ runtime = liveRuntime, backlink = null }: Props = {}): Rea
         onOpen={handleOpen}
         onCompare={handleCompare}
         onReviewMode={handleReviewMode}
+        drillPath={request.drillPath}
+        openInOptions={openInOptions}
+        openInApplication={openInApplication}
+        openingIn={openingIn}
+        onOpenIn={handleOpenIn}
         agents={agents}
         agentId={chosenAgentId ?? ""}
         onChooseAgent={chooseAgent}
@@ -707,10 +735,7 @@ export function App({ runtime = liveRuntime, backlink = null }: Props = {}): Rea
 
       <div
         className="workspace"
-        style={{
-          "--tree-panel-width": `${treePanelRatio * 100}%`,
-          "--workspace-height": `${workspaceHeight}px`,
-        } as React.CSSProperties}
+        style={{ "--workspace-height": `${workspaceHeight}px` } as React.CSSProperties}
       >
         <SourceTree
           rows={view?.tree ?? []}
@@ -765,7 +790,6 @@ export function App({ runtime = liveRuntime, backlink = null }: Props = {}): Rea
         height={workspaceHeight}
         onHeightChange={setWorkspaceHeight}
         label="Resize both workspace panels"
-        hint="Drag to resize both panels. Double-click to reset."
         minimum={MIN_WORKSPACE_HEIGHT}
         maximum={MAX_WORKSPACE_HEIGHT}
         defaultHeight={DEFAULT_WORKSPACE_HEIGHT}

@@ -6,10 +6,18 @@ Write yours under Unreleased as you make the change, and rename that heading to 
 
 ## [Unreleased]
 
+### Features
+
+- The header can open the project root or current drill folder in Cursor, VS Code, or the host operating system's file manager, remembers the last choice, and does not probe which applications are installed.
+
 ### Other Changes
 
 - The file table strip now reads `of 1,309 files` beside the pager and `total 1,316 files scanned` under it.
 - The source tree steps in less per level, so a deep folder keeps more room for its name.
+
+### Bug Fixes
+
+- The folder tiles keep one width, so a wider panel adds a tile instead of resizing every one.
 
 ## [0.6.0](https://github.com/DmitriyAlergant/slopsplorer/releases/tag/v0.6.0) - 2026-08-29
 

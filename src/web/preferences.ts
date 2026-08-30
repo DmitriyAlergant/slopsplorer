@@ -1,5 +1,5 @@
-import type { Aspect, Measure, RankMetric, TreeSort, ViewRequest } from "../shared/api.ts";
-import { ASPECTS, MEASURES, RANK_METRICS, TREE_SORTS } from "../shared/api.ts";
+import type { Aspect, Measure, OpenInApplication, RankMetric, TreeSort, ViewRequest } from "../shared/api.ts";
+import { ASPECTS, MEASURES, OPEN_IN_APPLICATIONS, RANK_METRICS, TREE_SORTS } from "../shared/api.ts";
 
 // v4 carries the diff aspect, which decides what a figure means as much as the
 // measure does. Older payloads are discarded rather than half-read, which is
@@ -13,6 +13,7 @@ const WRAP_LINES_STORAGE_KEY = "slopsplorer.wrap-lines.v1";
 const SPINE_EXPANDED_STORAGE_KEY = "slopsplorer.spine-expanded.v1";
 const SPINE_HEIGHT_STORAGE_KEY = "slopsplorer.spine-height.v1";
 const ASK_AGENT_STORAGE_KEY = "slopsplorer.ask-agent.v1";
+const OPEN_IN_APPLICATION_STORAGE_KEY = "slopsplorer.open-in-application.v1";
 
 /**
  * Bounds on the two dragged heights.
@@ -228,4 +229,14 @@ export function readAskAgent(storage: PreferenceStorage): string | null {
 
 export function writeAskAgent(storage: PreferenceStorage, agentId: string): void {
   writeItem(storage, ASK_AGENT_STORAGE_KEY, agentId);
+}
+
+/** The application the reader opened last, or Cursor before they choose one. */
+export function readOpenInApplication(storage: PreferenceStorage): OpenInApplication {
+  const stored = readItem(storage, OPEN_IN_APPLICATION_STORAGE_KEY);
+  return OPEN_IN_APPLICATIONS.find((application) => application === stored) ?? "cursor";
+}
+
+export function writeOpenInApplication(storage: PreferenceStorage, application: OpenInApplication): void {
+  writeItem(storage, OPEN_IN_APPLICATION_STORAGE_KEY, application);
 }

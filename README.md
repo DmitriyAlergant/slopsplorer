@@ -115,7 +115,7 @@ slopsplorer --export ./pr-619 https://github.com/owner/repo/pull/619
 The command scans once, writes the interactive bundle, prints its absolute path, and exits.
 The static page keeps the filters, measures, tree controls, drilling, rankings, linked URL state, and source or diff previews.
 When a full GitHub pull request or GitLab merge request URL names the comparison, the snapshot header links back to that review page.
-It is a frozen snapshot, so it cannot rescan, open another folder, change the comparison, or run a local coding agent.
+It is a frozen snapshot, so it cannot rescan, open another folder, open a local application, change the comparison, or run a local coding agent.
 The commit band is present but read-only.
 
 The destination can be missing or empty, and a non-empty destination is refused without changing it.
@@ -223,6 +223,15 @@ slopsplorer <path>              # defaults to the current folder
 Inside a Git worktree the file list comes from the Git index plus untracked files that no ignore rule covers, so dependencies and build output never distort the map.
 Outside one, the walker applies `.gitignore` itself, so a plain folder behaves the same way.
 `--all-files` disables both.
+
+## Open the project locally
+
+The **Open in** control in the header opens one folder in Cursor, VS Code, Finder on macOS, File Explorer on Windows, or the default file manager on Linux.
+The main button repeats the last application you chose, and the browser keeps that choice for the next visit.
+Slopsplorer does not check whether an editor is installed, so a missing editor reports the launch error when you choose it.
+At the top of the page it opens the measured project root.
+After you drill into a folder it opens that folder instead, because drill changes the page's workspace while ordinary selection changes only the detail panel.
+Each application receives one folder, so an editor never creates a multi-root workspace.
 
 ## Ask an agent about it
 

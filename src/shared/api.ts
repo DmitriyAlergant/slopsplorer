@@ -701,6 +701,30 @@ export interface OpenRootRequest {
   view: ViewRequest;
 }
 
+/** An application that can receive the folder the page is open on. */
+export const OPEN_IN_APPLICATIONS = ["cursor", "vscode", "fileManager"] as const;
+export type OpenInApplication = typeof OPEN_IN_APPLICATIONS[number];
+
+export interface OpenInOption {
+  id: OpenInApplication;
+  label: string;
+}
+
+/** The fixed applications offered for the server's operating system. */
+export interface OpenInOptionsResponse {
+  options: OpenInOption[];
+}
+
+/** Open the measured root, or the folder the page drilled into. */
+export interface OpenInRequest {
+  application: OpenInApplication;
+  drillPath: string;
+}
+
+export interface OpenInResponse {
+  path: string;
+}
+
 /**
  * Two revisions, and which of the two ways they are compared.
  *

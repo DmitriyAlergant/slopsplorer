@@ -1,7 +1,8 @@
 import type {
   AgentsResponse, AskListResponse, AskRequest, AskTask, CommitSpine, CompareRequest, ComparisonRequest,
-  DismissAskRequest, FileListResponse, OpenRootRequest, RepositoryRefs, SkillInstallResponse, SourceResponse,
-  ReviewMode, ReviewModeRequest, ViewRequest, ViewResponse,
+  DismissAskRequest, FileListResponse, OpenInApplication, OpenInOptionsResponse, OpenInRequest,
+  OpenInResponse, OpenRootRequest, RepositoryRefs, SkillInstallResponse, SourceResponse, ReviewMode,
+  ReviewModeRequest, ViewRequest, ViewResponse,
 } from "../shared/api.ts";
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
@@ -51,6 +52,17 @@ export function rescan(view: ViewRequest): Promise<ViewResponse> {
 export function openRoot(root: string, view: ViewRequest): Promise<ViewResponse> {
   const body: OpenRootRequest = { root, view };
   return postJson<ViewResponse>("/api/open", body);
+}
+
+/** Fixed applications offered by the operating system that hosts the scan. */
+export function fetchOpenInOptions(): Promise<OpenInOptionsResponse> {
+  return request<OpenInOptionsResponse>("/api/open-in");
+}
+
+/** Open the project root, or its drilled folder, in one local application. */
+export function openIn(application: OpenInApplication, drillPath: string): Promise<OpenInResponse> {
+  const body: OpenInRequest = { application, drillPath };
+  return postJson<OpenInResponse>("/api/open-in", body);
 }
 
 /** Compare something else in the same repository, then aggregate the current scope. */

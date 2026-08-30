@@ -51,8 +51,8 @@ interface Props {
   onCapacityChange: (cardColumns: number) => void;
 }
 
-/** Narrower than this and a tile can no longer hold its name and figures. */
-const CARD_MIN_WIDTH = 210;
+/** The width of every tile: narrower and a tile can no longer hold its name and figures. */
+const CARD_WIDTH = 210;
 const CARD_GAP = 8;
 const CARD_PADDING = 40;
 
@@ -90,7 +90,7 @@ export function FolderDetail({
     const observer = new ResizeObserver((entries) => {
       const width = entries[0]?.contentRect.width ?? 0;
       const usable = width - CARD_PADDING + CARD_GAP;
-      const fitted = Math.floor(usable / (CARD_MIN_WIDTH + CARD_GAP));
+      const fitted = Math.floor(usable / (CARD_WIDTH + CARD_GAP));
       setColumns(Math.max(MIN_CARD_COLUMNS, Math.min(MAX_CARD_COLUMNS, fitted)));
     });
     observer.observe(node);
@@ -200,7 +200,10 @@ export function FolderDetail({
       {/* Always drawn, one row high, so the table below starts in the same place
           whether the folder has children or not. A folder's own files are one of
           the tiles, so a folder without subfolders still has a row to draw. */}
-      <div className="cards" style={{ "--card-columns": detail.cardColumns } as React.CSSProperties}>
+      <div
+        className="cards"
+        style={{ "--card-columns": detail.cardColumns, "--card-width": `${CARD_WIDTH}px` } as React.CSSProperties}
+      >
         {detail.cards.map((card, index) => {
           const added = aspectFigure("added", card.added);
           const removed = aspectFigure("removed", card.removed);
