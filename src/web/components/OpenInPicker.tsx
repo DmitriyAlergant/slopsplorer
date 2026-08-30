@@ -44,7 +44,7 @@ export function OpenInPicker({ options, application, targetLabel, opening, onOpe
         onClick={() => onOpen(primary.id)}
         {...tooltipHandlers}
       >
-        <OpenInMark application={primary.id} />
+        <OpenInMark application={primary.id} label={primary.label} />
         Open in
         <Tooltip>Open {targetLabel} in {primary.label}.</Tooltip>
       </button>
@@ -76,7 +76,7 @@ export function OpenInPicker({ options, application, targetLabel, opening, onOpe
                 onOpen(option.id);
               }}
             >
-              <OpenInMark application={option.id} size={17} />
+              <OpenInMark application={option.id} label={option.label} size={17} />
               <span className="split-picker__option-name">{option.label}</span>
             </button>
           ))}
