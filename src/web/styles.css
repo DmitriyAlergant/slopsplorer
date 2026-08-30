@@ -621,7 +621,7 @@ button { cursor: pointer; }
 .ribbon__stack { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 1px; }
 /* Grown from zero rather than sized: the bands then divide the height exactly,
    whatever the seams between them cost, and the thinnest flavor still shows. */
-.ribbon__band { flex: 0 1 0; min-height: 3px; background: var(--band-color); }
+.ribbon__band { flex: 0 1 0; min-height: 3px; }
 
 .ribbon__label {
   position: relative;
@@ -649,7 +649,11 @@ button { cursor: pointer; }
  * colour wheel competing with the page's one saturated colour.
  */
 .ribbon { --band-base: oklch(0.24 0.028 265); }
-.ribbon__band, .ribbon__swatch { --band-color: color-mix(in oklab, var(--band-hue) 58%, var(--band-base)); }
+.ribbon__band { background: color-mix(in oklab, var(--band-hue) 58%, var(--band-base)); }
+/* The legend takes the flavor's own colour, as the chips and the tile bars do:
+   one hue per flavor across the page, and 8px of a colour darkened to hold a
+   label would read as a grey square. */
+.ribbon__swatch { width: 8px; height: 8px; border-radius: 2px; background: var(--band-hue); }
 [data-flavor="code"].ribbon__band, [data-flavor="code"].ribbon__swatch { --band-hue: var(--flavor-code); }
 [data-flavor="test"].ribbon__band, [data-flavor="test"].ribbon__swatch { --band-hue: var(--flavor-test); }
 [data-flavor="text"].ribbon__band, [data-flavor="text"].ribbon__swatch { --band-hue: var(--flavor-text); }
@@ -674,9 +678,22 @@ button { cursor: pointer; }
   padding-top: 7px;
   border-top: 1px solid var(--tooltip-rule);
 }
-.ribbon__tip-row { display: contents; }
+/* A row of its own rather than bare cells, so it can be muted whole, and on the
+   parent's tracks, so the figures stay one column down the panel. */
+.ribbon__tip-row {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+  align-items: center;
+}
+/* The text recedes and the swatch does not: the row still teaches which colour
+   a flavor is, which is what a reader looks up when a folder holds none of it. */
+.ribbon__tip-row[data-off="true"] { color: color-mix(in oklab, var(--tooltip-ink) 55%, var(--tooltip-surface)); }
+.ribbon__tip-row[data-off="true"] .ribbon__swatch { opacity: 0.8; }
 .ribbon__tip-figure { text-align: right; font-variant-numeric: tabular-nums; }
-.ribbon__swatch { width: 8px; height: 8px; border-radius: 2px; background: var(--band-color); }
+/* Takes both figure columns: a flavor the switches dropped has no figure to
+   state, and a zero there would read as one. */
+.ribbon__tip-dropped { grid-column: span 2; text-align: right; }
 
 /* ---- Commit band ------------------------------------------------------- */
 

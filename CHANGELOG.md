@@ -12,7 +12,7 @@ Write yours under Unreleased as you make the change, and rename that heading to 
 
 ### Other Changes
 
-- The proportion bar at the bottom splits each folder into bands by flavor, and a hovered segment names those bands with their figures.
+- The proportion bar at the bottom splits each folder into bands by flavor, and a hovered segment names every flavor with its figures, saying which ones the switches excluded.
 - The proportion bar stops drawing folders under half a percent of the strip, and gathers the rest into one closing segment.
 - A tile's flavor bar now counts generated output as a flavor of its own, so the bar and the figure above it describe the same files.
 - The path filter is now the width of the source tree and follows the splitter, and the unit switch starts where the panel beside the tree starts.

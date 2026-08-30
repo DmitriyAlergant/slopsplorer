@@ -1,6 +1,6 @@
-import type { Aspect, FlavorSlice, Measure, RowKind, SummaryView, ViewRequest } from "../../shared/api.ts";
+import type { Aspect, Flavor, FlavorSlice, Measure, RowKind, SummaryView, ViewRequest } from "../../shared/api.ts";
 import {
-  ASPECTS, FLAVOR_DETAILS, MEASURES, aspectTotals, measureHeading, weightHeading, weightName,
+  ASPECTS, FLAVORS, FLAVOR_DETAILS, MEASURES, aspectTotals, measureHeading, weightHeading, weightName,
 } from "../../shared/api.ts";
 import { aspectFigure, compact, count, percent, weightCount } from "../format.ts";
 import { Readout } from "./Readout.tsx";
@@ -13,6 +13,13 @@ interface Props {
   /** The side of the change the figures describe. */
   aspect: Aspect;
   isDiff: boolean;
+  /**
+   * The flavors the answered request counted.
+   *
+   * Taken from the response like the measure and the aspect, so a legend never
+   * marks a flavor dropped while the figures beside it still hold that flavor.
+   */
+  countedFlavors: readonly Flavor[];
   /** What the tree has selected, so the segment that names it can say so. */
   selected: ViewRequest["selected"];
   onSelect: (rowKind: RowKind, path: string) => void;
@@ -43,7 +50,9 @@ const LABEL_THRESHOLD = 0.04;
  * the scope and the filters keep, and how much of that is comment - stands to
  * the right of the columns rather than among them.
  */
-export function MassRibbon({ summary, measure, aspect, isDiff, selected, onSelect }: Props): React.JSX.Element {
+export function MassRibbon(
+  { summary, measure, aspect, isDiff, countedFlavors, selected, onSelect }: Props,
+): React.JSX.Element {
   const segments = summary?.ribbon ?? [];
   // Magnitude, because in net a folder that removed 400 lines is 400 of the
   // scope's ink even though its weight is negative.
@@ -144,7 +153,7 @@ export function MassRibbon({ summary, measure, aspect, isDiff, selected, onSelec
                 <span className="ribbon__tip">
                   <span className="ribbon__tip-name">{subject}</span>
                   <span className="ribbon__tip-scope">{figures}</span>
-                  <FlavorLegend slices={segment.flavors} />
+                  <FlavorLegend slices={segment.flavors} counted={countedFlavors} />
                 </span>
               </Tooltip>
             </>
@@ -208,22 +217,37 @@ function FlavorStack({ slices }: { slices: readonly FlavorSlice[] }): React.JSX.
 /**
  * The bands of one segment, named and measured, so the strip needs no legend.
  *
+ * Every flavor takes a row, not only the ones the segment holds: a reader who
+ * turned a switch off has to see that the strip stopped counting it, and a
+ * flavor a folder simply has none of is a different answer from one the page
+ * dropped. The panel is then the same table for every segment.
+ *
  * The unit is stated once above rather than on every row: the rows are a column
  * of figures, and a word between the digits and the share breaks the column.
  */
-function FlavorLegend({ slices }: { slices: readonly FlavorSlice[] }): React.JSX.Element | null {
+function FlavorLegend(
+  { slices, counted }: { slices: readonly FlavorSlice[]; counted: readonly Flavor[] },
+): React.JSX.Element {
   const whole = bandTotal(slices);
-  if (whole === 0) return null;
+  const weights = new Map(slices.map((slice) => [slice.flavor, slice.weight]));
   return (
     <span className="ribbon__tip-rows">
-      {slices.map((slice) => (
-        <span key={slice.flavor} className="ribbon__tip-row">
-          <span className="ribbon__swatch" data-flavor={slice.flavor} />
-          <span>{FLAVOR_DETAILS[slice.flavor].label}</span>
-          <span className="ribbon__tip-figure">{count(slice.weight)}</span>
-          <span className="ribbon__tip-figure">{percent(slice.weight / whole)}</span>
-        </span>
-      ))}
+      {FLAVORS.map((flavor) => {
+        const dropped = !counted.includes(flavor);
+        const weight = weights.get(flavor) ?? 0;
+        return (
+          <span key={flavor} className="ribbon__tip-row" data-off={dropped || weight === 0}>
+            <span className="ribbon__swatch" data-flavor={flavor} />
+            <span>{FLAVOR_DETAILS[flavor].label}</span>
+            {dropped ? <span className="ribbon__tip-dropped">(excluded)</span> : (
+              <>
+                <span className="ribbon__tip-figure">{count(weight)}</span>
+                <span className="ribbon__tip-figure">{percent(whole > 0 ? weight / whole : 0)}</span>
+              </>
+            )}
+          </span>
+        );
+      })}
     </span>
   );
 }

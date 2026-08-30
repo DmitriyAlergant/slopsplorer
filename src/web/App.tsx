@@ -649,6 +649,11 @@ export function App({ runtime = liveRuntime, backlink = null }: Props = {}): Rea
   // Taken from the response rather than the pending request, so a heading
   // never claims a mode the numbers beside it are not in.
   const isDiff = view?.meta.diff != null;
+  // The flavor switches as the answered request left them, from the one place
+  // that already states them per flavor.
+  const countedFlavors = (view?.detail.flavorStats ?? [])
+    .filter((stat) => stat.enabled)
+    .map((stat) => stat.flavor);
   const scanning = rescanning || openingRoot !== null || comparingLabel !== null || reviewModeTarget !== null;
   // Re-aiming replaces the whole data model, so the stale page stays covered
   // until the new figures arrive.
@@ -806,6 +811,7 @@ export function App({ runtime = liveRuntime, backlink = null }: Props = {}): Rea
         measure={view?.measure ?? request.measure}
         aspect={aspect}
         isDiff={isDiff}
+        countedFlavors={countedFlavors}
         selected={request.selected}
         onSelect={select}
       />
