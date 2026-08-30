@@ -27,6 +27,7 @@
   --signal: oklch(0.60 0.17 52);
   --signal-ink: oklch(1 0 0);
   --signal-wash: oklch(0.60 0.17 52 / 0.13);
+  --agent-mark-mono: #000;
 
   /* Chart colours: deliberately muted so the signal stays the loudest thing. */
   --flavor-code: oklch(0.57 0.13 265);
@@ -78,6 +79,7 @@
     --tooltip-rule: oklch(0.42 0.02 265);
     --signal: oklch(0.74 0.15 60);
     --signal-ink: oklch(0.17 0.02 265);
+    --agent-mark-mono: #fff;
     --signal-wash: oklch(0.74 0.15 60 / 0.15);
     --flavor-code: oklch(0.68 0.13 265);
     --flavor-test: oklch(0.68 0.12 158);
@@ -1024,6 +1026,12 @@ button { cursor: pointer; }
      text. Past the ceiling it wraps: nowrap here would cut the tail off. */
   overflow-wrap: anywhere;
 }
+.tooltip[data-single-line="true"] {
+  overflow: hidden;
+  overflow-wrap: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .tooltip::before {
   content: "";
   position: absolute;
@@ -1958,6 +1966,8 @@ button { cursor: pointer; }
 .split-picker__primary:focus-visible + .split-picker__more { border-left-color: var(--signal); }
 .split-picker__more[aria-expanded="true"] { border-color: var(--signal); color: var(--signal); }
 .agent-mark { flex: none; }
+.agent-mark[data-agent-id="cursor"],
+.agent-mark[data-agent-id="opencode"] { color: var(--agent-mark-mono); }
 .open-in-mark { flex: none; }
 .open-in-mark--vscode { color: #1688d4; }
 
@@ -1980,7 +1990,6 @@ button { cursor: pointer; }
 .split-picker__option:hover { background: var(--sunk); }
 /* The mark rests in ink and takes the page's colour under the pointer, so a row
    reads as a plain list until the reader is on one. */
-.split-picker__option:hover .agent-mark { color: var(--signal); }
 .split-picker__option[aria-current="true"] { color: var(--signal); }
 .split-picker__option[aria-current="true"] .split-picker__option-name { font-weight: 600; }
 .split-picker__option-name { flex: 1 1 auto; padding-right: 18px; font-size: 12.5px; }

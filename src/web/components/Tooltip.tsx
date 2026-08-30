@@ -6,6 +6,8 @@ interface Props {
   id?: string;
   /** A short label such as a path, which should not be padded out to a paragraph. */
   compact?: boolean;
+  /** Keep a compact control hint to one line and clip an unusually long value. */
+  singleLine?: boolean;
 }
 
 /**
@@ -16,7 +18,7 @@ interface Props {
  * keyboard user. Render this as a direct child of the control it describes, and
  * spread {@link tooltipHandlers} onto that control.
  */
-export function Tooltip({ children, id, compact }: Props): React.JSX.Element {
+export function Tooltip({ children, id, compact, singleLine }: Props): React.JSX.Element {
   // Without an id nothing points at this panel, and because it renders inside the
   // control it would otherwise be appended to that control's accessible name: a
   // table cell would read as "12 2.1% of lines are comment". Such a tooltip only
@@ -26,6 +28,7 @@ export function Tooltip({ children, id, compact }: Props): React.JSX.Element {
     <span
       className="tooltip"
       data-compact={compact === true}
+      data-single-line={singleLine === true}
       id={id}
       role={described ? "tooltip" : undefined}
       aria-hidden={described ? undefined : true}

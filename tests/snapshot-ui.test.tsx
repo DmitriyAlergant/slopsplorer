@@ -102,7 +102,8 @@ describe("a static instrument bar", () => {
     expect(html).toContain("Diff");
     expect(html).toContain("After");
     expect(html).toContain("Open in");
-    expect(html).toContain("Open project/src in VS Code.");
+    expect(html).toContain("Open project/src in VS Code");
+    expect(html).toContain('data-compact="true" data-single-line="true" aria-hidden="true">Choose application</span>');
   });
 
   it("keeps review navigation visible in a full repository-side view", () => {

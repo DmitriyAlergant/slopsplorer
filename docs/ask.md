@@ -98,7 +98,9 @@ The choice is kept in local storage, so the reader chooses an agent once.
 
 A row carries the tool's own mark, its name, and what the sign-in probe believed.
 `AGENT_MARKS` in `src/web/components/AgentMark.tsx` holds the outlines, vendored from lobehub/lobe-icons so the page fetches nothing and no icon package is installed.
-Each is drawn in `currentColor`: the mark rests in ink, and it takes the page's colour where the row or the button already does.
+Claude and Codex keep their brand colours.
+Cursor and opencode use black in light mode and white in dark mode.
+The row text and control border show selection, so brand colour does not carry state.
 
 The dialog holds the question and nothing else.
 Everything about the page state is added by the server, so the brief cannot describe a view the browser has since left.

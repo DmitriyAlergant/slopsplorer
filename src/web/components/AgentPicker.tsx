@@ -54,10 +54,10 @@ export function AgentPicker({ agents, agentId, onChoose, onAsk }: Props): React.
       <button type="button" className="split-picker__primary" onClick={onAsk} {...tooltipHandlers}>
         <AgentMark agentId={chosen.id} />
         Ask
-        <Tooltip>
+        <Tooltip compact singleLine>
           {chosen.signedIn
-            ? `Ask ${chosen.label} about what you are looking at.`
-            : `Ask ${chosen.label} about what you are looking at. It reported no sign-in, so the ask can fail.`}
+            ? `Ask with ${chosen.label}`
+            : `Ask with ${chosen.label}; it reported no sign-in and can fail.`}
         </Tooltip>
       </button>
       <button
@@ -70,7 +70,7 @@ export function AgentPicker({ agents, agentId, onChoose, onAsk }: Props): React.
         {...tooltipHandlers}
       >
         <MenuChevron />
-        <Tooltip compact>{chosen.label}</Tooltip>
+        <Tooltip compact singleLine>Choose agent</Tooltip>
       </button>
 
       {open ? (

@@ -46,7 +46,7 @@ export function OpenInPicker({ options, application, targetLabel, opening, onOpe
       >
         <OpenInMark application={primary.id} label={primary.label} />
         Open in
-        <Tooltip>Open {targetLabel} in {primary.label}.</Tooltip>
+        <Tooltip compact singleLine>Open {targetLabel} in {primary.label}</Tooltip>
       </button>
       <button
         type="button"
@@ -59,7 +59,7 @@ export function OpenInPicker({ options, application, targetLabel, opening, onOpe
         {...tooltipHandlers}
       >
         <MenuChevron />
-        <Tooltip compact>Choose application</Tooltip>
+        <Tooltip compact singleLine>Choose application</Tooltip>
       </button>
 
       {open ? (
