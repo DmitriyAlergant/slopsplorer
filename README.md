@@ -39,7 +39,7 @@ slopsplorer -C /path/to/another-repo --pr 1543
 
 The **Before** - **Diff** - **After** control moves between the complete repository on either side and the change itself without checking out either revision.
 
-The commit band can show one commit, a selected run, or the whole comparison.
+The commit band allows to focus layer-by-layer on the whole PR, selected run of multiple commits, or one commit at a time.
 
 ![Slopsplorer reviewing its own repository: Before, Diff, and After views above a source tree, folder totals, flavor controls, ranked files, and whole-project readouts.](https://raw.githubusercontent.com/DmitriyAlergant/slopsplorer/main/docs/screenshot.png)
 
