@@ -93,18 +93,14 @@ A switch beside the unit picks which side of the change every figure describes:
 Net and churn differ for a reason: a rewrite at `+500 / -480` and an addition of `+20` have nearly the same net and are not the same change.
 Renames are followed rather than counted twice.
 
-![Slopsplorer in diff mode: the aspect switch set to net, a source tree drawing removed and added bands from a centre axis, and a file table of added, removed, net, churn, and after tokens.](https://raw.githubusercontent.com/DmitriyAlergant/slopsplorer/main/docs/screenshot-diff.png)
+![Slopsplorer in diff mode: repository-view and aspect controls, a source tree drawing removed and added bands from a centre axis, weighted flavor controls, and a file table of added, removed, net, churn, and after tokens.](https://raw.githubusercontent.com/DmitriyAlergant/slopsplorer/main/docs/screenshot-diff.png)
 
-*Slopsplorer comparing a release tag against the working tree.*
+*Slopsplorer comparing the current main branch against the working tree.*
 
 Click a file for its diff, whole, with the unchanged runs folded.
 The file table shows 100 matches on each page and provides previous and next controls.
 `Read all`, above the file table, opens every matching file in one scrolling page, in path order, so a change reads end to end like a review.
 Each file there folds away on its own, and the same switch hides the unchanged lines across all of them.
-
-![Slopsplorer's file comparison for src/shared/api.ts: two line-number columns, removed lines in red, added lines in green, and a fold strip for seven unchanged lines above.](https://raw.githubusercontent.com/DmitriyAlergant/slopsplorer/main/docs/screenshot-file-comparison.png)
-
-*One file inside the comparison, changed lines only.*
 
 ## Export a static snapshot
 
