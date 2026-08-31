@@ -2,7 +2,7 @@ import type { Aspect, Flavor, FlavorSlice, Measure, RowKind, SummaryView, ViewRe
 import {
   ASPECTS, FLAVORS, FLAVOR_DETAILS, MEASURES, aspectTotals, measureHeading, weightHeading, weightName,
 } from "../../shared/api.ts";
-import { aspectFigure, compact, count, percent, weightCount } from "../format.ts";
+import { aspectFigure, changePercent, compact, count, percent, weightCount } from "../format.ts";
 import { Readout } from "./Readout.tsx";
 import { Tooltip, tooltipHandlers } from "./Tooltip.tsx";
 
@@ -74,6 +74,11 @@ export function MassRibbon(
     removed: summary?.selectedRemoved ?? 0,
     ...scopeMeasures,
   }, measure);
+  const before = summary === null ? 0 : {
+    tokens: summary.selectedBeforeTokens,
+    lines: summary.selectedBeforeLines,
+    codeLines: summary.selectedBeforeCodeLines,
+  }[measure];
 
   return (
     <section
@@ -99,7 +104,18 @@ export function MassRibbon(
                     emphasis={candidate === aspect}
                   />
                 );
-              })
+              }).concat(
+                <Readout
+                  key="churn-percent"
+                  label="churn %"
+                  value={summary ? changePercent("churn", totals.churn, before) : "-"}
+                />,
+                <Readout
+                  key="net-percent"
+                  label="net %"
+                  value={summary ? changePercent("net", totals.net, before) : "-"}
+                />,
+              )
               : MEASURES.map((candidate) => (
                 <Readout
                   key={candidate}
@@ -108,7 +124,6 @@ export function MassRibbon(
                   emphasis={candidate === measure}
                 />
               ))}
-            <Readout label="files" value={summary ? count(summary.selectedFiles) : "-"} />
           </div>
         </div>
         {/* The one fact no other panel can state: how much of the project this

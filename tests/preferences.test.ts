@@ -31,14 +31,14 @@ class MemoryStorage implements PreferenceStorage {
 describe("view preferences", () => {
   it("persists sorting and the primary measure and aspect, but not flavor selection", () => {
     const storage = new MemoryStorage();
-    const request = readRequest("?tree=weight&measure=codeLines&aspect=net&rank=functions&kinds=other%2Ccode&gen=1&path=src&q=worker");
+    const request = readRequest("?tree=weight&measure=codeLines&aspect=net&rank=commentLines&kinds=other%2Ccode&gen=1&path=src&q=worker");
     writePreferences(storage, request);
 
     expect(readPreferences(storage)).toEqual({
       treeSort: "weight",
       measure: "codeLines",
       aspect: "net",
-      rankMetric: "functions",
+      rankMetric: "commentLines",
     });
   });
 

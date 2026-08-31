@@ -11,7 +11,9 @@ if (!container) throw new Error("Slopsplorer could not find its mount point");
 const contextElement = document.querySelector("#slopsplorer-snapshot-context");
 if (contextElement === null) throw new Error("Slopsplorer could not find its snapshot context");
 const context = JSON.parse(contextElement.textContent ?? "") as unknown;
-if (typeof context !== "object" || context === null || !("backlink" in context)) {
+if (typeof context !== "object" || context === null
+  || !("backlink" in context) || !("reproductionCommand" in context)
+  || typeof context.reproductionCommand !== "string") {
   throw new Error("Slopsplorer received an invalid snapshot context");
 }
 const backlink = context.backlink;
@@ -25,10 +27,17 @@ function isSnapshotBacklink(value: unknown): value is SnapshotBacklink {
     && "url" in value && typeof value.url === "string";
 }
 
-const snapshotContext: SnapshotContext = { backlink };
+const snapshotContext: SnapshotContext = {
+  backlink,
+  reproductionCommand: context.reproductionCommand,
+};
 
 createRoot(container).render(
   <StrictMode>
-    <App runtime={createSnapshotRuntime()} backlink={snapshotContext.backlink} />
+    <App
+      runtime={createSnapshotRuntime()}
+      backlink={snapshotContext.backlink}
+      reproductionCommand={snapshotContext.reproductionCommand}
+    />
   </StrictMode>,
 );

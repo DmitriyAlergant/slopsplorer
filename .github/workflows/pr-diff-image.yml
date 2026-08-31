@@ -33,26 +33,27 @@ jobs:
       - run: npm ci --ignore-scripts
       - run: npm run build
 
-      - name: Export the pull request comparison
+      - name: Capture the top-level diff image
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]]
           [[ "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
-          node dist/node/cli.js --export "$RUNNER_TEMP/slopsplorer-export" "$BASE_SHA...$HEAD_SHA"
-
-      - name: Capture the top-level diff image
-        run: |
-          python3 -m http.server 4173 --bind 127.0.0.1 --directory "$RUNNER_TEMP/slopsplorer-export" >"$RUNNER_TEMP/slopsplorer-http.log" 2>&1 &
+          node dist/node/cli.js \
+            --host 127.0.0.1 \
+            --port 4173 \
+            --no-open \
+            "$BASE_SHA...$HEAD_SHA" \
+            >"$RUNNER_TEMP/slopsplorer-server.log" 2>&1 &
           server_pid=$!
           trap 'kill "$server_pid"' EXIT
-          for attempt in {1..20}; do
+          for attempt in {1..80}; do
             if curl --fail --silent http://127.0.0.1:4173/ >/dev/null; then
               break
             fi
-            if [[ "$attempt" -eq 20 ]]; then
-              cat "$RUNNER_TEMP/slopsplorer-http.log"
+            if [[ "$attempt" -eq 80 ]]; then
+              cat "$RUNNER_TEMP/slopsplorer-server.log"
               exit 1
             fi
             sleep 0.25
@@ -63,11 +64,17 @@ jobs:
             --disable-gpu \
             --hide-scrollbars \
             --force-device-scale-factor=2 \
-            --window-size=1021,731 \
-            --timeout=10000 \
-            --run-all-compositor-stages-before-draw \
-            --screenshot="$RUNNER_TEMP/pr-diff.png" \
-            http://127.0.0.1:4173/?prefs=1
+            --window-size=1440,900 \
+            --remote-debugging-port=9222 \
+            --user-data-dir="$RUNNER_TEMP/slopsplorer-chrome-profile" \
+            http://127.0.0.1:4173/?prefs=1 \
+            >"$RUNNER_TEMP/slopsplorer-chrome.log" 2>&1 &
+          chrome_pid=$!
+          trap 'kill "$chrome_pid" "$server_pid"' EXIT
+          node .github/scripts/capture-pr-diff-image.mjs \
+            http://127.0.0.1:9222 \
+            http://127.0.0.1:4173/?prefs=1 \
+            "$RUNNER_TEMP/pr-diff.png"
           test "$(file --brief --mime-type "$RUNNER_TEMP/pr-diff.png")" = "image/png"
           IMAGE_PATH="$RUNNER_TEMP/pr-diff.png" node --input-type=module <<'NODE'
           import { open } from "node:fs/promises";
@@ -79,8 +86,8 @@ jobs:
               throw new Error("capture is not a PNG");
             }
             const dimensions = [header.readUInt32BE(16), header.readUInt32BE(20)];
-            if (dimensions[0] !== 2042 || dimensions[1] !== 1462) {
-              throw new Error(`capture is ${dimensions.join("x")}, expected 2042x1462`);
+            if (dimensions[0] !== 2880 || dimensions[1] < 1800 || dimensions[1] > 8192) {
+              throw new Error(`capture dimensions are outside the accepted range: ${dimensions.join("x")}`);
             }
           } finally {
             await file.close();

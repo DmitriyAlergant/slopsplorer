@@ -1,9 +1,10 @@
+import { Fragment } from "react";
 import type { Aspect, FileRow, Measure, MeasuredMetric, RankMetric } from "../../shared/api.ts";
 import {
   FLAVOR_DETAILS, aspectHeading, measureAbbreviation, rankMetricsFor, weightField,
 } from "../../shared/api.ts";
 import { pathRelativeTo } from "../displayPath.ts";
-import { count, percent, signed, statusLetter, statusName } from "../format.ts";
+import { changePercent, count, percent, signed, statusLetter, statusName } from "../format.ts";
 import { CopyPathButton } from "./CopyPathButton.tsx";
 import { SortCaret } from "./SortCaret.tsx";
 import { Tooltip, tooltipHandlers } from "./Tooltip.tsx";
@@ -33,15 +34,13 @@ interface Props {
  * field is resolved per request rather than fixed in a table.
  */
 const PLAIN_COLUMNS: Readonly<Record<
-  "tokens" | "lines" | "codeLines" | "commentLines" | "functions" | "branches",
-  { label: string; field: "tokens" | "lines" | "codeLines" | "commentLines" | "functions" | "branches" }
+  "tokens" | "lines" | "codeLines" | "commentLines",
+  { label: string; field: "tokens" | "lines" | "codeLines" | "commentLines" }
 >> = {
   tokens: { label: "Tokens", field: "tokens" },
   lines: { label: "Lines", field: "lines" },
   codeLines: { label: "LOC", field: "codeLines" },
   commentLines: { label: "Comment", field: "commentLines" },
-  functions: { label: "Fn", field: "functions" },
-  branches: { label: "Branch", field: "branches" },
 };
 
 /** Heading and value resolver for one drawn column. */
@@ -73,8 +72,12 @@ function describeColumn(metric: MeasuredMetric, measure: Measure): Column {
   }
 }
 
-/** Structure counts are absent rather than zero for a file no grammar parsed. */
-const STRUCTURE_METRICS: ReadonlySet<RankMetric> = new Set<RankMetric>(["functions", "branches"]);
+/** Exact before-image field for the unit carried by the diff columns. */
+const BEFORE_FIELDS: Readonly<Record<Measure, "beforeTokens" | "beforeLines" | "beforeCodeLines">> = {
+  tokens: "beforeTokens",
+  lines: "beforeLines",
+  codeLines: "beforeCodeLines",
+};
 
 /** The metrics table of the folder panel: one row for each file of the selection. */
 export function FileTable({
@@ -113,6 +116,7 @@ export function FileTable({
               <th
                 key={metric}
                 scope="col"
+                colSpan={metric === "churn" || metric === "net" ? 2 : 1}
                 data-active={activeMetric === metric}
                 aria-sort={sort === metric ? "descending" : "none"}
               >
@@ -170,22 +174,28 @@ export function FileTable({
                 </td>
                 {columns.map(({ metric, value, isSigned }) => {
                   const raw = value(file);
-                  const cell = STRUCTURE_METRICS.has(metric) && file.language === null
-                    ? "-"
-                    : isSigned ? signed(raw) : count(raw);
+                  const cell = isSigned ? signed(raw) : count(raw);
                   const marks = {
                     "data-active": activeMetric === metric,
                     "data-sorted": sort === metric,
                     ...(isSigned ? { "data-sign": raw < 0 ? "negative" : raw > 0 ? "positive" : "zero" } : {}),
                   };
+                  const relativeAspect = metric === "churn" || metric === "net" ? metric : null;
                   return metric === "commentLines" ? (
                     <td key={metric} {...marks} {...tooltipHandlers}>
                       {cell}
                       <Tooltip compact>{`${percent(commentShare)} of lines are comment`}</Tooltip>
                       {commentShare >= 0.4 && file.lines >= 40 ? <i className="dot" aria-hidden="true" /> : null}
                     </td>
-                  ) : (
+                  ) : relativeAspect === null ? (
                     <td key={metric} {...marks}>{cell}</td>
+                  ) : (
+                    <Fragment key={metric}>
+                      <td {...marks}>{cell}</td>
+                      <td className="metrics__change-percent">
+                        ({changePercent(relativeAspect, raw, file[BEFORE_FIELDS[measure]])})
+                      </td>
+                    </Fragment>
                   );
                 })}
               </tr>

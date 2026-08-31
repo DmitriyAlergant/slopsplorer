@@ -8,7 +8,8 @@ The command refuses a non-empty destination, so it never deletes or mixes with f
 
 The snapshot is fixed at export time.
 It cannot rescan, open another folder, open a local application, change a comparison, install the local skill, or run a local coding agent.
-A commit band is read-only because another span needs another measured index.
+A commit band cannot open another span because that span needs another measured index.
+Its selectors open `StaticSpineDialog`, which gives the reader three commands to install Slopsplorer, enter a generic checkout path that ends in the exported repository name, and reproduce the comparison.
 
 ## Command flow
 
@@ -28,7 +29,7 @@ The export step starts no server and invokes no deployment command.
 
 The Vite build has a live entry and a snapshot entry.
 The exporter copies the built client and makes `snapshot.html` the exported `index.html`.
-It replaces the snapshot context placeholder with escaped JSON that holds the optional review backlink.
+It replaces the snapshot context placeholder with escaped JSON that holds the optional review backlink and the local reproduction command.
 `snapshotMain.tsx` validates that context before it starts React.
 
 `data/index.json` holds `ScanMeta`, every measured `FileRow`, and the folder list.
@@ -70,7 +71,8 @@ When the context holds a backlink, the header also shows a compact link to the p
 ## Pull request image
 
 This repository renders its own pull request diff through `.github/workflows/pr-diff-image.yml`.
-The workflow exports the merge-base comparison at the pull request head, serves the static bundle, and captures the top-level view as a PNG.
+The workflow serves the merge-base comparison at the pull request head and captures the full top-level view through a 1440 by 900 desktop viewport after the page proves that its diff response rendered.
+This width keeps the source tree and folder detail beside each other and leaves the heat map visible in the full-page image.
 It runs pull request code with read-only repository access and uploads the PNG as an Actions artifact.
 
 `.github/workflows/publish-pr-diff-image.yml` runs after a successful render on the default branch.

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ComparisonRequest, DiffMeta, ScanMeta } from "../src/shared/api.ts";
-import { aspectFigure, comparisonLabel, countOf, documentTitle, figureWidth, shortRevision } from "../src/web/format.ts";
+import { aspectFigure, changePercent, comparisonLabel, countOf, documentTitle, figureWidth, shortRevision } from "../src/web/format.ts";
 
 const FULL_SHA = "87d1e8b76cece130474a7fcc6093528f3c20cd4c";
 
@@ -157,5 +157,18 @@ describe("aspectFigure", () => {
   it("leaves churn and the after-image as plain counts", () => {
     expect(aspectFigure("churn", 2400)).toEqual({ text: "2,400", sign: "none" });
     expect(aspectFigure("after", 2400)).toEqual({ text: "2,400", sign: "none" });
+  });
+});
+
+describe("changePercent", () => {
+  it("states churn and signed net against the before image", () => {
+    expect(changePercent("churn", 2811, 56_220)).toBe("5.0%");
+    expect(changePercent("net", 2781, 56_220)).toBe("+4.9%");
+    expect(changePercent("net", -2781, 56_220)).toBe("-4.9%");
+  });
+
+  it("names a change with no before image as new", () => {
+    expect(changePercent("net", 12, 0)).toBe("new");
+    expect(changePercent("churn", 0, 0)).toBe("0.0%");
   });
 });

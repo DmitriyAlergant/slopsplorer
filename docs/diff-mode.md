@@ -163,6 +163,12 @@ Each file in a diff has two contents, so each measure yields two numbers: what t
 
 Both identities hold for every measure, and `tests/diff-scan.test.ts` pins them for every file of a fixture.
 
+The page orders the four aspects as Added, Removed, Churn, and Net in the selector, readout strips, and file table.
+Each Churn and Net file cell also states its percentage of that file's exact before-image total.
+The total strips use separate Churn % and Net % readouts against the current filtered scope and omit the file-count readout.
+Net keeps its sign, and no percentage is a separate sortable metric.
+A file or scope with no before image reads `new` because a percentage of zero is undefined.
+
 Net tokens is therefore not the same number as `tokens(after) - tokens(before)`.
 A tokenizer reads the seam between a changed line and the unchanged line above it, so the two differ by a little.
 The identity is worth more than the seam.
@@ -283,7 +289,8 @@ It comes second because it is the switch that appears and goes away, so the unit
 The switch lists the four sides in the order of `ASPECTS`, which is the order the file tables draw them in, and a page opens on net.
 A second widget that could also set it would give the page two owners of what it counts.
 
-Every numeric column of `FileTable` is a `RankMetric`, and the diff columns are the five aspects plus the two structure counts.
+Every numeric column of `FileTable` is a `RankMetric`, and the diff columns are the four aspects.
+The scanner still measures functions and branches for analysis, but `FileTable` does not present them.
 Sorting one of the aspect columns chooses the aspect, exactly as sorting a measured column chooses the measure.
 `rankMetricsFor()` decides which set a mode draws, and `buildView()` clamps a metric the open index cannot draw and echoes what it used.
 

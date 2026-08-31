@@ -58,10 +58,10 @@ describe("primary measure URL state", () => {
   });
 
   it("marks a sorted column outside the defaults as a complete preference state", () => {
-    const request = readRequest("?rank=functions");
-    expect(request.rank.metric).toBe("functions");
+    const request = readRequest("?rank=commentLines");
+    expect(request.rank.metric).toBe("commentLines");
     const written = writeRequest(request);
-    expect(written).toContain("rank=functions");
+    expect(written).toContain("rank=commentLines");
     expect(written).toContain("prefs=1");
 
     const defaulted = readRequest("?rank=classes");

@@ -79,7 +79,7 @@ export type Aspect = "added" | "removed" | "churn" | "net" | "after";
 
 /**
  * The sides a comparison offers, ordered as the change reads: what it put in,
- * what it took out, what that leaves, and what it cost.
+ * what it took out, how much it touched, and what that leaves.
  *
  * The switch in the filter bar, the aspect columns of the file tables, and the
  * readout strips all follow this order, so the page presents the four sides in
@@ -87,7 +87,7 @@ export type Aspect = "added" | "removed" | "churn" | "net" | "after";
  * to, and a review answers "how large is this now" about the whole repository
  * in its After view, not about the files a change happened to touch.
  */
-export const ASPECTS: readonly Aspect[] = ["added", "removed", "net", "churn"];
+export const ASPECTS: readonly Aspect[] = ["added", "removed", "churn", "net"];
 
 /**
  * A numeric `FileRow` field a weight can be read from.
@@ -268,8 +268,6 @@ export type RankMetric =
   | "lines"
   | "codeLines"
   | "commentLines"
-  | "functions"
-  | "branches"
   | Aspect;
 
 /** Every sortable column that holds a figure, which is all of them but the file name. */
@@ -277,12 +275,12 @@ export type MeasuredMetric = Exclude<RankMetric, "name">;
 
 /** Columns a scan draws. Every one is a plain numeric field of `FileRow`. */
 export const SCAN_RANK_METRICS: readonly MeasuredMetric[] = [
-  "tokens", "lines", "codeLines", "commentLines", "functions", "branches",
+  "tokens", "lines", "codeLines", "commentLines",
 ];
 
 /** Columns a diff draws. The aspect columns are `ASPECTS`, in its order. */
 export const DIFF_RANK_METRICS: readonly MeasuredMetric[] = [
-  ...ASPECTS, "functions", "branches",
+  ...ASPECTS,
 ];
 
 export const RANK_METRICS: readonly RankMetric[] = ["name", ...SCAN_RANK_METRICS, ...ASPECTS];
@@ -339,6 +337,10 @@ export interface FileRow {
   /** Non-blank lines whose entire content is comment. */
   commentLines: number;
   blankLines: number;
+  /** Exact before-image totals, used as the baseline for relative change. */
+  beforeTokens: number;
+  beforeLines: number;
+  beforeCodeLines: number;
   addedTokens: number;
   removedTokens: number;
   churnTokens: number;
@@ -356,7 +358,7 @@ export interface FileRow {
   /** Physical lines the change touched, blank ones included. Matches `git diff --numstat`. */
   addedPhysicalLines: number;
   removedPhysicalLines: number;
-  /** After-image structure counts. A whole-file fact, so it never splits by aspect. */
+  /** After-image structure counts. Measured for analysis but not drawn in the file table. */
   functions: number;
   classes: number;
   branches: number;
@@ -488,6 +490,9 @@ export interface DetailView {
   tokens: number;
   lines: number;
   codeLines: number;
+  beforeTokens: number;
+  beforeLines: number;
+  beforeCodeLines: number;
   churnTokens: number;
   churnLines: number;
   churnCodeLines: number;
@@ -550,6 +555,9 @@ export interface SummaryView {
   selectedTokens: number;
   selectedLines: number;
   selectedCodeLines: number;
+  selectedBeforeTokens: number;
+  selectedBeforeLines: number;
+  selectedBeforeCodeLines: number;
   selectedChurnTokens: number;
   selectedChurnLines: number;
   selectedChurnCodeLines: number;
@@ -629,6 +637,8 @@ export interface SnapshotBacklink {
 /** Data embedded in the static entry page before its client starts. */
 export interface SnapshotContext {
   backlink: SnapshotBacklink | null;
+  /** Local command that rebuilds the snapshot's original scan or comparison. */
+  reproductionCommand: string;
 }
 
 /** Bounds on the tile row, applied by the panel that measures it and by the server. */
