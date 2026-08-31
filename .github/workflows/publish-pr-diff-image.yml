@@ -82,9 +82,7 @@ jobs:
               throw new Error("artifact is not a PNG");
             }
             const dimensions = [header.readUInt32BE(16), header.readUInt32BE(20)];
-            const isCurrentSize = dimensions[0] === 2042 && dimensions[1] >= 1462 && dimensions[1] <= 8192;
-            const isDesktopSize = dimensions[0] === 2880 && dimensions[1] >= 1800 && dimensions[1] <= 8192;
-            if (!isCurrentSize && !isDesktopSize) {
+            if (dimensions[0] !== 2880 || dimensions[1] < 1800 || dimensions[1] > 8192) {
               throw new Error(`artifact dimensions are outside the accepted range: ${dimensions.join("x")}`);
             }
           } finally {

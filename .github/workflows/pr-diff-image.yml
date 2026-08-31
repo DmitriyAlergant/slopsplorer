@@ -64,7 +64,7 @@ jobs:
             --disable-gpu \
             --hide-scrollbars \
             --force-device-scale-factor=2 \
-            --window-size=1021,731 \
+            --window-size=1440,900 \
             --remote-debugging-port=9222 \
             --user-data-dir="$RUNNER_TEMP/slopsplorer-chrome-profile" \
             http://127.0.0.1:4173/?prefs=1 \
@@ -86,7 +86,7 @@ jobs:
               throw new Error("capture is not a PNG");
             }
             const dimensions = [header.readUInt32BE(16), header.readUInt32BE(20)];
-            if (dimensions[0] !== 2042 || dimensions[1] < 1462 || dimensions[1] > 8192) {
+            if (dimensions[0] !== 2880 || dimensions[1] < 1800 || dimensions[1] > 8192) {
               throw new Error(`capture dimensions are outside the accepted range: ${dimensions.join("x")}`);
             }
           } finally {

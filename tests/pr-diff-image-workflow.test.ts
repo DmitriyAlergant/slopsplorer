@@ -20,7 +20,9 @@ describe("pull request diff image workflows", () => {
     expect(workflow).toContain("slopsplorer-pr-diff-image");
     expect(workflow).toContain("capture-pr-diff-image.mjs");
     expect(workflow).not.toContain("--screenshot=");
-    expect(workflow).toContain("dimensions[1] < 1462 || dimensions[1] > 8192");
+    expect(workflow).toContain("--window-size=1440,900");
+    expect(workflow).toContain("dimensions[0] !== 2880");
+    expect(workflow).toContain("dimensions[1] < 1800 || dimensions[1] > 8192");
 
     const captureScript = await readFile(
       new URL("../.github/scripts/capture-pr-diff-image.mjs", import.meta.url),
@@ -28,6 +30,8 @@ describe("pull request diff image workflows", () => {
     );
     expect(captureScript).toContain('document.title.endsWith(" - Slopsplorer diff")');
     expect(captureScript).toContain('document.querySelector(".spine--pending") === null');
+    expect(captureScript).toContain("width: 1440");
+    expect(captureScript).toContain("height: 900");
     expect(captureScript).toContain("Page.getLayoutMetrics");
     expect(captureScript).toContain("Page.captureScreenshot");
     expect(captureScript).toContain("captureBeyondViewport: true");
@@ -48,8 +52,8 @@ describe("pull request diff image workflows", () => {
     expect(workflow).not.toContain("actions/checkout");
     expect(workflow).toContain("${{ runner.temp }}/slopsplorer-pr-diff-artifact");
     expect(workflow).toContain('test ! -L "$ARTIFACT_ROOT/pr-diff.png"');
-    expect(workflow).toContain("dimensions[0] === 2042 && dimensions[1] >= 1462 && dimensions[1] <= 8192");
-    expect(workflow).toContain("dimensions[0] === 2880 && dimensions[1] >= 1800 && dimensions[1] <= 8192");
+    expect(workflow).toContain("dimensions[0] !== 2880");
+    expect(workflow).toContain("dimensions[1] < 1800 || dimensions[1] > 8192");
     expect(workflow).toContain("secrets.TIGRIS_ACCESS_KEY_ID");
     expect(workflow).toContain("secrets.TIGRIS_SECRET_ACCESS_KEY");
     expect(workflow).toContain("vars.TIGRIS_BUCKET");

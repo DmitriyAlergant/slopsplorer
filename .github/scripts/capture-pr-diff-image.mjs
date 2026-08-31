@@ -56,8 +56,8 @@ function command(method, params = {}) {
 try {
   await command("Runtime.enable");
   await command("Emulation.setDeviceMetricsOverride", {
-    width: 1021,
-    height: 731,
+    width: 1440,
+    height: 900,
     deviceScaleFactor: 2,
     mobile: false,
   });
@@ -90,14 +90,14 @@ try {
   });
   const layout = await command("Page.getLayoutMetrics");
   const contentHeight = Math.ceil(layout.cssContentSize.height);
-  if (contentHeight < 731 || contentHeight > 4096) {
+  if (contentHeight < 900 || contentHeight > 4096) {
     throw new Error(`the rendered page height is outside the accepted range: ${contentHeight}`);
   }
   const capture = await command("Page.captureScreenshot", {
     format: "png",
     fromSurface: true,
     captureBeyondViewport: true,
-    clip: { x: 0, y: 0, width: 1021, height: contentHeight, scale: 1 },
+    clip: { x: 0, y: 0, width: 1440, height: contentHeight, scale: 1 },
   });
   await writeFile(outputPath, Buffer.from(capture.data, "base64"));
 } finally {
