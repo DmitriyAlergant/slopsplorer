@@ -1,0 +1,194 @@
+# Publishes only the PNG produced by the read-only renderer.
+# It never checks out or executes pull request code, because this workflow has a writable token.
+name: Publish PR diff image
+
+on:
+  workflow_run:
+    workflows: ["PR diff image"]
+    types: [completed]
+  schedule:
+    - cron: "17 5 * * *"
+
+permissions:
+  actions: read
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: publish-pr-diff-images
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: >-
+      github.event_name == 'workflow_run' &&
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve the current pull request head
+        id: pull_request
+        env:
+          EVENT_PR_NUMBER: ${{ github.event.workflow_run.pull_requests[0].number }}
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          [[ "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
+          pr_number="$EVENT_PR_NUMBER"
+          if [[ ! "$pr_number" =~ ^[1-9][0-9]*$ ]]; then
+            pr_number="$(gh api "repos/$GITHUB_REPOSITORY/commits/$HEAD_SHA/pulls" --jq 'map(select(.state == "open")) | first | .number // empty')"
+          fi
+          [[ "$pr_number" =~ ^[1-9][0-9]*$ ]]
+          pull_request="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$pr_number")"
+          current_head="$(jq -r '.head.sha' <<<"$pull_request")"
+          state="$(jq -r '.state' <<<"$pull_request")"
+          if [[ "$state" != "open" || "$current_head" != "$HEAD_SHA" ]]; then
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "PR #$pr_number no longer points at $HEAD_SHA; leaving its current image in place."
+            exit 0
+          fi
+          echo "publish=true" >> "$GITHUB_OUTPUT"
+          echo "number=$pr_number" >> "$GITHUB_OUTPUT"
+
+      - name: Download the render artifact
+        if: steps.pull_request.outputs.publish == 'true'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: slopsplorer-pr-diff-image
+          path: ${{ runner.temp }}/slopsplorer-pr-diff-artifact
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.event.workflow_run.id }}
+
+      - name: Validate the inert image
+        if: steps.pull_request.outputs.publish == 'true'
+        env:
+          ARTIFACT_ROOT: ${{ runner.temp }}/slopsplorer-pr-diff-artifact
+        run: |
+          test "$(find "$ARTIFACT_ROOT" -mindepth 1 | wc -l)" -eq 1
+          test -f "$ARTIFACT_ROOT/pr-diff.png"
+          test ! -L "$ARTIFACT_ROOT/pr-diff.png"
+          IMAGE_PATH="$ARTIFACT_ROOT/pr-diff.png" node --input-type=module <<'NODE'
+          import { open, stat } from "node:fs/promises";
+          const metadata = await stat(process.env.IMAGE_PATH);
+          if (!metadata.isFile() || metadata.size < 24 || metadata.size > 10 * 1024 * 1024) {
+            throw new Error(`artifact size is outside the accepted range: ${metadata.size}`);
+          }
+          const file = await open(process.env.IMAGE_PATH, "r");
+          try {
+            const header = Buffer.alloc(24);
+            await file.read(header, 0, header.length, 0);
+            if (!header.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) {
+              throw new Error("artifact is not a PNG");
+            }
+            const dimensions = [header.readUInt32BE(16), header.readUInt32BE(20)];
+            if (dimensions[0] !== 2042 || dimensions[1] !== 1462) {
+              throw new Error(`artifact is ${dimensions.join("x")}, expected 2042x1462`);
+            }
+          } finally {
+            await file.close();
+          }
+          NODE
+
+      - name: Upload the private image and sign its URL
+        if: steps.pull_request.outputs.publish == 'true'
+        id: image
+        env:
+          ARTIFACT_ROOT: ${{ runner.temp }}/slopsplorer-pr-diff-artifact
+          AWS_ACCESS_KEY_ID: ${{ secrets.TIGRIS_ACCESS_KEY_ID }}
+          AWS_DEFAULT_REGION: auto
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.TIGRIS_SECRET_ACCESS_KEY }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          PR_NUMBER: ${{ steps.pull_request.outputs.number }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          TIGRIS_BUCKET: ${{ vars.TIGRIS_BUCKET }}
+        run: |
+          [[ "$RUN_ID" =~ ^[1-9][0-9]*$ ]]
+          image_path="pr-$PR_NUMBER.png"
+          api_url="https://$TIGRIS_BUCKET.t3.storage.dev/$image_path"
+          curl --fail-with-body --silent --show-error \
+            --aws-sigv4 'aws:amz:auto:s3' \
+            --user "$AWS_ACCESS_KEY_ID:$AWS_SECRET_ACCESS_KEY" \
+            --request PUT \
+            --header 'Content-Type: image/png' \
+            --header 'Cache-Control: public, max-age=604800, immutable' \
+            --header "x-amz-meta-github-repository: $GITHUB_REPOSITORY" \
+            --header "x-amz-meta-head-sha: $HEAD_SHA" \
+            --header "x-amz-meta-pull-request: $PR_NUMBER" \
+            --header "x-amz-meta-workflow-run: $RUN_ID" \
+            --upload-file "$ARTIFACT_ROOT/pr-diff.png" \
+            "$api_url"
+          image_url="$(aws s3 presign "s3://$TIGRIS_BUCKET/$image_path" \
+            --endpoint-url https://t3.storage.dev \
+            --region auto \
+            --expires-in 604800)"
+          test "$(curl --fail --silent --output /dev/null --write-out '%{http_code}' "$image_url")" = 200
+          echo "url=$image_url" >> "$GITHUB_OUTPUT"
+
+      - name: Create or replace the pull request comment
+        if: steps.pull_request.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          IMAGE_URL: ${{ steps.image.outputs.url }}
+          PR_NUMBER: ${{ steps.pull_request.outputs.number }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.event.workflow_run.id }}
+        run: |
+          marker='<!-- slopsplorer-pr-diff-image -->'
+          body="$(printf '%s\n\n![Slopsplorer top-level analysis of PR #%s](%s)\n\nTop-level token-weighted diff for commit `%s`, produced by [this workflow run](%s).\n' "$marker" "$PR_NUMBER" "$IMAGE_URL" "$HEAD_SHA" "$RUN_URL")"
+          comment_id="$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments?per_page=100" \
+            --jq 'map(select(.user.login == "github-actions[bot]" and (.body | contains("<!-- slopsplorer-pr-diff-image -->")))) | first | .id // empty')"
+          if [[ -n "$comment_id" ]]; then
+            jq -n --arg body "$body" '{body: $body}' \
+              | gh api --method PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$comment_id" --input - >/dev/null
+          else
+            jq -n --arg body "$body" '{body: $body}' \
+              | gh api --method POST "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" --input - >/dev/null
+          fi
+
+  refresh:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Refresh open pull request image URLs
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.TIGRIS_ACCESS_KEY_ID }}
+          AWS_DEFAULT_REGION: auto
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.TIGRIS_SECRET_ACCESS_KEY }}
+          GH_TOKEN: ${{ github.token }}
+          TIGRIS_BUCKET: ${{ vars.TIGRIS_BUCKET }}
+        run: |
+          marker='<!-- slopsplorer-pr-diff-image -->'
+          gh api --paginate "repos/$GITHUB_REPOSITORY/pulls?state=open&per_page=100" \
+            --jq '.[] | [.number, .head.sha] | @tsv' \
+            | while IFS=$'\t' read -r pr_number current_head; do
+              [[ "$pr_number" =~ ^[1-9][0-9]*$ ]]
+              [[ "$current_head" =~ ^[0-9a-f]{40}$ ]]
+              comment_id="$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$pr_number/comments?per_page=100" \
+                --jq 'select(.user.login == "github-actions[bot]" and (.body | contains("<!-- slopsplorer-pr-diff-image -->"))) | .id' \
+                | tail -n 1)"
+              if [[ -z "$comment_id" ]]; then
+                continue
+              fi
+              image_path="pr-$pr_number.png"
+              if ! object="$(aws s3api head-object \
+                --endpoint-url https://t3.storage.dev \
+                --bucket "$TIGRIS_BUCKET" \
+                --key "$image_path")"; then
+                continue
+              fi
+              image_head="$(jq -r '.Metadata["head-sha"] // empty' <<<"$object")"
+              run_id="$(jq -r '.Metadata["workflow-run"] // empty' <<<"$object")"
+              if [[ "$image_head" != "$current_head" || ! "$run_id" =~ ^[1-9][0-9]*$ ]]; then
+                continue
+              fi
+              image_url="$(aws s3 presign "s3://$TIGRIS_BUCKET/$image_path" \
+                --endpoint-url https://t3.storage.dev \
+                --region auto \
+                --expires-in 604800)"
+              test "$(curl --fail --silent --output /dev/null --write-out '%{http_code}' "$image_url")" = 200
+              run_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$run_id"
+              body="$(printf '%s\n\n![Slopsplorer top-level analysis of PR #%s](%s)\n\nTop-level token-weighted diff for commit `%s`, produced by [this workflow run](%s).\n' "$marker" "$pr_number" "$image_url" "$current_head" "$run_url")"
+              jq -n --arg body "$body" '{body: $body}' \
+                | gh api --method PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$comment_id" --input - >/dev/null
+            done
