@@ -66,3 +66,18 @@ React clears the notice on its first render, so a served page never draws it.
 Snapshot capability checks remove remeasure, root editing, local application controls, comparison picking, agent controls, and skill installation.
 The header names the page as a static snapshot and shows the root name instead of a local path.
 When the context holds a backlink, the header also shows a compact link to the pull request or merge request.
+
+## Pull request image
+
+This repository renders its own pull request diff through `.github/workflows/pr-diff-image.yml`.
+The workflow exports the merge-base comparison at the pull request head, serves the static bundle, and captures the top-level view as a PNG.
+It runs pull request code with read-only repository access and uploads the PNG as an Actions artifact.
+
+`.github/workflows/publish-pr-diff-image.yml` runs after a successful render on the default branch.
+It does not check out or execute pull request code.
+It accepts one bounded regular PNG from the artifact, uploads private `pr-<number>.png` to the dedicated Tigris bucket, and creates or replaces one marked pull request comment with a seven-day presigned URL.
+The bucket credentials exist only in the trusted upload and refresh steps and cannot reach the pull request renderer.
+The object metadata and comment name the producing workflow run, so a fork-controlled render retains its pull request, head, artifact, publisher, object, and comment audit trail.
+It refuses a completed render when the pull request has moved to another head, so an older workflow cannot replace a newer image.
+A daily schedule renews the maximum-length presigned URL for every open pull request whose stored head metadata still matches its current head.
+The Tigris response allows cross-origin image reads, and the object cache lifetime matches the seven-day signature lifetime.

@@ -1,0 +1,96 @@
+# Renders pull request code with a read-only token, including changes from forks.
+# The trusted publisher runs only after this workflow finishes and treats its artifact as inert data.
+name: PR diff image
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-diff-image-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the pull request head
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          cache: npm
+
+      - run: npm ci --ignore-scripts
+      - run: npm run build
+
+      - name: Export the pull request comparison
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
+          node dist/node/cli.js --export "$RUNNER_TEMP/slopsplorer-export" "$BASE_SHA...$HEAD_SHA"
+
+      - name: Capture the top-level diff image
+        run: |
+          python3 -m http.server 4173 --bind 127.0.0.1 --directory "$RUNNER_TEMP/slopsplorer-export" >"$RUNNER_TEMP/slopsplorer-http.log" 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid"' EXIT
+          for attempt in {1..20}; do
+            if curl --fail --silent http://127.0.0.1:4173/ >/dev/null; then
+              break
+            fi
+            if [[ "$attempt" -eq 20 ]]; then
+              cat "$RUNNER_TEMP/slopsplorer-http.log"
+              exit 1
+            fi
+            sleep 0.25
+          done
+          google-chrome \
+            --headless=new \
+            --no-sandbox \
+            --disable-gpu \
+            --hide-scrollbars \
+            --force-device-scale-factor=2 \
+            --window-size=1021,731 \
+            --timeout=10000 \
+            --run-all-compositor-stages-before-draw \
+            --screenshot="$RUNNER_TEMP/pr-diff.png" \
+            http://127.0.0.1:4173/?prefs=1
+          test "$(file --brief --mime-type "$RUNNER_TEMP/pr-diff.png")" = "image/png"
+          IMAGE_PATH="$RUNNER_TEMP/pr-diff.png" node --input-type=module <<'NODE'
+          import { open } from "node:fs/promises";
+          const file = await open(process.env.IMAGE_PATH, "r");
+          try {
+            const header = Buffer.alloc(24);
+            await file.read(header, 0, header.length, 0);
+            if (!header.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) {
+              throw new Error("capture is not a PNG");
+            }
+            const dimensions = [header.readUInt32BE(16), header.readUInt32BE(20)];
+            if (dimensions[0] !== 2042 || dimensions[1] !== 1462) {
+              throw new Error(`capture is ${dimensions.join("x")}, expected 2042x1462`);
+            }
+          } finally {
+            await file.close();
+          }
+          NODE
+
+      - name: Upload the rendered image
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: slopsplorer-pr-diff-image
+          path: ${{ runner.temp }}/pr-diff.png
+          if-no-files-found: error
+          retention-days: 7
