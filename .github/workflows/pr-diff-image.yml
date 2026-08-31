@@ -86,8 +86,8 @@ jobs:
               throw new Error("capture is not a PNG");
             }
             const dimensions = [header.readUInt32BE(16), header.readUInt32BE(20)];
-            if (dimensions[0] !== 2042 || dimensions[1] !== 1462) {
-              throw new Error(`capture is ${dimensions.join("x")}, expected 2042x1462`);
+            if (dimensions[0] !== 2042 || dimensions[1] < 1462 || dimensions[1] > 8192) {
+              throw new Error(`capture dimensions are outside the accepted range: ${dimensions.join("x")}`);
             }
           } finally {
             await file.close();

@@ -20,6 +20,7 @@ describe("pull request diff image workflows", () => {
     expect(workflow).toContain("slopsplorer-pr-diff-image");
     expect(workflow).toContain("capture-pr-diff-image.mjs");
     expect(workflow).not.toContain("--screenshot=");
+    expect(workflow).toContain("dimensions[1] < 1462 || dimensions[1] > 8192");
 
     const captureScript = await readFile(
       new URL("../.github/scripts/capture-pr-diff-image.mjs", import.meta.url),
@@ -27,7 +28,9 @@ describe("pull request diff image workflows", () => {
     );
     expect(captureScript).toContain('document.title.endsWith(" - Slopsplorer diff")');
     expect(captureScript).toContain('document.querySelector(".spine--pending") === null');
+    expect(captureScript).toContain("Page.getLayoutMetrics");
     expect(captureScript).toContain("Page.captureScreenshot");
+    expect(captureScript).toContain("captureBeyondViewport: true");
   });
 
   it("publishes only a completed render artifact without executing it", async () => {
