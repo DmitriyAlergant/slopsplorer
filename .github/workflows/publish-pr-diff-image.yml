@@ -104,7 +104,7 @@ jobs:
           TIGRIS_BUCKET: ${{ vars.TIGRIS_BUCKET }}
         run: |
           [[ "$RUN_ID" =~ ^[1-9][0-9]*$ ]]
-          image_path="pr-$PR_NUMBER.png"
+          image_path="pr-$PR_NUMBER-$HEAD_SHA.png"
           api_url="https://$TIGRIS_BUCKET.t3.storage.dev/$image_path"
           curl --fail-with-body --silent --show-error \
             --aws-sigv4 'aws:amz:auto:s3' \
@@ -170,7 +170,7 @@ jobs:
               if [[ -z "$comment_id" ]]; then
                 continue
               fi
-              image_path="pr-$pr_number.png"
+              image_path="pr-$pr_number-$current_head.png"
               if ! object="$(aws s3api head-object \
                 --endpoint-url https://t3.storage.dev \
                 --bucket "$TIGRIS_BUCKET" \

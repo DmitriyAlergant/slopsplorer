@@ -75,7 +75,7 @@ It runs pull request code with read-only repository access and uploads the PNG a
 
 `.github/workflows/publish-pr-diff-image.yml` runs after a successful render on the default branch.
 It does not check out or execute pull request code.
-It accepts one bounded regular PNG from the artifact, uploads private `pr-<number>.png` to the dedicated Tigris bucket, and creates or replaces one marked pull request comment with a seven-day presigned URL.
+It accepts one bounded regular PNG from the artifact, uploads private `pr-<number>-<head>.png` to the dedicated Tigris bucket, and creates or replaces one marked pull request comment with a seven-day presigned URL.
 The bucket credentials exist only in the trusted upload and refresh steps and cannot reach the pull request renderer.
 The object metadata and comment name the producing workflow run, so a fork-controlled render retains its pull request, head, artifact, publisher, object, and comment audit trail.
 It refuses a completed render when the pull request has moved to another head, so an older workflow cannot replace a newer image.
