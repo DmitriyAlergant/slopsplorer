@@ -637,6 +637,8 @@ export interface SnapshotBacklink {
 /** Data embedded in the static entry page before its client starts. */
 export interface SnapshotContext {
   backlink: SnapshotBacklink | null;
+  /** Local command that rebuilds the snapshot's original scan or comparison. */
+  reproductionCommand: string;
 }
 
 /** Bounds on the tile row, applied by the panel that measures it and by the server. */

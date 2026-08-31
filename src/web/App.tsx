@@ -30,6 +30,7 @@ import { SkillInstallDialog } from "./components/SkillInstallDialog.tsx";
 import { SourceDialog, type Preview } from "./components/SourceDialog.tsx";
 import { SourceTree } from "./components/SourceTree.tsx";
 import { PendingSpineBand, SpineBand } from "./components/SpineBand.tsx";
+import { StaticSpineDialog } from "./components/StaticSpineDialog.tsx";
 import { DEFAULT_TREE_PANEL_RATIO, HeightSplitter, WorkspaceSplitter } from "./components/Splitter.tsx";
 
 /** Long enough to coalesce a burst of typing, short enough to feel immediate. */
@@ -70,9 +71,12 @@ function withSubtreeCollapsed(expanded: readonly string[], root: string): string
 interface Props {
   runtime?: ExplorerRuntime;
   backlink?: SnapshotBacklink | null;
+  reproductionCommand?: string | null;
 }
 
-export function App({ runtime = liveRuntime, backlink = null }: Props = {}): React.JSX.Element {
+export function App({
+  runtime = liveRuntime, backlink = null, reproductionCommand = null,
+}: Props = {}): React.JSX.Element {
   const staticSnapshot = runtime.kind === "snapshot";
   const [request, setRequest] = useState<ViewRequest>(requestFromLocation);
   const [view, setView] = useState<ViewResponse | null>(null);
@@ -101,6 +105,7 @@ export function App({ runtime = liveRuntime, backlink = null }: Props = {}): Rea
   const [spineLoading, setSpineLoading] = useState(false);
   const [spineExpanded, setSpineExpanded] = useState(() => readSpineExpanded(browserStorage()));
   const [spineHeight, setSpineHeight] = useState(() => readSpineHeight(browserStorage(), DEFAULT_SPINE_HEIGHT));
+  const [staticSpineOpen, setStaticSpineOpen] = useState(false);
   const [treePanelRatio, setTreePanelRatio] = useState(
     () => readTreePanelRatio(browserStorage(), DEFAULT_TREE_PANEL_RATIO),
   );
@@ -432,8 +437,12 @@ export function App({ runtime = liveRuntime, backlink = null }: Props = {}): Rea
 
   /** Walking the band never leaves the range, so it never loses the reader's place. */
   const handleSpan = useCallback((comparison: ComparisonRequest) => {
+    if (staticSnapshot) {
+      setStaticSpineOpen(true);
+      return;
+    }
     handleCompare(comparison, true);
-  }, [handleCompare]);
+  }, [handleCompare, staticSnapshot]);
 
   const resizeSpine = useCallback((height: number) => {
     setSpineHeight(height);
@@ -711,7 +720,7 @@ export function App({ runtime = liveRuntime, backlink = null }: Props = {}): Rea
           spine={spine}
           measure={view.measure}
           request={view.meta.diff.request}
-          disabled={staticSnapshot || busy || scanning}
+          disabled={busy || scanning}
           expanded={spineExpanded}
           onExpandedChange={toggleSpineExpanded}
           onSelect={handleSpan}
@@ -852,6 +861,13 @@ export function App({ runtime = liveRuntime, backlink = null }: Props = {}): Rea
         loadSource={runtime.fetchSource}
         loadFileList={runtime.fetchFileList}
       />
+      {staticSnapshot && reproductionCommand !== null ? (
+        <StaticSpineDialog
+          open={staticSpineOpen}
+          command={reproductionCommand}
+          onClose={() => setStaticSpineOpen(false)}
+        />
+      ) : null}
       {staticSnapshot ? null : (
         <SkillInstallDialog
           open={skillOpen}

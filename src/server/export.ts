@@ -19,7 +19,35 @@ export interface StaticBundleOptions {
   concurrency: number;
   /** Review page named by a full pull request URL, or `null`. */
   backlink: SnapshotBacklink | null;
+  /** Local command that rebuilds the exported scan or comparison. */
+  reproductionCommand: string;
   onProgress?: (progress: ScanProgress) => void;
+}
+
+function shellArgument(argument: string): string {
+  if (/^[A-Za-z0-9_@%+=:,./~-]+$/.test(argument)) return argument;
+  return `'${argument.replaceAll("'", `'\"'\"'`)}'`;
+}
+
+/** Give a snapshot reader the local setup and invocation without host-specific paths. */
+export function snapshotReproductionCommand(arguments_: readonly string[], rootName: string): string {
+  const kept: string[] = [];
+  for (let index = 0; index < arguments_.length; index += 1) {
+    const argument = arguments_[index]!;
+    if (argument === "--export" || argument === "-C") {
+      index += 1;
+      continue;
+    }
+    if (argument.startsWith("--export=")) continue;
+    kept.push(argument);
+  }
+  return [
+    "# Install Slopsplorer",
+    "npm install -g slopsplorer",
+    "",
+    `cd ~/path-to-your-repo/${shellArgument(rootName)}`,
+    ["slopsplorer", ...kept].map(shellArgument).join(" "),
+  ].join("\n");
 }
 
 function json(value: unknown): string {
@@ -79,7 +107,10 @@ async function writeStaticBundleContents(options: StaticBundleOptions): Promise<
   if (!snapshotHtml.includes(SNAPSHOT_CONTEXT_PLACEHOLDER)) {
     throw new Error("the built snapshot entry has no context placeholder");
   }
-  const context: SnapshotContext = { backlink: options.backlink };
+  const context: SnapshotContext = {
+    backlink: options.backlink,
+    reproductionCommand: options.reproductionCommand,
+  };
   await writeFile(
     path.join(options.output, "index.html"),
     snapshotHtml.replace(SNAPSHOT_CONTEXT_PLACEHOLDER, embeddedJson(context)),

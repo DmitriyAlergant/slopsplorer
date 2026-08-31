@@ -85,6 +85,9 @@ The working-tree row says `working tree` instead of an object name and has no au
 
 The band is dragged by the same `HeightSplitter` the workspace uses, and the height is remembered.
 
+In a static export, selecting another span opens `StaticSpineDialog` instead of leaving the control passive.
+The dialog says that slicing commit spans needs a local scan and gives three commands to install Slopsplorer, enter a generic checkout path that ends in the exported repository name, and reproduce the comparison.
+
 ## Where the spine is held
 
 `GET /api/spine` answers with the spine of the range being reviewed, and not of the open comparison.

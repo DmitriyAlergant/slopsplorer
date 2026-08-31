@@ -127,10 +127,12 @@ describe("a static scan index", () => {
           label: "PR #12",
           url: "https://github.com/owner/repo/pull/12",
         },
+        reproductionCommand: "npx slopsplorer --pr 12",
       });
 
       expect(await readFile(path.join(output, "index.html"), "utf8")).toContain(
-        '{"backlink":{"label":"PR #12","url":"https://github.com/owner/repo/pull/12"}}',
+        '{"backlink":{"label":"PR #12","url":"https://github.com/owner/repo/pull/12"},'
+        + '"reproductionCommand":"npx slopsplorer --pr 12"}',
       );
       await expect(readFile(path.join(output, STATIC_EXPORT_MARKER), "utf8")).resolves.toBe("");
       await expect(readFile(path.join(output, "snapshot.html"), "utf8")).rejects.toThrow();
@@ -172,6 +174,7 @@ describe("a static scan index", () => {
         spine: null,
         concurrency: 2,
         backlink: null,
+        reproductionCommand: "npx slopsplorer --diff",
       });
 
       const fileIndex = diffIndex.fileIndexByPath.get("main.ts");
@@ -216,6 +219,7 @@ describe("a static scan index", () => {
         spine: null,
         concurrency: 2,
         backlink: null,
+        reproductionCommand: "npx slopsplorer --diff",
       });
 
       const fileIndex = escapingIndex.fileIndexByPath.get("escape.ts");
@@ -267,6 +271,7 @@ describe("a static scan index", () => {
         spine: null,
         concurrency: 2,
         backlink: null,
+        reproductionCommand: "npx slopsplorer .",
       });
 
       const recordOf = async (filePath: string): Promise<SnapshotSourceRecord> => JSON.parse(await readFile(
@@ -313,6 +318,7 @@ describe("a static scan index", () => {
         spine: null,
         concurrency: 2,
         backlink: null,
+        reproductionCommand: "npx slopsplorer .",
       });
 
       const record = JSON.parse(await readFile(
@@ -403,6 +409,7 @@ describe("a static scan index", () => {
         spine: null,
         concurrency: 2,
         backlink: null,
+        reproductionCommand: "npx slopsplorer .",
       })).rejects.toThrow(/not empty/);
       await expect(readFile(path.join(output, "keep.txt"), "utf8")).resolves.toBe("mine\n");
     } finally {
@@ -424,6 +431,7 @@ describe("a static scan index", () => {
         spine: null,
         concurrency: 2,
         backlink: null,
+        reproductionCommand: "npx slopsplorer .",
       })).rejects.toThrow(/context placeholder/);
 
       await expect(readFile(path.join(output, "snapshot.html"), "utf8")).rejects.toThrow();

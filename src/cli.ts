@@ -18,7 +18,7 @@ import { buildSpine } from "./scanner/spine.ts";
 import { ASPECTS, type Aspect, type ComparisonRequest } from "./shared/api.ts";
 import { DEFAULT_TOKENIZER, isTokenizerName, TOKENIZERS } from "./scanner/tokenize.ts";
 import { buildReport, DEFAULT_REPORT_THRESHOLD, REPORT_UNITS, type ReportOptions } from "./server/report.ts";
-import { writeStaticBundle } from "./server/export.ts";
+import { snapshotReproductionCommand, writeStaticBundle } from "./server/export.ts";
 import {
   createSlopsplorerServer, isAddressInUse, MAX_TCP_PORT, resolvePackageRoot,
   type IndexProducer, type ServerAddress,
@@ -633,6 +633,7 @@ async function main(): Promise<void> {
         spine,
         concurrency,
         backlink: exportBacklink,
+        reproductionCommand: snapshotReproductionCommand(process.argv.slice(2), index.meta.rootName),
         ...(onProgress ? { onProgress } : {}),
       });
     } catch (cause) {

@@ -8,7 +8,8 @@ The command refuses a non-empty destination, so it never deletes or mixes with f
 
 The snapshot is fixed at export time.
 It cannot rescan, open another folder, open a local application, change a comparison, install the local skill, or run a local coding agent.
-A commit band is read-only because another span needs another measured index.
+A commit band cannot open another span because that span needs another measured index.
+Its selectors open `StaticSpineDialog`, which gives the reader three commands to install Slopsplorer, enter a generic checkout path that ends in the exported repository name, and reproduce the comparison.
 
 ## Command flow
 
@@ -28,7 +29,7 @@ The export step starts no server and invokes no deployment command.
 
 The Vite build has a live entry and a snapshot entry.
 The exporter copies the built client and makes `snapshot.html` the exported `index.html`.
-It replaces the snapshot context placeholder with escaped JSON that holds the optional review backlink.
+It replaces the snapshot context placeholder with escaped JSON that holds the optional review backlink and the local reproduction command.
 `snapshotMain.tsx` validates that context before it starts React.
 
 `data/index.json` holds `ScanMeta`, every measured `FileRow`, and the folder list.
