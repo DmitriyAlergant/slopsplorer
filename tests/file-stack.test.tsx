@@ -14,6 +14,7 @@ function row(path: string, figures: Partial<FileRow> = {}): FileRow {
     status: "modified",
     previousPath: null,
     tokens: 100, lines: 40, codeLines: 30, commentLines: 10, blankLines: 4,
+    beforeTokens: 100, beforeLines: 40, beforeCodeLines: 30,
     addedTokens: 0, removedTokens: 0, churnTokens: 0, netTokens: 0,
     addedLines: 0, removedLines: 0, churnLines: 0, netLines: 0,
     addedCodeLines: 0, removedCodeLines: 0, churnCodeLines: 0, netCodeLines: 0,

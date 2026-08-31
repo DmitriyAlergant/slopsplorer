@@ -4,7 +4,7 @@ import {
   ASPECTS, FILE_SCOPES, FLAVOR_DETAILS, MAX_CARD_COLUMNS, MEASURES, MIN_CARD_COLUMNS, aspectTotals, measureHeading,
   weightAbbreviation, weightHeading, weightName,
 } from "../../shared/api.ts";
-import { aspectFigure, count, countOf, figureWidth, percent, weightCount } from "../format.ts";
+import { aspectFigure, changePercent, count, countOf, figureWidth, percent, weightCount } from "../format.ts";
 import { CopyPathButton } from "./CopyPathButton.tsx";
 import { FileTable } from "./FileTable.tsx";
 import { FlavorBar } from "./FlavorBar.tsx";
@@ -101,9 +101,14 @@ export function FolderDetail({
 
   if (!detail) return <section ref={panelRef} className="panel detail" aria-label="Folder detail" />;
 
-  // The head states all five sides whichever one the switch selects, so the
+  // The head states all four aspects whichever one the switch selects, so the
   // reader never has to move the switch to see a neighbour.
   const totals = aspectTotals(detail, measure);
+  const before = {
+    tokens: detail.beforeTokens,
+    lines: detail.beforeLines,
+    codeLines: detail.beforeCodeLines,
+  }[measure];
   const unit = weightName(measure, aspect, isDiff);
   // Net is signed, so no whole divides it into an honest percentage. The bands
   // still scale against churn, and the page states no share of them.
@@ -173,7 +178,9 @@ export function FolderDetail({
                     emphasis={candidate === aspect}
                   />
                 );
-              })
+              }).concat(
+                <Readout key="net-percent" label="net %" value={changePercent("net", totals.net, before)} />,
+              )
               : MEASURES.map((candidate) => (
                 <Readout
                   key={candidate}
@@ -182,7 +189,6 @@ export function FolderDetail({
                   emphasis={candidate === measure}
                 />
               ))}
-            <Readout label="files" value={count(detail.files)} />
           </div>
         </div>
         {/* Drawn in every aspect, and empty in net where the page states no

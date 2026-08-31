@@ -51,6 +51,7 @@ export const DEFAULT_MAX_FILE_BYTES = 2 * 1024 * 1024;
 export const UNCHANGED_FILE_FIELDS = {
   status: "unchanged",
   previousPath: null,
+  beforeTokens: 0, beforeLines: 0, beforeCodeLines: 0,
   addedTokens: 0, removedTokens: 0, churnTokens: 0, netTokens: 0,
   addedLines: 0, removedLines: 0, churnLines: 0, netLines: 0,
   addedCodeLines: 0, removedCodeLines: 0, churnCodeLines: 0, netCodeLines: 0,

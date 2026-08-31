@@ -38,6 +38,14 @@ export function percent(ratio: number): string {
   return `${value.toFixed(value < 10 ? 1 : 0)}%`;
 }
 
+/** Churn or signed net as a one-decimal share of the exact before image. */
+export function changePercent(aspect: "churn" | "net", value: number, before: number): string {
+  if (before === 0) return value === 0 ? "0.0%" : "new";
+  const percentage = Math.abs(value / before) * 100;
+  const sign = aspect === "net" && value !== 0 ? (value < 0 ? "-" : "+") : "";
+  return `${sign}${percentage.toFixed(1)}%`;
+}
+
 /**
  * A run length as minutes and seconds: "0:42", "3:05".
  *

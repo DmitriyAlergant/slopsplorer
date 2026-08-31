@@ -72,6 +72,9 @@ interface Totals {
   tokens: number;
   lines: number;
   codeLines: number;
+  beforeTokens: number;
+  beforeLines: number;
+  beforeCodeLines: number;
   churnTokens: number;
   churnLines: number;
   churnCodeLines: number;
@@ -84,6 +87,7 @@ function emptyTotals(): Totals {
   return {
     weight: 0, added: 0, removed: 0,
     tokens: 0, lines: 0, codeLines: 0,
+    beforeTokens: 0, beforeLines: 0, beforeCodeLines: 0,
     churnTokens: 0, churnLines: 0, churnCodeLines: 0,
     files: 0, flavors: new Map(),
   };
@@ -97,6 +101,9 @@ function addFile(totals: Totals, file: FileRow, fields: ActiveFields): void {
   totals.tokens += file.tokens;
   totals.lines += file.lines;
   totals.codeLines += file.codeLines;
+  totals.beforeTokens += file.beforeTokens;
+  totals.beforeLines += file.beforeLines;
+  totals.beforeCodeLines += file.beforeCodeLines;
   totals.churnTokens += file[fields.churnTokens];
   totals.churnLines += file[fields.churnLines];
   totals.churnCodeLines += file[fields.churnCodeLines];
@@ -328,6 +335,9 @@ function mergeTotals(target: Totals, source: Totals): void {
   target.tokens += source.tokens;
   target.lines += source.lines;
   target.codeLines += source.codeLines;
+  target.beforeTokens += source.beforeTokens;
+  target.beforeLines += source.beforeLines;
+  target.beforeCodeLines += source.beforeCodeLines;
   target.churnTokens += source.churnTokens;
   target.churnLines += source.churnLines;
   target.churnCodeLines += source.churnCodeLines;
@@ -585,6 +595,9 @@ function buildDetail(
     tokens: totals.tokens,
     lines: totals.lines,
     codeLines: totals.codeLines,
+    beforeTokens: totals.beforeTokens,
+    beforeLines: totals.beforeLines,
+    beforeCodeLines: totals.beforeCodeLines,
     churnTokens: totals.churnTokens,
     churnLines: totals.churnLines,
     churnCodeLines: totals.churnCodeLines,
@@ -796,6 +809,9 @@ function buildSummary(
     selectedTokens: scopeTotals.tokens,
     selectedLines: scopeTotals.lines,
     selectedCodeLines: scopeTotals.codeLines,
+    selectedBeforeTokens: scopeTotals.beforeTokens,
+    selectedBeforeLines: scopeTotals.beforeLines,
+    selectedBeforeCodeLines: scopeTotals.beforeCodeLines,
     selectedChurnTokens: scopeTotals.churnTokens,
     selectedChurnLines: scopeTotals.churnLines,
     selectedChurnCodeLines: scopeTotals.churnCodeLines,

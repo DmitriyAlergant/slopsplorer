@@ -96,6 +96,15 @@ describe("aggregating a diff", () => {
     expect(view.summary.selectedWeight).toBe(-5);
   });
 
+  it("carries the exact before-image totals for relative churn and net indicators", () => {
+    const whole = buildView(diffIndex, request({ aspect: "net" }));
+    expect(whole.summary.selectedBeforeLines).toBe(50);
+    expect(whole.detail.beforeLines).toBe(50);
+
+    const narrowed = buildView(diffIndex, request({ aspect: "net", query: "grown" }));
+    expect(narrowed.summary.selectedBeforeLines).toBe(10);
+  });
+
   /**
    * The invariant net would otherwise break: a share against a signed whole
    * lets a part exceed all of it, and explodes when adds and deletes cancel.
@@ -187,7 +196,7 @@ describe("aggregating a diff", () => {
  */
 describe("the sides a comparison offers", () => {
   it("offers four, and draws a column for each", () => {
-    expect(ASPECTS).toEqual(["added", "removed", "net", "churn"]);
+    expect(ASPECTS).toEqual(["added", "removed", "churn", "net"]);
     expect(DIFF_RANK_METRICS).not.toContain("after");
   });
 
@@ -227,8 +236,6 @@ describe("aggregating a scan the same way", () => {
       .toBe("tokens");
     expect(buildView(diffIndex, request({ rank: { metric: "commentLines", minWeight: 0, limit: 100, offset: 0 } })).rankMetric)
       .toBe("net");
-    expect(buildView(diffIndex, request({ rank: { metric: "functions", minWeight: 0, limit: 100, offset: 0 } })).rankMetric)
-      .toBe("functions");
     // The file column stands in both modes, so neither clamps a name sort away.
     expect(buildView(scanIndex, request({ rank: { metric: "name", minWeight: 0, limit: 100, offset: 0 } })).rankMetric)
       .toBe("name");

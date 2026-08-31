@@ -8,6 +8,8 @@ Write yours under Unreleased as you make the change, and rename that heading to 
 
 ### Features
 
+- Diff controls, readouts, and file columns now use Added, Removed, Churn, Net order, each file shows relative Churn and Net against its exact before image, and total strips replace the Files readout with Net %.
+- File tables no longer present Fn and Branch columns, while scans still retain both structure counts for analysis.
 - A comparison with the working tree now keeps the commit band and appends uncommitted source changes as its final selectable entry, so a review can step from committed work into the working tree without dropping the whole range.
 
 ## [0.6.0](https://github.com/DmitriyAlergant/slopsplorer/releases/tag/v0.6.0) - 2026-08-30

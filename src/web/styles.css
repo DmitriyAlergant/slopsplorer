@@ -1700,6 +1700,7 @@ button { cursor: pointer; }
 .metrics td[data-sign="positive"] { color: var(--status-added); }
 .metrics td[data-sign="negative"] { color: var(--status-deleted); }
 .metrics td[data-sign="zero"] { color: var(--ink-faint); }
+.metrics td.metrics__change-percent { padding-left: 0; color: var(--ink-faint); font-size: 10px; font-weight: 400; text-align: left; }
 /* The name column takes what the numbers leave, and never less than this: a
    row whose path is squeezed to nothing names no file at all. Below that width
    the table is wider than the panel and the box scrolls sideways. */
@@ -2000,6 +2001,7 @@ button { cursor: pointer; }
   font-size: 11.5px; line-height: 1.65;
   white-space: pre-wrap; word-break: break-all;
 }
+.command code { padding: 0; background: none; }
 .install-actions { display: flex; align-items: center; gap: 14px; }
 .install-facts { display: grid; gap: 8px; margin: 18px 0; }
 .install-facts dt {
