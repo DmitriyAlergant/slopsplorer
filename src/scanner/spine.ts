@@ -1,6 +1,10 @@
-import type { CommitSpine, ComparisonRequest, FileRow, SpineEntry } from "../shared/api.ts";
+import type {
+  CommitSpine, ComparisonRequest, FileRow, SpineEntry, WorkingTreeSpineEntry,
+} from "../shared/api.ts";
 import { scanDiff, type DiffScanOptions } from "./diffScan.ts";
-import { commitComparison, commitUrlBase, listSpineCommits, type SpineCommit } from "./gitdiff.ts";
+import {
+  commitComparison, commitUrlBase, listSpineCommits, type SpineCommit, workingTreeComparison,
+} from "./gitdiff.ts";
 import { mapWithConcurrency } from "./scan.ts";
 
 /**
@@ -23,6 +27,7 @@ const SPINE_CONCURRENCY = 4;
  */
 function measuredCommit(commit: SpineCommit, files: readonly FileRow[], urlBase: string | null): SpineEntry {
   const entry: SpineEntry = {
+    kind: "commit",
     sha: commit.sha,
     shortSha: commit.shortSha,
     parent: commit.parent,
@@ -52,13 +57,41 @@ function measuredCommit(commit: SpineCommit, files: readonly FileRow[], urlBase:
   return entry;
 }
 
+/** The working tree as the final change after HEAD. */
+function measuredWorkingTree(parent: string, files: readonly FileRow[]): WorkingTreeSpineEntry {
+  const entry: WorkingTreeSpineEntry = {
+    kind: "workingTree",
+    parent,
+    subject: "Uncommitted changes",
+    body: "",
+    files: 0,
+    addedTokens: 0,
+    removedTokens: 0,
+    addedLines: 0,
+    removedLines: 0,
+    addedCodeLines: 0,
+    removedCodeLines: 0,
+  };
+  for (const file of files) {
+    if (file.generated) continue;
+    entry.files += 1;
+    entry.addedTokens += file.addedTokens;
+    entry.removedTokens += file.removedTokens;
+    entry.addedLines += file.addedLines;
+    entry.removedLines += file.removedLines;
+    entry.addedCodeLines += file.addedCodeLines;
+    entry.removedCodeLines += file.removedCodeLines;
+  }
+  return entry;
+}
+
 /**
  * Measure every commit a comparison spans.
  *
  * Each commit is measured against its own first parent, by the same scanner
  * that measures the range, so a figure in the band and a figure in the page
- * mean the same thing. `null` when the comparison has no spine, which is any
- * comparison with the working tree or the index on one side.
+ * mean the same thing. A working-tree comparison appends the uncommitted
+ * change measured against HEAD. An index comparison has no spine.
  *
  * The column will not sum to the range: a line a later commit rewrites is
  * counted in both, and the difference is the branch's own rework rather than
@@ -72,10 +105,16 @@ export async function buildSpine(
 
   const { onProgress: _ignored, ...quiet } = options;
   const urlBase = await commitUrlBase(options.root);
-  const commits = await mapWithConcurrency(listed.commits, SPINE_CONCURRENCY, async (commit) => {
+  const commits: SpineEntry[] = await mapWithConcurrency(listed.commits, SPINE_CONCURRENCY, async (commit) => {
     const index = await scanDiff({ ...quiet, comparison: commitComparison(commit.sha, commit.parent) });
     return measuredCommit(commit, index.files, urlBase);
   });
+
+  if (listed.workingTreeParent !== null) {
+    const comparison = workingTreeComparison(listed.workingTreeParent);
+    const index = await scanDiff({ ...quiet, comparison });
+    if (index.files.length > 0) commits.push(measuredWorkingTree(listed.workingTreeParent, index.files));
+  }
 
   return { range: request, commits, omitted: listed.omitted };
 }

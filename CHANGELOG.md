@@ -6,6 +6,10 @@ Write yours under Unreleased as you make the change, and rename that heading to 
 
 ## [Unreleased]
 
+### Features
+
+- A comparison with the working tree now keeps the commit band and appends uncommitted source changes as its final selectable entry, so a review can step from committed work into the working tree without dropping the whole range.
+
 ## [0.6.0](https://github.com/DmitriyAlergant/slopsplorer/releases/tag/v0.6.0) - 2026-08-30
 
 ### Features

@@ -8,8 +8,9 @@ import { scanDiff, type DiffScanOptions } from "../src/scanner/diffScan.ts";
 import { resolveComparison } from "../src/scanner/gitdiff.ts";
 import { createSlopsplorerServer, type SlopsplorerServer } from "../src/server/server.ts";
 import type {
-  CommitSpine, ComparisonRequest, RepositoryRefs, ScanMeta, SourceResponse, ViewResponse,
+  CommitSpine, CommitSpineEntry, ComparisonRequest, RepositoryRefs, ScanMeta, SourceResponse, ViewResponse,
 } from "../src/shared/api.ts";
+import { requestForSpan } from "../src/shared/api.ts";
 
 const execFileAsync = promisify(execFile);
 const SCAN_TIMEOUT_MS = 60_000;
@@ -17,6 +18,10 @@ const SCAN_TIMEOUT_MS = 60_000;
 let root: string;
 let server: SlopsplorerServer;
 let serverUrl: string;
+
+function commitEntries(spine: CommitSpine): CommitSpineEntry[] {
+  return spine.commits.filter((entry): entry is CommitSpineEntry => entry.kind === "commit");
+}
 
 async function git(...args: string[]): Promise<string> {
   const { stdout } = await execFileAsync("git", args, { cwd: root });
@@ -248,7 +253,7 @@ describe("the commits a comparison spans", () => {
     const spine = await response.json() as CommitSpine;
     const head = (await git("rev-parse", "HEAD")).trim();
     const subject = (await git("log", "-1", "--format=%s")).trim();
-    expect(spine.commits.map((entry) => entry.sha)).toEqual([head]);
+    expect(commitEntries(spine).map((entry) => entry.sha)).toEqual([head]);
     expect(spine.commits[0]?.subject).toBe(subject);
     expect(spine.commits[0]?.addedLines).toBeGreaterThan(0);
     expect(spine.omitted).toBe(0);
@@ -266,21 +271,29 @@ describe("the commits a comparison spans", () => {
     expect(range.commits.length).toBe(2);
 
     // Step onto the first commit of the range, as the band does.
-    const step: ComparisonRequest = {
-      kind: "revisionPair", base: range.commits[0]!.parent, target: range.commits[0]!.sha,
-    };
+    const first = commitEntries(range)[0]!;
+    const step: ComparisonRequest = { kind: "revisionPair", base: first.parent, target: first.sha };
     expect((await postCompare(step)).status).toBe(200);
 
     const stepped = await (await fetch(`${serverUrl}/api/spine`)).json() as CommitSpine;
-    expect(stepped.commits.map((entry) => entry.sha)).toEqual(range.commits.map((entry) => entry.sha));
+    expect(commitEntries(stepped).map((entry) => entry.sha)).toEqual(commitEntries(range).map((entry) => entry.sha));
     expect(stepped.range).toEqual(range.range);
   }, SCAN_TIMEOUT_MS);
 
-  it("has none when a side is the working tree, because neither end is a commit", async () => {
+  it("lists the working tree as the final change", async () => {
     expect((await postCompare({ kind: "workingTree" })).status).toBe(200);
 
     const response = await fetch(`${serverUrl}/api/spine`);
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toBeNull();
+    const spine = await response.json() as CommitSpine;
+    expect(spine.commits).toHaveLength(1);
+    expect(spine.commits[0]).toMatchObject({ kind: "workingTree", subject: "Uncommitted changes" });
+
+    const step = requestForSpan(spine, { start: 0, end: 0 });
+    expect(step).toEqual({ kind: "revisionToWorkingTree", rev: spine.commits[0]!.parent });
+    expect((await postCompare(step)).status).toBe(200);
+    const stepped = await (await fetch(`${serverUrl}/api/spine`)).json() as CommitSpine;
+    expect(stepped.range).toEqual({ kind: "workingTree" });
+    expect(stepped.commits).toEqual(spine.commits);
   }, SCAN_TIMEOUT_MS);
 }, SCAN_TIMEOUT_MS);

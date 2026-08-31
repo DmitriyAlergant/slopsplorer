@@ -762,35 +762,21 @@ export type ComparisonRequest =
   | { kind: "revisionToWorkingTree"; rev: string }
   | RevisionRange;
 
-/**
- * One commit of a comparison's spine, and what it changed.
- *
- * The figures are the commit against its own first parent, with generated
- * files left out and no filter applied, because the spine is the frame a
- * review happens inside and has to state the same thing however the page
- * below it is narrowed. Every field is named as `FileRow` names it, so one
- * search finds both.
- */
-export interface SpineEntry {
-  sha: string;
-  shortSha: string;
+/** The fields shared by every selectable change in the commit band. */
+interface SpineEntryBase {
   /**
-   * First parent, and Git's empty tree for a commit that has none.
+   * The revision this entry was measured against.
    *
-   * It is the side the row's figures were measured against, and it is the base
-   * a span starting at this commit compares from, so the band and the page it
-   * opens can never describe different changes.
+   * A commit uses its first parent, or Git's empty tree when it has none.
+   * The working tree uses HEAD.
+   * A span starts from this revision, so the band and the page it opens can
+   * never describe different changes.
    */
   parent: string;
   subject: string;
-  /** The message under the subject, trimmed. Empty when the commit has none. */
+  /** The message under the subject, trimmed. Empty when there is none. */
   body: string;
-  /** Where the commit can be read on the forge, or `null` when there is none. */
-  url: string | null;
-  author: string;
-  /** ISO-8601 author date. */
-  date: string;
-  /** Files the commit changed, generated ones left out. */
+  /** Files the change touched, generated ones left out. */
   files: number;
   addedTokens: number;
   removedTokens: number;
@@ -800,21 +786,40 @@ export interface SpineEntry {
   removedCodeLines: number;
 }
 
+/** One commit, measured against its own first parent. */
+export interface CommitSpineEntry extends SpineEntryBase {
+  kind: "commit";
+  sha: string;
+  shortSha: string;
+  /** Where the commit can be read on the forge, or `null` when there is none. */
+  url: string | null;
+  author: string;
+  /** ISO-8601 author date. */
+  date: string;
+}
+
+/** The uncommitted working tree, measured against HEAD. */
+export interface WorkingTreeSpineEntry extends SpineEntryBase {
+  kind: "workingTree";
+}
+
+export type SpineEntry = CommitSpineEntry | WorkingTreeSpineEntry;
+
 /**
- * The commits a comparison spans, oldest first.
+ * The changes a comparison spans, oldest first.
  *
  * A span over this list is a comparison of its own, which is how one control
- * covers the whole change, one commit, and any run of commits between them.
+ * covers the whole change, one entry, and any run of entries between them.
  */
 export interface CommitSpine {
   /** The comparison this spine was built for, so the page can return to it whole. */
   range: ComparisonRequest;
   commits: SpineEntry[];
-  /** Commits the range holds beyond the ones listed. */
+  /** Commits the range holds beyond the entries listed. */
   omitted: number;
 }
 
-/** A run of commits inside a spine, by index, both ends included. */
+/** A run of entries inside a spine, by index, both ends included. */
 export interface Span {
   start: number;
   end: number;
@@ -843,23 +848,29 @@ export function sameComparisonRequest(one: ComparisonRequest, other: ComparisonR
 /**
  * The comparison a span asks for.
  *
- * A span compares from the parent of the commit it starts at, so one control
- * expresses a single commit, a run of them, and everything from the start of
- * the range, without a mode to switch between them. The parent rather than the
- * commit listed before it: a range holds every commit a merge brought in, so
- * the list is not always a chain, and the neighbour of a merged-in commit is on
- * another line of history.
+ * A span compares from the parent of the entry it starts at, so one control
+ * expresses a single change, a run of them, and everything from the start of
+ * the range, without a mode to switch between them. A commit uses its own
+ * parent rather than the entry listed before it because a range holds every
+ * commit a merge brought in and the list is not always a chain.
  */
 export function requestForSpan(spine: CommitSpine, span: Span): ComparisonRequest {
+  const base = spine.commits[span.start]!.parent;
+  const target = spine.commits[span.end]!;
+  if (target.kind === "workingTree") return { kind: "revisionToWorkingTree", rev: base };
   return {
     kind: "revisionPair",
-    base: spine.commits[span.start]!.parent,
-    target: spine.commits[span.end]!.sha,
+    base,
+    target: target.sha,
   };
 }
 
+function commitTarget(entry: SpineEntry): string | null {
+  return entry.kind === "commit" ? entry.sha : null;
+}
+
 /**
- * Whether every commit of a run follows the one before it.
+ * Whether every entry of a run follows the one before it.
  *
  * A run that crosses a break is not a comparison of what it selects: its two
  * endpoints sit on different lines of history, so the change between them holds
@@ -868,7 +879,7 @@ export function requestForSpan(spine: CommitSpine, span: Span): ComparisonReques
  */
 export function chainedSpan(spine: CommitSpine, span: Span): boolean {
   for (let index = span.start + 1; index <= span.end; index += 1) {
-    if (spine.commits[index]!.parent !== spine.commits[index - 1]!.sha) return false;
+    if (spine.commits[index]!.parent !== commitTarget(spine.commits[index - 1]!)) return false;
   }
   return true;
 }
@@ -881,10 +892,20 @@ export function chainedSpan(spine: CommitSpine, span: Span): boolean {
  * lists.
  */
 export function spanOf(spine: CommitSpine, request: ComparisonRequest): Span | null {
-  if (request.kind !== "revisionPair") return null;
-  const end = spine.commits.findIndex((commit) => commit.sha === request.target);
+  if (sameComparisonRequest(spine.range, request)) return null;
+  let base: string;
+  let end: number;
+  if (request.kind === "revisionPair") {
+    base = request.base;
+    end = spine.commits.findIndex((entry) => entry.kind === "commit" && entry.sha === request.target);
+  } else if (request.kind === "revisionToWorkingTree") {
+    base = request.rev;
+    end = spine.commits.findIndex((entry) => entry.kind === "workingTree");
+  } else {
+    return null;
+  }
   if (end < 0) return null;
-  const start = spine.commits.findIndex((commit) => commit.parent === request.base);
+  const start = spine.commits.findIndex((entry) => entry.parent === base);
   if (start < 0 || start > end) return null;
   const span = { start, end };
   return chainedSpan(spine, span) ? span : null;
@@ -902,7 +923,7 @@ export function spansRequest(spine: CommitSpine, request: ComparisonRequest): bo
 }
 
 /**
- * Slide a span by whole commits, keeping its width.
+ * Slide a span by whole entries, keeping its width.
  *
  * `null` when it cannot move that far, which is also what disables the step
  * that would do it. One control steps a single commit and slides a window,
@@ -917,7 +938,7 @@ export function slideSpan(spine: CommitSpine, span: Span, delta: number): Span |
 }
 
 /**
- * Extend a span from its anchor to a commit, which is what a shift-click asks
+ * Extend a span from its anchor to an entry, which is what a shift-click asks
  * for, and stop it at the first break in the chain.
  */
 export function spanBetween(spine: CommitSpine, anchor: number, reached: number): Span {
@@ -926,7 +947,7 @@ export function spanBetween(spine: CommitSpine, anchor: number, reached: number)
   while (end !== reached) {
     const next = end + step;
     const child = step > 0 ? next : end;
-    if (spine.commits[child]!.parent !== spine.commits[child - 1]!.sha) break;
+    if (spine.commits[child]!.parent !== commitTarget(spine.commits[child - 1]!)) break;
     end = next;
   }
   return anchor <= end ? { start: anchor, end } : { start: end, end: anchor };
