@@ -33,6 +33,7 @@ describe("pull request diff image workflows", () => {
     expect(workflow).not.toContain("actions/checkout");
     expect(workflow).toContain("${{ runner.temp }}/slopsplorer-pr-diff-artifact");
     expect(workflow).toContain('test ! -L "$ARTIFACT_ROOT/pr-diff.png"');
+    expect(workflow).toContain("dimensions[1] < 1462 || dimensions[1] > 8192");
     expect(workflow).toContain("secrets.TIGRIS_ACCESS_KEY_ID");
     expect(workflow).toContain("secrets.TIGRIS_SECRET_ACCESS_KEY");
     expect(workflow).toContain("vars.TIGRIS_BUCKET");
