@@ -65,7 +65,8 @@ try {
   while (Date.now() < deadline) {
     const evaluation = await command("Runtime.evaluate", {
       expression: `(() => ({
-        ready: document.title.endsWith(" - Slopsplorer diff"),
+        ready: document.title.endsWith(" - Slopsplorer diff")
+          && document.querySelector(".spine--pending") === null,
         error: document.querySelector(".app--error")?.textContent?.trim() ?? null,
         title: document.title,
         text: document.body.innerText.slice(0, 1000),

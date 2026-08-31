@@ -26,6 +26,7 @@ describe("pull request diff image workflows", () => {
       "utf8",
     );
     expect(captureScript).toContain('document.title.endsWith(" - Slopsplorer diff")');
+    expect(captureScript).toContain('document.querySelector(".spine--pending") === null');
     expect(captureScript).toContain("Page.captureScreenshot");
   });
 
