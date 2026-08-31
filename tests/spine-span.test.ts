@@ -7,6 +7,7 @@ import { heaviestChurn, sidesOf } from "../src/web/spine.ts";
 
 function entry(sha: string, parent: string, added: number, removed: number): SpineEntry {
   return {
+    kind: "commit",
     sha,
     shortSha: sha.slice(0, 7),
     parent,
@@ -15,6 +16,22 @@ function entry(sha: string, parent: string, added: number, removed: number): Spi
     url: null,
     author: "Test",
     date: "2026-01-01T00:00:00Z",
+    files: 1,
+    addedTokens: added * 4,
+    removedTokens: removed * 4,
+    addedLines: added,
+    removedLines: removed,
+    addedCodeLines: added,
+    removedCodeLines: removed,
+  };
+}
+
+function workingTree(parent: string, added: number, removed: number): SpineEntry {
+  return {
+    kind: "workingTree",
+    parent,
+    subject: "Uncommitted changes",
+    body: "",
     files: 1,
     addedTokens: added * 4,
     removedTokens: removed * 4,
@@ -43,6 +60,12 @@ const merged: CommitSpine = {
   omitted: 0,
 };
 
+const withWorkingTree: CommitSpine = {
+  range: { kind: "revisionToWorkingTree", rev: "base0" },
+  commits: [entry("c1", "base0", 10, 0), entry("head", "c1", 4, 6), workingTree("head", 3, 1)],
+  omitted: 0,
+};
+
 describe("requestForSpan", () => {
   it("starts a span at the first commit from the range's own base", () => {
     expect(requestForSpan(spine, { start: 0, end: 0 }))
@@ -57,6 +80,13 @@ describe("requestForSpan", () => {
   it("makes one commit and a run of commits the same kind of request", () => {
     expect(requestForSpan(spine, { start: 2, end: 2 }))
       .toEqual({ kind: "revisionPair", base: "c2", target: "c3" });
+  });
+
+  it("uses the working tree as the target of a span that reaches the final entry", () => {
+    expect(requestForSpan(withWorkingTree, { start: 2, end: 2 }))
+      .toEqual({ kind: "revisionToWorkingTree", rev: "head" });
+    expect(requestForSpan(withWorkingTree, { start: 1, end: 2 }))
+      .toEqual({ kind: "revisionToWorkingTree", rev: "c1" });
   });
 
   /**
@@ -88,6 +118,13 @@ describe("spanOf", () => {
     for (const span of [{ start: 0, end: 0 }, { start: 1, end: 2 }, { start: 0, end: 2 }]) {
       expect(spanOf(spine, requestForSpan(spine, span))).toEqual(span);
     }
+  });
+
+  it("reads the working-tree entry and a run ending at it back out", () => {
+    for (const span of [{ start: 2, end: 2 }, { start: 1, end: 2 }]) {
+      expect(spanOf(withWorkingTree, requestForSpan(withWorkingTree, span))).toEqual(span);
+    }
+    expect(spanOf(withWorkingTree, requestForSpan(withWorkingTree, { start: 0, end: 2 }))).toBeNull();
   });
 
   it("does not claim the whole range, which the list may not cover", () => {

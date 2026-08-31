@@ -25,9 +25,17 @@ interface Props {
 /** Where a span sits, in the fewest words that still say it. */
 function whereText(spine: CommitSpine, span: Span | null): string {
   const total = spine.commits.length;
+  const includesWorkingTree = spine.commits.some((entry) => entry.kind === "workingTree");
+  const commitTotal = includesWorkingTree ? total - 1 : total;
+  if (span !== null && span.start === span.end && spine.commits[span.end]?.kind === "workingTree") {
+    return "uncommitted changes";
+  }
+  if (span === null && commitTotal === 0) return "working tree changes";
+  if (span === null && includesWorkingTree) return `${count(commitTotal)} commits + working tree`;
   if (span === null) return `all ${count(total)} commits`;
-  if (span.start === span.end) return `commit ${span.start + 1} of ${count(total)}`;
-  return `commits ${span.start + 1} to ${span.end + 1} of ${count(total)}`;
+  if (span.end === total - 1 && includesWorkingTree) return `commit ${span.start + 1} through working tree`;
+  if (span.start === span.end) return `commit ${span.start + 1} of ${count(commitTotal)}`;
+  return `commits ${span.start + 1} to ${span.end + 1} of ${count(commitTotal)}`;
 }
 
 function shareStyle(entry: SpineEntry, measure: Measure, heaviest: number): React.CSSProperties {
@@ -107,9 +115,17 @@ export function SpineBand({
     // A commit a merge brought in does not follow the row above it, and a
     // selection cannot cross the seam, so the seam is drawn.
     const previous = spine.commits[index - 1];
-    const breaksChain = previous !== undefined && entry.parent !== previous.sha;
+    const previousTarget = previous?.kind === "commit" ? previous.sha : null;
+    const breaksChain = previous !== undefined && entry.parent !== previousTarget;
+    const key = entry.kind === "commit" ? entry.sha : "workingTree";
     return (
-      <div key={entry.sha} className="spine-row" data-in-span={inSpan} data-breaks-chain={breaksChain}>
+      <div
+        key={key}
+        className="spine-row"
+        data-kind={entry.kind}
+        data-in-span={inSpan}
+        data-breaks-chain={breaksChain}
+      >
         {/* The whole row selects, and it is a layer under the cells rather than
             their parent, because an object name that opens the forge has to be
             a link and a link cannot sit inside a button. */}
@@ -137,7 +153,9 @@ export function SpineBand({
           </Tooltip>
         </button>
 
-        {entry.url === null ? (
+        {entry.kind === "workingTree" ? (
+          <span className="spine-row__sha">working tree</span>
+        ) : entry.url === null ? (
           <span className="spine-row__sha">{entry.shortSha}</span>
         ) : (
           <a
@@ -152,7 +170,7 @@ export function SpineBand({
           </a>
         )}
         <span className="spine-row__subject">{entry.subject}</span>
-        <span className="spine-row__author">{entry.author}</span>
+        <span className="spine-row__author">{entry.kind === "commit" ? entry.author : ""}</span>
         {/* Removed left of the axis and added right, as a number line reads and
             as the source tree already draws a net row. */}
         <span className="spine-row__axis" style={shareStyle(entry, measure, heaviest)} aria-hidden="true">
@@ -186,7 +204,7 @@ export function SpineBand({
               const share = heaviest === 0 ? 0 : (added + removed) / heaviest;
               return (
                 <i
-                  key={entry.sha}
+                  key={entry.kind === "commit" ? entry.sha : "workingTree"}
                   className="spine__tick"
                   data-in-span={span !== null && index >= span.start && index <= span.end}
                   style={{ "--mass": Math.max(0.08, share) } as React.CSSProperties}

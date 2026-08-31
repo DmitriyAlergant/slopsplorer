@@ -256,6 +256,19 @@ export function commitComparison(sha: string, base: string): Comparison {
   };
 }
 
+/** One revision against the current working tree. */
+export function workingTreeComparison(base: string): Comparison {
+  return {
+    spec: base,
+    request: { kind: "revisionToWorkingTree", rev: base },
+    base: { kind: "revision", rev: base },
+    target: { kind: "worktree" },
+    baseLabel: base,
+    targetLabel: "working tree",
+    diffArguments: [base],
+  };
+}
+
 /** How many commits a spine holds. Past this it lists the newest and says how many it left. */
 const MAX_SPINE_COMMITS = 200;
 
@@ -298,17 +311,22 @@ function commitBody(message: string): string {
 /**
  * The commits between the two sides of a comparison, oldest first.
  *
- * `null` when either side is the working tree or the index, because neither is
- * a commit and a range needs two. Merges are left out: a merge holds no change
- * of its own, and a span whose end was one would compare against a commit the
- * list does not draw.
+ * A working-tree comparison lists the commits up to HEAD and names HEAD as the
+ * parent of its final uncommitted entry. An index comparison has no spine.
+ * Merges are left out: a merge holds no change of its own, and a span whose end
+ * was one would compare against a commit the list does not draw.
  */
 export async function listSpineCommits(
   directory: string, comparison: Comparison,
-): Promise<{ commits: SpineCommit[]; omitted: number } | null> {
-  if (comparison.base.kind !== "revision" || comparison.target.kind !== "revision") return null;
+): Promise<{ commits: SpineCommit[]; omitted: number; workingTreeParent: string | null } | null> {
+  if (comparison.base.kind !== "revision" || comparison.target.kind === "index") return null;
 
-  const range = `${comparison.base.rev}..${comparison.target.rev}`;
+  const target = comparison.target.kind === "revision"
+    ? comparison.target.rev
+    : await commitName(directory, "HEAD");
+  const workingTreeParent = comparison.target.kind === "worktree" ? target : null;
+
+  const range = `${comparison.base.rev}..${target}`;
   const total = Number((await git(directory, ["rev-list", "--no-merges", "--count", range])).trim());
   const stdout = await git(directory, [
     "log", "--no-merges", "--reverse", `--max-count=${MAX_SPINE_COMMITS}`, `--format=${SPINE_FORMAT}`, range,
@@ -333,7 +351,7 @@ export async function listSpineCommits(
       parent: firstParent ?? EMPTY_TREE,
     });
   }
-  return { commits, omitted: Math.max(0, total - commits.length) };
+  return { commits, omitted: Math.max(0, total - commits.length), workingTreeParent };
 }
 
 /** Newest first, and enough for any picker. A ref beyond this is reachable by typing. */

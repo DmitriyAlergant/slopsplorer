@@ -6,7 +6,7 @@ import { promisify } from "node:util";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { resolveComparison } from "../src/scanner/gitdiff.ts";
 import { buildSpine } from "../src/scanner/spine.ts";
-import type { CommitSpine } from "../src/shared/api.ts";
+import type { CommitSpine, CommitSpineEntry } from "../src/shared/api.ts";
 import { requestForSpan } from "../src/shared/api.ts";
 
 const execFileAsync = promisify(execFile);
@@ -15,6 +15,10 @@ const SETUP_TIMEOUT_MS = 60_000;
 let root: string;
 let spine: CommitSpine;
 let baseSha: string;
+
+function commitEntries(value: CommitSpine): CommitSpineEntry[] {
+  return value.commits.filter((entry): entry is CommitSpineEntry => entry.kind === "commit");
+}
 
 async function git(...args: string[]): Promise<string> {
   const { stdout } = await execFileAsync("git", args, { cwd: root });
@@ -73,7 +77,7 @@ describe("buildSpine", () => {
 
   it("carries the parent each commit was measured against", () => {
     expect(spine.commits[0]!.parent).toBe(baseSha);
-    expect(spine.commits[1]!.parent).toBe(spine.commits[0]!.sha);
+    expect(spine.commits[1]!.parent).toBe(commitEntries(spine)[0]!.sha);
   });
 
   it("carries the message under the subject, so a tooltip can explain a commit", () => {
@@ -111,13 +115,23 @@ describe("buildSpine", () => {
     expect(added.addedCodeLines).toBe(10);
   });
 
-  it("has no spine when a side is not a commit", async () => {
-    const comparison = await resolveComparison(root, { kind: "workingTree" });
+  it("appends the working tree as the final measured entry", async () => {
+    await writeFile(path.join(root, "a.ts"), lines(5, "working"), "utf8");
+    const request = { kind: "revisionToWorkingTree", rev: baseSha } as const;
+    const comparison = await resolveComparison(root, request);
     const built = await buildSpine({
       root, comparison, tokenizer: "cl100k_base", exclude: [], maxFileBytes: 2 * 1024 * 1024, concurrency: 4,
-    }, { kind: "workingTree" });
-    expect(built).toBeNull();
-  });
+    }, request);
+    expect(built?.commits.map((entry) => entry.subject))
+      .toEqual(["add ten", "cut a down", "regenerate the lockfile", "Uncommitted changes"]);
+    expect(built?.commits.at(-1)).toMatchObject({
+      kind: "workingTree",
+      parent: expect.stringMatching(/^[0-9a-f]{40}$/),
+      subject: "Uncommitted changes",
+      files: 1,
+    });
+    expect(built?.commits.at(-1)?.addedLines).toBeGreaterThan(0);
+  }, SETUP_TIMEOUT_MS);
 });
 
 /**
@@ -183,7 +197,7 @@ describe("a range that holds a merged-in commit", () => {
   it("lists the commit the merge brought in, with the parent it was measured against", () => {
     const entry = mergedSpine.commits.find((commit) => commit.subject === "on main");
     expect(entry?.parent).toBe(onMainParent);
-    expect(entry?.sha).toBe(onMain);
+    expect(entry?.kind === "commit" ? entry.sha : null).toBe(onMain);
   });
 
   /**
@@ -193,6 +207,7 @@ describe("a range that holds a merged-in commit", () => {
    */
   it("opens each commit against its own parent and nothing else", () => {
     for (const [index, entry] of mergedSpine.commits.entries()) {
+      if (entry.kind !== "commit") throw new Error("a revision range lists only commits");
       expect(requestForSpan(mergedSpine, { start: index, end: index }))
         .toEqual({ kind: "revisionPair", base: entry.parent, target: entry.sha });
     }

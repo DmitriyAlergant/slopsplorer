@@ -2,31 +2,34 @@
 
 ## Purpose
 
-A comparison of two revisions holds commits, and a reviewer reads them one at a time as often as they read the whole change.
-The band lists them, states what each one cost, and is the control that opens one.
+A comparison from one revision to another revision or the working tree holds a sequence of changes.
+A reviewer reads those changes one at a time as often as they read the whole change.
+The band lists each commit, appends the uncommitted working tree when it has source changes, states what each entry cost, and is the control that opens one.
 
-It draws only inside a comparison whose two sides are both commits.
-The working tree and the index are not commits, so those comparisons have no band.
+It draws when the base is a commit and the target is a commit or the working tree.
+The index has no band because a span cannot yet compare an arbitrary revision to the index.
 
 For the comparison itself, read [diff-mode.md](./diff-mode.md).
 
 ## One control, no modes
 
-Every layer of a review is a span over the listed commits, both ends included:
+Every layer of a review is a span over the listed entries, both ends included:
 
 | Span | What it is |
 | --- | --- |
 | the range | the change as one thing |
-| one commit | that commit on its own |
+| one entry | that commit or the uncommitted working tree on its own |
 | the first N | everything up to a point |
 | a run in the middle | one part of the branch, without the rest |
 
-A span has two endpoints, so it is an ordinary `revisionPair` request and nothing downstream learns a new idea.
+A span that ends at a commit is a `revisionPair` request.
+A span that ends at the working tree is a `revisionToWorkingTree` request.
 Individual and cumulative are two spans and not a switch, which is why the band needs no mode.
 
 `requestForSpan()` and `spanOf()` in `src/shared/api.ts` convert between a span and a comparison.
-A span compares from the parent of the commit it starts at, which `SpineEntry.parent` holds, and not from the commit listed above it.
-`slideSpan()` moves a span by whole commits and keeps its width, so one step control walks single commits and slides a window: a window of one is a single commit.
+A span compares from the parent revision of the entry it starts at, which `SpineEntry.parent` holds.
+The working-tree entry uses HEAD as its parent, so selecting it alone means `HEAD -> working tree` and selecting a run through it means that run's base to the working tree.
+`slideSpan()` moves a span by whole entries and keeps its width, so one step control walks single changes and slides a window.
 `spanBetween()` is what a shift-click asks for.
 
 The whole change is not a span.
@@ -42,12 +45,14 @@ The commit above such a row is on the other line, and comparing from it would dr
 Each row therefore carries the parent it was measured against, and a span starts from that parent, so the figures in a row and the page it opens can never describe different changes.
 
 A run of commits over two lines is not a comparison of what it selects, so only a chain is offered.
+The working-tree entry extends the chain only when the listed commit before it is HEAD.
 `chainedSpan()` is the rule: a shift-click stops at the first seam, a window will not step over one, and `spanOf()` refuses a request that crosses one, which drops the spine and rebuilds it for the comparison that was asked for.
 The row under a seam is drawn with a break above it, so a selection that stops there reads as the history it stopped at.
 
 ## What the figures are
 
 `buildSpine()` in `src/scanner/spine.ts` measures each commit against its own first parent, with the same scanner that measures the range.
+It measures the working-tree entry against HEAD and appends it only when the scanner finds accepted source files in that change.
 `git diff --numstat` is not used, for the reason it is not used anywhere else: it counts physical lines and knows nothing about blank, comment, and code.
 A figure in the band and a figure in the page therefore mean the same thing.
 
@@ -76,6 +81,7 @@ The project keeps the case it was written with, since a link is followed rather 
 
 That link is why the row is a grid holding a cover button rather than one button holding cells: a link cannot sit inside a button.
 The button is the selector and lies under the cells, which are positioned so they paint over it and pass their clicks through.
+The working-tree row says `working tree` instead of an object name and has no author or forge link.
 
 The band is dragged by the same `HeightSplitter` the workspace uses, and the height is remembered.
 
@@ -94,6 +100,7 @@ The held spine is dropped before the ask rather than after it, so the band never
 
 Measuring costs one diff for each commit, so the answer is built once.
 `MAX_SPINE_COMMITS` caps the list at the newest commits of the range, and `CommitSpine.omitted` counts what it left out.
+The working-tree entry follows that capped list and does not count toward the cap.
 
 ## What a step keeps
 
