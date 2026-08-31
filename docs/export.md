@@ -71,7 +71,7 @@ When the context holds a backlink, the header also shows a compact link to the p
 ## Pull request image
 
 This repository renders its own pull request diff through `.github/workflows/pr-diff-image.yml`.
-The workflow exports the merge-base comparison at the pull request head, serves the static bundle, and captures the top-level view as a PNG.
+The workflow serves the merge-base comparison at the pull request head and captures the top-level view as a PNG after the page proves that its diff response rendered.
 It runs pull request code with read-only repository access and uploads the PNG as an Actions artifact.
 
 `.github/workflows/publish-pr-diff-image.yml` runs after a successful render on the default branch.

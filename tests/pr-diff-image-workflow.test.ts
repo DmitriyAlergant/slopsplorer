@@ -15,6 +15,8 @@ describe("pull request diff image workflows", () => {
     expect(workflow).toContain("npm ci --ignore-scripts");
     expect(workflow).toContain("npm run build");
     expect(workflow).toContain('"$BASE_SHA...$HEAD_SHA"');
+    expect(workflow).toContain("--no-open");
+    expect(workflow).not.toContain("--export");
     expect(workflow).toContain("slopsplorer-pr-diff-image");
     expect(workflow).toContain("capture-pr-diff-image.mjs");
     expect(workflow).not.toContain("--screenshot=");
