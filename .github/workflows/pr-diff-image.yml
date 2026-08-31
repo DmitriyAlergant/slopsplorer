@@ -64,10 +64,16 @@ jobs:
             --hide-scrollbars \
             --force-device-scale-factor=2 \
             --window-size=1021,731 \
-            --timeout=10000 \
-            --run-all-compositor-stages-before-draw \
-            --screenshot="$RUNNER_TEMP/pr-diff.png" \
-            http://127.0.0.1:4173/?prefs=1
+            --remote-debugging-port=9222 \
+            --user-data-dir="$RUNNER_TEMP/slopsplorer-chrome-profile" \
+            http://127.0.0.1:4173/?prefs=1 \
+            >"$RUNNER_TEMP/slopsplorer-chrome.log" 2>&1 &
+          chrome_pid=$!
+          trap 'kill "$chrome_pid" "$server_pid"' EXIT
+          node .github/scripts/capture-pr-diff-image.mjs \
+            http://127.0.0.1:9222 \
+            http://127.0.0.1:4173/?prefs=1 \
+            "$RUNNER_TEMP/pr-diff.png"
           test "$(file --brief --mime-type "$RUNNER_TEMP/pr-diff.png")" = "image/png"
           IMAGE_PATH="$RUNNER_TEMP/pr-diff.png" node --input-type=module <<'NODE'
           import { open } from "node:fs/promises";

@@ -16,6 +16,15 @@ describe("pull request diff image workflows", () => {
     expect(workflow).toContain("npm run build");
     expect(workflow).toContain('"$BASE_SHA...$HEAD_SHA"');
     expect(workflow).toContain("slopsplorer-pr-diff-image");
+    expect(workflow).toContain("capture-pr-diff-image.mjs");
+    expect(workflow).not.toContain("--screenshot=");
+
+    const captureScript = await readFile(
+      new URL("../.github/scripts/capture-pr-diff-image.mjs", import.meta.url),
+      "utf8",
+    );
+    expect(captureScript).toContain('document.title.endsWith(" - Slopsplorer diff")');
+    expect(captureScript).toContain("Page.captureScreenshot");
   });
 
   it("publishes only a completed render artifact without executing it", async () => {
