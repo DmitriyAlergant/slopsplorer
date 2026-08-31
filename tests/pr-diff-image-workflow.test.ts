@@ -38,6 +38,9 @@ describe("pull request diff image workflows", () => {
     expect(workflow).toContain("vars.TIGRIS_BUCKET");
     expect(workflow).toContain("--aws-sigv4 'aws:amz:auto:s3'");
     expect(workflow).toContain("x-amz-meta-workflow-run");
+    expect(workflow).toContain('image_path="pr-$PR_NUMBER-$HEAD_SHA.png"');
+    expect(workflow).toContain('image_path="pr-$pr_number-$current_head.png"');
+    expect(workflow).not.toContain('image_path="pr-$PR_NUMBER.png"');
     expect(workflow).toContain("--expires-in 604800");
     expect(workflow).not.toContain("x-amz-acl: public-read");
     expect(workflow).toContain("aws s3api head-object");
