@@ -179,6 +179,7 @@ export function FolderDetail({
                   />
                 );
               }).concat(
+                <Readout key="churn-percent" label="churn %" value={changePercent("churn", totals.churn, before)} />,
                 <Readout key="net-percent" label="net %" value={changePercent("net", totals.net, before)} />,
               )
               : MEASURES.map((candidate) => (

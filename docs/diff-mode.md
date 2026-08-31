@@ -165,7 +165,7 @@ Both identities hold for every measure, and `tests/diff-scan.test.ts` pins them 
 
 The page orders the four aspects as Added, Removed, Churn, and Net in the selector, readout strips, and file table.
 Each Churn and Net file cell also states its percentage of that file's exact before-image total.
-The total strips use a separate Net % readout against the current filtered scope and omit the file-count readout.
+The total strips use separate Churn % and Net % readouts against the current filtered scope and omit the file-count readout.
 Net keeps its sign, and no percentage is a separate sortable metric.
 A file or scope with no before image reads `new` because a percentage of zero is undefined.
 

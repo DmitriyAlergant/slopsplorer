@@ -538,7 +538,7 @@ button { cursor: pointer; }
  */
 .ribbon__readouts {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));
   gap: 14px 18px;
   /* Labels on one baseline, so moving the emphasis grows one figure upward
      instead of moving every figure beside it. */

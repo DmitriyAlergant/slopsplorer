@@ -106,6 +106,11 @@ export function MassRibbon(
                 );
               }).concat(
                 <Readout
+                  key="churn-percent"
+                  label="churn %"
+                  value={summary ? changePercent("churn", totals.churn, before) : "-"}
+                />,
+                <Readout
                   key="net-percent"
                   label="net %"
                   value={summary ? changePercent("net", totals.net, before) : "-"}
