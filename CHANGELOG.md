@@ -6,6 +6,8 @@ Write yours under Unreleased as you make the change, and rename that heading to 
 
 ## [Unreleased]
 
+## [0.7.0](https://github.com/DmitriyAlergant/slopsplorer/releases/tag/v0.7.0) - 2026-09-01
+
 ### Features
 
 - Diff controls, readouts, and file columns now use Added, Removed, Churn, Net order, each file shows relative Churn and Net against its exact before image, and total strips replace the Files readout with Churn % and Net %.
