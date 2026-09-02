@@ -151,6 +151,7 @@ Use the `dev-browser` CLI against the dev server on `http://127.0.0.1:8765`, and
 - Tooltips are CSS, never the native `title` attribute, which cannot be styled, appears on a delay the page does not control, and never appears for a keyboard user.
   Render `Tooltip` from `src/web/components/Tooltip.tsx` as a direct child of the control and spread `tooltipHandlers` onto it.
   The panel is fixed-position and placed on hover, so it escapes a scrolling tree, a table cell, and a panel with hidden overflow.
+  It waits for the pointer to rest and stays for a moment after the pointer leaves, and `src/web/tooltip.ts` holds both delays.
 
 ## Dependencies
 

@@ -10,6 +10,12 @@
  * not re-evaluate `:hover` until the pointer next moves, so when a click or an
  * arriving view re-lays out the page, a CSS-driven panel hangs over whatever
  * took its control's place. Only an explicit enter can open one of these.
+ *
+ * A panel waits for the pointer to rest, and it stays for a moment after the
+ * pointer leaves. A page this dense would otherwise flash panels at a pointer
+ * crossing it, and a reader who overshoots a control by a few pixels would lose
+ * what they were reading. While one panel is up the next opens at once, because
+ * the wait has already been served.
  */
 
 /** Present on the panel that is currently showing. */
@@ -18,7 +24,19 @@ const OPEN = "data-open";
 /** Present when the panel had to sit above its control instead of below it. */
 const ABOVE = "data-above";
 
+/** How long the pointer rests on a control before its panel appears. */
+const OPEN_DELAY = 500;
+
+/** How long a panel stays after the pointer leaves. Short, and enough to cross a gap. */
+const CLOSE_DELAY = 250;
+
 let openPanel: HTMLElement | null = null;
+
+/** The control a pending open belongs to, so a move inside it does not restart the wait. */
+let waitingAnchor: HTMLElement | null = null;
+
+/** The one pending act. An open and a close can never both be waiting. */
+let timer: number | null = null;
 
 /** Where the pointer stood when the last press happened, if it is still holding tooltips shut. */
 let suppressedAt: { x: number; y: number } | null = null;
@@ -72,6 +90,12 @@ function place(anchor: HTMLElement, panel: HTMLElement): void {
   panel.toggleAttribute(ABOVE, above);
 }
 
+function cancelPending(): void {
+  if (timer !== null) window.clearTimeout(timer);
+  timer = null;
+  waitingAnchor = null;
+}
+
 function show(anchor: HTMLElement): void {
   const panel = panelOf(anchor);
   if (panel === null || panel === openPanel) return;
@@ -81,15 +105,47 @@ function show(anchor: HTMLElement): void {
   openPanel = panel;
 }
 
-/** Close whatever is showing. Safe to call when nothing is. */
+/** Ask for a panel: at once while one is already up, and after the wait otherwise. */
+function requestTooltip(anchor: HTMLElement): void {
+  if (waitingAnchor === anchor) return;
+  cancelPending();
+  if (openPanel !== null) {
+    show(anchor);
+    return;
+  }
+  waitingAnchor = anchor;
+  timer = window.setTimeout(() => {
+    cancelPending();
+    show(anchor);
+  }, OPEN_DELAY);
+}
+
+/** Close whatever is showing, and drop whatever is waiting. Safe to call when nothing is. */
 export function closeTooltip(): void {
+  cancelPending();
   openPanel?.removeAttribute(OPEN);
   openPanel = null;
 }
 
+/**
+ * The pointer left the control, so the panel goes after a moment.
+ *
+ * A reader who overshoots a control, or who crosses the gap to the next one,
+ * keeps what they were reading.
+ */
+export function leaveTooltip(): void {
+  cancelPending();
+  const leaving = openPanel;
+  if (leaving === null) return;
+  timer = window.setTimeout(() => {
+    timer = null;
+    if (openPanel === leaving) closeTooltip();
+  }, CLOSE_DELAY);
+}
+
 export function openTooltip(event: React.MouseEvent<HTMLElement>): void {
   if (suppressedAt !== null) return;
-  show(event.currentTarget);
+  requestTooltip(event.currentTarget);
 }
 
 /**
@@ -105,7 +161,7 @@ export function trackTooltip(event: React.MouseEvent<HTMLElement>): void {
     if (!travelled) return;
     suppressedAt = null;
   }
-  show(event.currentTarget);
+  requestTooltip(event.currentTarget);
 }
 
 /** A press asks for the control, not for a description of it. */
@@ -114,9 +170,13 @@ export function dismissTooltip(event: React.MouseEvent<HTMLElement>): void {
   closeTooltip();
 }
 
-/** Keyboard focus asks for the description. A press focuses too, so it is excluded. */
+/**
+ * Keyboard focus asks for the description, and it asks deliberately, so there is
+ * no wait. A press focuses too, so it is excluded.
+ */
 export function focusTooltip(event: React.FocusEvent<HTMLElement>): void {
   if (!event.currentTarget.matches(":focus-visible")) return;
   suppressedAt = null;
+  cancelPending();
   show(event.currentTarget);
 }

@@ -280,6 +280,7 @@ export interface SpineCommit {
   /** The message under the subject, trimmed. Empty when there is none. */
   body: string;
   author: string;
+  authorEmail: string;
   date: string;
   /** First parent, and the empty tree for a commit that has none. */
   parent: string;
@@ -291,7 +292,7 @@ const SPINE_SEPARATOR = "\u001F";
 /** The message runs to the end of a record, so records end with a byte of their own. */
 const SPINE_TERMINATOR = "\u0000";
 
-const SPINE_FORMAT = "%H%x1f%h%x1f%an%x1f%aI%x1f%P%x1f%B%x00";
+const SPINE_FORMAT = "%H%x1f%h%x1f%an%x1f%ae%x1f%aI%x1f%P%x1f%B%x00";
 
 /**
  * How much of a commit message the band carries.
@@ -337,14 +338,15 @@ export async function listSpineCommits(
     // Git writes a newline between records, after the terminator.
     const trimmed = record.replace(/^\n/, "");
     if (trimmed === "") continue;
-    const [sha, shortSha, author, date, parents, message] = trimmed.split(SPINE_SEPARATOR);
-    if (sha === undefined || shortSha === undefined || author === undefined
+    const [sha, shortSha, author, authorEmail, date, parents, message] = trimmed.split(SPINE_SEPARATOR);
+    if (sha === undefined || shortSha === undefined || author === undefined || authorEmail === undefined
       || date === undefined || parents === undefined || message === undefined) continue;
     const firstParent = parents.split(" ").filter(Boolean)[0];
     commits.push({
       sha,
       shortSha,
       author,
+      authorEmail,
       date,
       subject: message.split("\n")[0]?.trim() ?? "",
       body: commitBody(message),

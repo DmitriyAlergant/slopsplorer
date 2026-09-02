@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
-import type { CommitSpine, ComparisonRequest, Measure, Span, SpineEntry } from "../../shared/api.ts";
-import { requestForSpan, sameComparisonRequest, slideSpan, spanBetween, spanOf } from "../../shared/api.ts";
+import type {
+  Aspect, CommitSpine, CommitSpineEntry, ComparisonRequest, Measure, Span, SpineEntry,
+} from "../../shared/api.ts";
+import {
+  aspectHeading, requestForSpan, sameComparisonRequest, slideSpan, spanBetween, spanOf, weightName,
+} from "../../shared/api.ts";
 import { count, sideCount, signed } from "../format.ts";
 import { DEFAULT_SPINE_HEIGHT, MAX_SPINE_HEIGHT, MIN_SPINE_HEIGHT } from "../preferences.ts";
 import { heaviestChurn, sidesOf } from "../spine.ts";
@@ -22,6 +26,31 @@ interface Props {
   onHeightChange: (height: number) => void;
 }
 
+/**
+ * The host a commit link opens, named as a reader knows it.
+ *
+ * The link is built from the remote URL, so the host is the only honest name
+ * for it: a self-hosted GitLab is not "GitLab" to the person who reads it.
+ */
+function hostOf(url: string): string {
+  return new URL(url).hostname;
+}
+
+/** The three figure columns, in the order the aspect switch names them. */
+const FIGURE_COLUMNS: readonly Aspect[] = ["added", "removed", "net"];
+
+/**
+ * What a figure column counts.
+ *
+ * The band answers to no filter. The same commit can therefore read differently
+ * here and in the page below, and the heading is the only place that says why.
+ */
+function figureDescription(aspect: Aspect, measure: Measure): string {
+  const net = aspect === "net" ? " Net is added minus removed." : "";
+  return `This column counts ${weightName(measure, aspect, true)} in the whole commit.${net}`
+    + " The filters below do not change it. Every flavor counts. Generated files are always left out.";
+}
+
 /** Where a span sits, in the fewest words that still say it. */
 function whereText(spine: CommitSpine, span: Span | null): string {
   const total = spine.commits.length;
@@ -36,6 +65,56 @@ function whereText(spine: CommitSpine, span: Span | null): string {
   if (span.end === total - 1 && includesWorkingTree) return `commit ${span.start + 1} through working tree`;
   if (span.start === span.end) return `commit ${span.start + 1} of ${count(commitTotal)}`;
   return `commits ${span.start + 1} to ${span.end + 1} of ${count(commitTotal)}`;
+}
+
+/**
+ * The commit hash: the control that copies it, and the link that opens it.
+ *
+ * Reading a commit elsewhere starts with its hash in the clipboard. The hash
+ * itself therefore copies, and the link to the host keeps a mark beside it. The
+ * whole hash is copied and the row still draws the short one, because a git
+ * command takes the whole hash and a column this narrow cannot hold it.
+ */
+function CommitSha({ entry }: { entry: CommitSpineEntry }): React.JSX.Element {
+  const [copied, setCopied] = useState(false);
+
+  const copy = (): void => {
+    void navigator.clipboard.writeText(entry.sha).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1600);
+    });
+  };
+
+  return (
+    <span className="spine-row__sha">
+      <button
+        type="button"
+        className="spine-row__copy"
+        data-copied={copied}
+        aria-label={copied ? `Copied ${entry.sha}` : `Copy the commit hash ${entry.sha}`}
+        onClick={copy}
+        {...tooltipHandlers}
+      >
+        {entry.shortSha}
+        <Tooltip compact>{copied ? "Copied" : "Copy the full commit hash"}</Tooltip>
+      </button>
+      {entry.url === null ? null : (
+        <a
+          className="spine-row__forge"
+          href={entry.url}
+          target="_blank"
+          rel="noreferrer"
+          aria-label={`Open commit ${entry.shortSha} on ${hostOf(entry.url)}`}
+          {...tooltipHandlers}
+        >
+          <svg viewBox="0 0 16 16" width="11" height="11" aria-hidden="true">
+            <path d="M6 3h7v7M13 3 6 10M11 9v4H3V5h4" />
+          </svg>
+          <Tooltip compact>{`Open this commit on ${hostOf(entry.url)}`}</Tooltip>
+        </a>
+      )}
+    </span>
+  );
 }
 
 function shareStyle(entry: SpineEntry, measure: Measure, heaviest: number): React.CSSProperties {
@@ -147,30 +226,35 @@ export function SpineBand({
         >
           <Tooltip>
             <span className="spine-row__message">
+              <span className="spine-row__label">Summary</span>
               <b>{entry.subject}</b>
-              {entry.body === "" ? null : <span className="spine-row__body">{entry.body}</span>}
+              {entry.body === "" ? null : (
+                <>
+                  <span className="spine-row__label">Description</span>
+                  <span className="spine-row__body">{entry.body}</span>
+                </>
+              )}
             </span>
           </Tooltip>
         </button>
 
-        {entry.kind === "workingTree" ? (
-          <span className="spine-row__sha">working tree</span>
-        ) : entry.url === null ? (
-          <span className="spine-row__sha">{entry.shortSha}</span>
-        ) : (
-          <a
-            className="spine-row__sha spine-row__sha--link"
-            href={entry.url}
-            target="_blank"
-            rel="noreferrer"
-            {...tooltipHandlers}
-          >
-            {entry.shortSha}
-            <Tooltip compact>Open this commit on the forge</Tooltip>
-          </a>
-        )}
+        {entry.kind === "workingTree"
+          ? <span className="spine-row__sha">working tree</span>
+          : <CommitSha entry={entry} />}
         <span className="spine-row__subject">{entry.subject}</span>
-        <span className="spine-row__author">{entry.kind === "commit" ? entry.author : ""}</span>
+        {entry.kind === "commit" ? (
+          <span className="spine-row__author" {...tooltipHandlers}>
+            {entry.author}
+            <Tooltip>
+              <span className="spine-row__message">
+                <span className="spine-row__label">Author</span>
+                {entry.author}
+                <span className="spine-row__label">Email</span>
+                <span className="spine-row__email">{entry.authorEmail}</span>
+              </span>
+            </Tooltip>
+          </span>
+        ) : <span className="spine-row__author" />}
         {/* Removed left of the axis and added right, as a number line reads and
             as the source tree already draws a net row. */}
         <span className="spine-row__axis" style={shareStyle(entry, measure, heaviest)} aria-hidden="true">
@@ -253,13 +337,16 @@ export function SpineBand({
       {expanded ? (
         <div className="spine__list" style={{ "--spine-height": `${height}px` } as React.CSSProperties}>
           <div className="spine__columns" aria-hidden="true">
-            <span />
+            <span>Commit</span>
             <span>Subject</span>
+            <span>Author</span>
             <span />
-            <span />
-            <span>Added</span>
-            <span>Removed</span>
-            <span>Net</span>
+            {FIGURE_COLUMNS.map((aspect) => (
+              <span key={aspect} {...tooltipHandlers}>
+                {aspectHeading(aspect)}
+                <Tooltip>{figureDescription(aspect, measure)}</Tooltip>
+              </span>
+            ))}
           </div>
           {spine.commits.map(rowFor)}
           {spine.omitted > 0 ? (

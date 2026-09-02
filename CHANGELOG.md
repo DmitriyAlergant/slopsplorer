@@ -6,6 +6,12 @@ Write yours under Unreleased as you make the change, and rename that heading to 
 
 ## [Unreleased]
 
+### Features
+
+- A click on a commit hash in the commit band copies the full hash, and the forge link moves to a mark beside it.
+- The commit band heads its Commit and Author columns, its Added, Removed, and Net headings state what they count, its message tooltip labels the summary and the description, and its author tooltip states the name and email git recorded.
+- Tooltips wait half a second before they appear and stay for a moment after the pointer leaves, so a pointer crossing the page no longer flashes them.
+
 ## [0.7.0](https://github.com/DmitriyAlergant/slopsplorer/releases/tag/v0.7.0) - 2026-09-01
 
 ### Features

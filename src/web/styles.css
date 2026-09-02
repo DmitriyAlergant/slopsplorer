@@ -868,6 +868,10 @@ button { cursor: pointer; }
 /* Positioned, so they paint over the selector that precedes them. */
 .spine-row > :not(.spine-row__pick) { position: relative; pointer-events: none; }
 .spine-row__sha {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -875,8 +879,30 @@ button { cursor: pointer; }
   font-size: 11.5px;
   color: var(--ink-faint);
 }
-.spine-row__sha--link { pointer-events: auto; text-decoration: none; width: max-content; }
-.spine-row__sha--link:hover { color: var(--signal); text-decoration: underline; }
+/* The two controls inside the cell, which the row-wide selector sits under. */
+.spine-row__copy, .spine-row__forge {
+  pointer-events: auto;
+  color: inherit;
+  text-decoration: none;
+}
+.spine-row__copy {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  cursor: pointer;
+}
+.spine-row__copy:hover { color: var(--signal); text-decoration: underline; }
+.spine-row__copy[data-copied="true"] { color: var(--status-added); text-decoration: none; }
+.spine-row__forge { display: flex; }
+.spine-row__forge svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.5;
+}
+.spine-row__forge:hover { color: var(--signal); }
 /*
  * The subject is the heading of the message, and the body follows it.
  *
@@ -890,13 +916,29 @@ button { cursor: pointer; }
   width: min(540px, calc(100vw - 24px));
   align-items: flex-start;
 }
-.spine-row__message { display: flex; flex-direction: column; gap: 6px; }
+.spine-row__message { display: flex; flex-direction: column; gap: 3px; }
+/* Which part of a commit each block is, so a panel of text is not one wall. */
+.spine-row__label {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.55;
+}
+.spine-row__label + * { margin-bottom: 5px; }
+.spine-row__message > :last-child { margin-bottom: 0; }
 .spine-row__body { white-space: pre-wrap; opacity: 0.82; }
+.spine-row__email { font-family: var(--font-mono); }
 .spine-row__subject {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
   color: var(--ink-soft);
+}
+/* Written against the row, so it outranks the rule that mutes every cell. */
+.spine-row > .spine-row__author {
+  /* Its own tooltip, so it takes its own pointer back from the row selector. */
+  pointer-events: auto;
 }
 .spine-row__author {
   overflow: hidden;

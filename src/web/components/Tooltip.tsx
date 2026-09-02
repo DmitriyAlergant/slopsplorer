@@ -1,4 +1,4 @@
-import { closeTooltip, dismissTooltip, focusTooltip, openTooltip, trackTooltip } from "../tooltip.ts";
+import { dismissTooltip, focusTooltip, leaveTooltip, openTooltip, trackTooltip } from "../tooltip.ts";
 
 interface Props {
   children: React.ReactNode;
@@ -42,8 +42,8 @@ export function Tooltip({ children, id, compact, singleLine }: Props): React.JSX
 export const tooltipHandlers = {
   onMouseEnter: openTooltip,
   onMouseMove: trackTooltip,
-  onMouseLeave: closeTooltip,
+  onMouseLeave: leaveTooltip,
   onMouseDown: dismissTooltip,
   onFocus: focusTooltip,
-  onBlur: closeTooltip,
+  onBlur: leaveTooltip,
 } as const;
