@@ -1,4 +1,7 @@
 import { execFile, spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { chmod, mkdtemp, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { promisify } from "node:util";
 import type { ComparisonRequest, GitRef, RepositoryRefs, SnapshotBacklink } from "../shared/api.ts";
 
@@ -520,28 +523,162 @@ export async function commitUrlBase(directory: string): Promise<string | null> {
   return `https://${project.host}/${project.webPath}/${commitPath}/`;
 }
 
-/**
- * Which remote publishes the pull request.
- *
- * A URL names its project, so the remote serving that project is the only one
- * that can hold it. A bare number names no project, so `origin` is taken, or
- * the only remote when the repository has exactly one.
- */
-async function chooseRemote(directory: string, location: PullRequestLocation): Promise<string> {
-  const names = await listRemotes(directory);
-  if (names.length === 0) throw new GitError("this repository has no remote to fetch a pull request from");
+/** Where a pull request is fetched into, and measured from. */
+export interface PullRequestWorkspace {
+  /** Repository the head lands in. It is the scan root the comparison reports paths from. */
+  directory: string;
+  /** Remote of that repository which publishes the request. */
+  remote: string;
+  /** Project that remote serves, which is what the forge is asked about. */
+  project: Project;
+  /**
+   * Folder to remove when the run ends, or `null` when a repository already on
+   * this machine served the request.
+   */
+  temporaryClone: string | null;
+}
 
-  const wanted = location.project;
-  if (wanted === null) {
-    if (names.includes("origin")) return "origin";
-    if (names.length === 1) return names[0]!;
+/**
+ * The repository at hand, when the remote it is read from can be asked.
+ *
+ * A number names no project, so the remote a repository is read from is the
+ * only candidate there is.
+ */
+async function workspaceForNumber(directory: string): Promise<PullRequestWorkspace> {
+  let root: string;
+  try {
+    root = await repositoryRoot(directory);
+  } catch {
+    throw new GitError(
+      `a --pr number is fetched from this repository's remote, and ${directory} is inside no repository. `
+      + "Name the pull request by the URL of its page to review one from anywhere",
+    );
+  }
+  const names = await listRemotes(root);
+  if (names.length === 0) throw new GitError("this repository has no remote to fetch a pull request from");
+  const remote = names.includes("origin") ? "origin" : names.length === 1 ? names[0]! : null;
+  if (remote === null) {
     throw new GitError('this repository has no "origin", so name the pull request by its URL instead');
   }
-  for (const name of names) {
-    const project = projectOf(await remoteUrl(directory, name));
-    if (project !== null && project.host === wanted.host && project.path === wanted.path) return name;
+  const project = projectOf(await remoteUrl(root, remote));
+  if (project === null) throw new GitError(`the ${remote} remote names no project to ask about`);
+  return { directory: root, remote, project, temporaryClone: null };
+}
+
+/**
+ * The repository at hand, when one of its remotes serves the project a URL
+ * names, and `null` when none of them does.
+ */
+async function workspaceForProject(directory: string, wanted: Project): Promise<PullRequestWorkspace | null> {
+  let root: string;
+  try {
+    root = await repositoryRoot(directory);
+  } catch {
+    return null;
   }
-  throw new GitError(`no remote of this repository points at ${wanted.host}/${wanted.path}`);
+  for (const name of await listRemotes(root)) {
+    const project = projectOf(await remoteUrl(root, name));
+    if (project !== null && project.host === wanted.host && project.path === wanted.path) {
+      return { directory: root, remote: name, project, temporaryClone: null };
+    }
+  }
+  return null;
+}
+
+/** Where a project is cloned from when this machine holds no checkout of it. */
+function cloneUrlOf(project: Project): string {
+  return `https://${project.host}/${project.webPath}.git`;
+}
+
+/**
+ * Clone a project no repository here serves.
+ *
+ * The clone is blobless, so what travels is the shape of the history rather
+ * than every version of every file, and it takes no checkout, because the
+ * revision worth checking out is the request head that is fetched next.
+ *
+ * The folder under the temporary directory carries the project name, because
+ * the page draws the root by the name of its folder.
+ */
+async function cloneProject(project: Project, url: string): Promise<PullRequestWorkspace> {
+  const temporaryClone = await mkdtemp(path.join(os.tmpdir(), "slopsplorer-pr-"));
+  const directory = path.join(temporaryClone, project.webPath.split("/").pop() || project.host);
+  try {
+    await git(
+      temporaryClone,
+      ["clone", "--quiet", "--filter=blob:none", "--no-checkout", url, directory],
+      NO_TERMINAL_PROMPT,
+    );
+  } catch (cause) {
+    // The caller never learns this folder, so a clone that fails removes it here
+    // or nobody ever does.
+    await rm(temporaryClone, { recursive: true, force: true });
+    throw cause;
+  }
+  return { directory, remote: "origin", project, temporaryClone };
+}
+
+/**
+ * Where this pull request can be fetched and measured.
+ *
+ * A repository whose remote serves the project is the one to use, because it
+ * holds the history already. Nothing else on this machine can serve it, so a
+ * URL naming a project no remote here points at is cloned instead, and that is
+ * what lets a review start from any folder.
+ */
+export async function openPullRequestWorkspace(
+  directory: string, location: PullRequestLocation, cloneUrl?: string,
+): Promise<PullRequestWorkspace> {
+  const wanted = location.project;
+  if (wanted === null) return workspaceForNumber(directory);
+  return (await workspaceForProject(directory, wanted))
+    ?? await cloneProject(wanted, cloneUrl ?? cloneUrlOf(wanted));
+}
+
+/** Mode of every file in a temporary checkout: readable by all, writable by none. */
+const READ_ONLY_MODE = 0o444;
+
+/** How many files are made read-only at once, so a large tree opens no handle storm. */
+const READ_ONLY_BATCH = 128;
+
+/**
+ * Check out the request head, and let nobody write to it.
+ *
+ * The map reads Git objects, so the checkout is for the reader instead: "open
+ * in" and an agent ask both work on files on disk. The folder goes away when
+ * the run ends, so the files are read-only, and an editor refuses an edit
+ * rather than losing it when the run stops.
+ */
+async function checkOutReadOnly(directory: string, rev: string): Promise<void> {
+  await git(directory, ["checkout", "--quiet", "--detach", rev], NO_TERMINAL_PROMPT);
+  const listed = await git(directory, ["ls-files", "--stage", "-z"]);
+  const paths: string[] = [];
+  for (const record of listed.split("\0")) {
+    // `<mode> <object> <stage>\t<path>`, and only a regular file has a mode to
+    // set. A symbolic link is left alone, because chmod would follow it out of
+    // the folder and touch whatever it points at.
+    const tab = record.indexOf("\t");
+    if (tab < 0) continue;
+    const mode = record.slice(0, 6);
+    if (mode !== "100644" && mode !== "100755") continue;
+    paths.push(record.slice(tab + 1));
+  }
+  for (let start = 0; start < paths.length; start += READ_ONLY_BATCH) {
+    await Promise.all(paths.slice(start, start + READ_ONLY_BATCH)
+      .map((relativePath) => chmod(path.join(directory, relativePath), READ_ONLY_MODE)));
+  }
+}
+
+/**
+ * Bring in the blobs the comparison is about to read, in one fetch.
+ *
+ * A blobless clone holds none of them, and Git fetches what a command misses
+ * as that command runs. One command that reads both sides of every changed
+ * file is therefore one round trip, where measuring file by file would be one
+ * per file.
+ */
+async function warmChangedBlobs(directory: string, base: string, target: string): Promise<void> {
+  await git(directory, ["diff", "--numstat", base, target], NO_TERMINAL_PROMPT);
 }
 
 /**
@@ -691,6 +828,10 @@ async function nameForBase(directory: string, baseBranch: string, sha: string): 
 export interface FetchedPullRequest {
   request: ComparisonRequest;
   remote: string;
+  /** Repository holding the head, which is the root the comparison measures. */
+  directory: string;
+  /** Folder to remove when the run ends, or `null` when a repository here served the request. */
+  temporaryClone: string | null;
   number: number;
   /** Ref on the remote the head came from. */
   remoteRef: string;
@@ -698,6 +839,14 @@ export interface FetchedPullRequest {
   localRef: string;
   /** Branch the pull request is against, as the forge names it. */
   baseBranch: string;
+}
+
+/** What a caller hands in rather than lets this module work out for itself. */
+export interface FetchPullRequestOptions {
+  /** The forge's answer, passed in by the tests, which have no forge to ask. */
+  metadata?: PullRequestMetadata;
+  /** Where a temporary clone is made from. The tests point it at a local upstream. */
+  cloneUrl?: string;
 }
 
 /**
@@ -709,41 +858,48 @@ export interface FetchedPullRequest {
  * forge has since deleted, which is most of what reviewing a merged change
  * means.
  *
- * `metadata` is passed in by the tests, which have a repository to measure and
- * no forge to ask.
+ * The repository is the one whose remote serves the project, and a temporary
+ * clone when this machine holds none. A clone is checked out and made
+ * read-only, because the reader gets a folder that is gone when the run ends.
  */
 export async function fetchPullRequest(
-  directory: string, location: PullRequestLocation, metadata?: PullRequestMetadata,
+  directory: string, location: PullRequestLocation, options: FetchPullRequestOptions = {},
 ): Promise<FetchedPullRequest> {
-  const remote = await chooseRemote(directory, location);
-  const project = projectOf(await remoteUrl(directory, remote));
-  if (project === null) throw new GitError(`the ${remote} remote names no project to ask about`);
+  const workspace = await openPullRequestWorkspace(directory, location, options.cloneUrl);
+  const { remote, project, temporaryClone } = workspace;
+  const repository = workspace.directory;
 
-  const known = metadata ?? await readPullRequestMetadata(directory, project, location.number);
+  const known = options.metadata ?? await readPullRequestMetadata(repository, project, location.number);
   const forge = forgeOf(project.host) ?? "github";
 
   const remoteRef = headRefOf(forge, location.number);
   const localRef = `refs/slopsplorer/pull/${location.number}`;
-  await git(directory, ["fetch", "--no-tags", remote, `+${remoteRef}:${localRef}`], NO_TERMINAL_PROMPT);
+  await git(repository, ["fetch", "--no-tags", remote, `+${remoteRef}:${localRef}`], NO_TERMINAL_PROMPT);
 
   // The base branch, and the commit a landed request sat on, are both on the
   // remote and neither is necessarily in this repository yet.
   const baseBranch = `${remote}/${known.baseBranch}`;
-  if (known.mergeSha === null && !(await isRevision(directory, baseBranch))) {
+  if (known.mergeSha === null && !(await isRevision(repository, baseBranch))) {
     await git(
-      directory,
+      repository,
       ["fetch", "--no-tags", remote, `+refs/heads/${known.baseBranch}:refs/remotes/${baseBranch}`],
       NO_TERMINAL_PROMPT,
     );
   }
-  if (known.mergeSha !== null && !(await isRevision(directory, known.mergeSha))) {
-    await git(directory, ["fetch", "--no-tags", remote, known.mergeSha], NO_TERMINAL_PROMPT);
+  if (known.mergeSha !== null && !(await isRevision(repository, known.mergeSha))) {
+    await git(repository, ["fetch", "--no-tags", remote, known.mergeSha], NO_TERMINAL_PROMPT);
   }
 
-  const base = await pullRequestBase(directory, known, baseBranch, localRef);
+  const base = await pullRequestBase(repository, known, baseBranch, localRef);
+  if (temporaryClone !== null) {
+    await checkOutReadOnly(repository, localRef);
+    await warmChangedBlobs(repository, base, localRef);
+  }
   return {
-    request: { kind: "revisionPair", base: await nameForBase(directory, baseBranch, base), target: localRef },
+    request: { kind: "revisionPair", base: await nameForBase(repository, baseBranch, base), target: localRef },
     remote,
+    directory: repository,
+    temporaryClone,
     number: location.number,
     remoteRef,
     localRef,

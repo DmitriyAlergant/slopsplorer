@@ -35,6 +35,9 @@ slopsplorer v1.4 v1.5          # any two revisions
 
 # Use `-C <dir>` when the repository is elsewhere.
 slopsplorer -C /path/to/another-repo --pr 1543
+
+# A pull request of any project, from any folder.
+slopsplorer https://github.com/owner/project/pull/199
 ```
 
 The **Before** - **Diff** - **After** control moves between the complete repository on either side and the change itself without checking out either revision.
@@ -46,6 +49,7 @@ The commit band allows to focus layer-by-layer on the whole PR, selected run of 
 *Slopsplorer comparing v0.5.0 with HEAD, in net LOC.*
 
 `--pr` accepts a GitHub or GitLab pull request number or URL and needs the matching `gh` or `glab` CLI signed in.
+A URL works from anywhere, including a folder that is no repository: when no remote here serves that project, slopsplorer clones it to a read-only temporary folder and removes it when the run ends.
 Click a file to read its source or diff, or use **Read all** to open every matching file in path order.
 
 ## Read the map

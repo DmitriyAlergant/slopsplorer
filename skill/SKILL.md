@@ -45,6 +45,8 @@ slopsplorer --report --pr 619             # a pull request, fetched from the rem
 
 `--pr <number>` takes a pull request number or the URL of its page, on GitHub or GitLab.
 Use it when the change is not in a local branch, which is what a squash merge leaves behind.
+A number is fetched from this repository's remote.
+A URL also reviews a project this machine has no checkout of: slopsplorer clones it to a read-only temporary folder and removes that folder when the run ends.
 It needs `gh` or `glab` signed in, because only the forge knows which branch a request is against, and it is the one command here that uses the network.
 
 The report has one section per flavor.
