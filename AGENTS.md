@@ -166,3 +166,7 @@ Treat an unpinned install as running unreviewed code: check the manifest before 
 
 Add each user-facing change to `CHANGELOG.md` under `Unreleased` in one user-facing sentence.
 Do not add an entry for internal work or for a fix to an unreleased feature. Follow `RELEASING.md` to prepare screenshots, validate, and release a version.
+
+## Promotion to main
+
+Push current working branch and open a PR to `main`, wait for green PR. If Greptile Review action is pending, wait for its review and address findings. View all comments posted by Greptile including confidence store, general issues/feedback, and in-line code comments.
