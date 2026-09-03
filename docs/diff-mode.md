@@ -28,7 +28,7 @@ For the rules that decide what each file is, read [scanning-and-classification.m
 | `slopsplorer <revA>..<revB>` | A to B. |
 | `slopsplorer <revA>...<revB>` | The merge base of A and B, to B. |
 | `slopsplorer --pr <number>` | A pull request, fetched from the remote first. |
-| `slopsplorer <pull request URL>` | The same, named by the page a reviewer was reading. |
+| `slopsplorer <pull request URL>` | The same, named by the page a reviewer was reading, and of any project. |
 
 A single revision carries two intents, and the text tells them apart.
 A named one, such as `origin/main` or `HEAD~5`, is a place to measure from, so it compares to the working tree.
@@ -85,6 +85,25 @@ Its URL is read from the config rather than through `git remote get-url`, which 
 Only `--pr` and a pull request URL reach the network.
 A revision this repository does not hold is still an error and never a fetch, because a read-only tool must not talk to a remote by surprise.
 Git is told not to prompt, so a missing credential is an error the command line prints rather than a wait with nothing on screen.
+
+## A pull request of a project this machine does not hold
+
+`openPullRequestWorkspace()` decides where a request is fetched and measured.
+A repository whose remote serves the project is the one to use, because it holds the history already.
+A URL naming a project no remote here points at is cloned instead, and the reviewer can then start from any folder, including one inside no repository.
+A bare number still needs a repository, because a number names no project to clone.
+
+The clone is blobless and takes no checkout, so what travels is the shape of the history and not every version of every file.
+It goes under the temporary directory, in a folder named after the project, because the page names the root after its folder.
+`cloneProject()` removes that folder itself when the clone fails, because the caller never learns a path the clone did not return.
+
+After the head is fetched, `checkOutReadOnly()` checks it out and takes the write bit off every regular file.
+The map reads Git objects, so the checkout is for the reader: "open in" and an agent ask both work on files on disk.
+The folder is removed when the run ends, so an editor has to refuse an edit rather than lose it, and a symbolic link is left alone because `chmod` would follow it out of the folder.
+`warmChangedBlobs()` then reads both sides of every changed file in one command, because a blobless clone fetches what a command misses as that command runs, and measuring file by file would be one round trip per file.
+
+`removeWhenThisRunEnds()` in `src/cli.ts` removes the folder on process exit.
+The signal handlers are installed before the fetch, so a Ctrl-C during the scan ends the run the same way a Ctrl-C on the page does.
 
 ## Changing the comparison
 
@@ -316,6 +335,16 @@ A gutter holds the number on each side, so a reader can see where a passage sits
 `Only changed lines` in the dialog head hides every line further than three from a change, and a band counts what it hid.
 `Wrap lines` folds a long line into the width of the dialog instead of scrolling the body sideways, in a comparison and in a scan alike.
 Both are habits of the reader and not facts about the file, so `src/web/preferences.ts` keeps them in local storage and they open as they were last left.
+
+A Before / Diff / After switch heads the preview of one file, in the words the review switch uses for the whole page.
+Diff draws the change.
+Before and After draw the file as that side of the comparison held it, whole, with one gutter and no marker column.
+The side's colour washes the whole body, blank lines and the space under the last line included, so the view reads as one image of the file.
+A tint on the changed lines alone would read as the hunks of a diff, which is the question the Diff view answers.
+`linesOfSide()` in `src/web/components/DiffView.tsx` takes a side from the alignment the figures came from, so a side asks the server for nothing more.
+A side draws the file whole, so `Only changed lines` has nothing to act on: it holds its width and goes out of sight, and the controls beside it stay where the reader left them.
+The choice is not stored and each file opens on the change, because which image to read is a question about the file in front of the reader.
+A stack of files offers no switch, because it draws many changes under one head.
 
 `DiffView` highlights each side whole with `highlightToLines()`, then hands each row the line that belongs to it.
 Highlighting a row on its own would lose every construct that spans lines, and a diff grammar would colour the markers and leave the code grey.

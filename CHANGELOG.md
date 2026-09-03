@@ -8,8 +8,10 @@ Write yours under Unreleased as you make the change, and rename that heading to 
 
 ### Features
 
+- A pull request URL now opens from any folder, including one inside no repository: when no remote there serves the project, slopsplorer clones it to a read-only temporary folder and removes that folder when the run ends.
 - A click on a commit hash in the commit band copies the full hash, and the forge link moves to a mark beside it.
 - The commit band heads its Commit and Author columns, its Added, Removed, and Net headings state what they count, its message tooltip labels the summary and the description, and its author tooltip states the name and email git recorded.
+- The preview of one compared file heads with a Before / Diff / After switch, so a reviewer can read either whole image of the file without leaving the change.
 - Tooltips wait half a second before they appear and stay for a moment after the pointer leaves, so a pointer crossing the page no longer flashes them.
 
 ## [0.7.0](https://github.com/DmitriyAlergant/slopsplorer/releases/tag/v0.7.0) - 2026-09-01
