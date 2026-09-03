@@ -461,6 +461,7 @@ export interface FlavorSlice {
 /** One flavor's available weight in the file table's scope. */
 export interface FlavorStat {
   flavor: Flavor;
+  /** The flavor's weight in the active measure and aspect, signed as that aspect is. */
   weight: number;
   /** Whether the matching flavor switch currently counts these files. */
   enabled: boolean;
@@ -804,6 +805,7 @@ export interface CommitSpineEntry extends SpineEntryBase {
   /** Where the commit can be read on the forge, or `null` when there is none. */
   url: string | null;
   author: string;
+  authorEmail: string;
   /** ISO-8601 author date. */
   date: string;
 }

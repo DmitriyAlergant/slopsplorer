@@ -143,4 +143,17 @@ describe("the preview dialog of a whole selection", () => {
     expect(html).toContain("348 files, in path order");
     expect(html).toContain("Only changed lines");
   });
+
+  it("offers no side switch, because a stack of files has no one before and after", () => {
+    const html = renderToStaticMarkup(
+      <SourceDialog
+        preview={{ kind: "files", title: "src", request, total: 3, measure: "tokens", isDiff: true }}
+        onClose={() => undefined}
+        loadSource={loadSource}
+        loadFileList={loadFileList}
+      />,
+    );
+    expect(html).not.toContain("Image of the file the preview draws");
+    expect(html).toContain('data-vacant="false"');
+  });
 });

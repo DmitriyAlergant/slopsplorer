@@ -203,7 +203,9 @@ function StackedFile({
       </header>
       {open ? (
         <div className="stack__body" id={bodyId} data-pending={source === null && failure === null}>
-          <FilePreview source={source} failure={failure} changedOnly={changedOnly} />
+          {/* A stacked file is always the change: the switch that picks a side
+              belongs to a single-file preview, which has one head to hold it. */}
+          <FilePreview source={source} failure={failure} changedOnly={changedOnly} side="diff" />
         </div>
       ) : null}
     </section>

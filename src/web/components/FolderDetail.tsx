@@ -305,7 +305,7 @@ export function FolderDetail({
                   <span>{fullLabel}</span>
                   <span className="detail__flavor-weight">{weightCount(stat.weight, aspect)}</span>
                 </span>
-                <Tooltip>{`${description} ${count(stat.weight)} ${unit} available in this scope.`}</Tooltip>
+                <Tooltip>{`${description} ${weightCount(stat.weight, aspect)} ${unit} available in this scope.`}</Tooltip>
               </label>
             );
           })}

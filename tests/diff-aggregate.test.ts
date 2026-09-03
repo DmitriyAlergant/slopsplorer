@@ -178,6 +178,22 @@ describe("aggregating a diff", () => {
     expect(card.flavors).toEqual([{ flavor: "code", weight: 30 }]);
   });
 
+  it("signs a flavor switch's weight, so the switches add up to the panel's net", () => {
+    const view = buildView(diffIndex, request({ aspect: "net", selected: { rowKind: "folder", path: "" } }));
+    const code = view.detail.flavorStats.find((stat) => stat.flavor === "code")!;
+    // 30 lines gained under `grown` and 35 lost under `shrunk`, which a mass
+    // would have reported as 65.
+    expect(code.weight).toBe(-5);
+    expect(code.weight).toBe(view.detail.weight);
+  });
+
+  it("keeps the tile slices at magnitude, where a length cannot be signed", () => {
+    const view = buildView(diffIndex, request({ aspect: "net", cardColumns: 3, selected: { rowKind: "folder", path: "" } }));
+    const shrunk = view.detail.cards.find((entry) => entry.name === "shrunk")!;
+    expect(shrunk.weight).toBe(-35);
+    expect(shrunk.flavors).toEqual([{ flavor: "code", weight: 35 }]);
+  });
+
   it("holds the tile baseline still when a flavor is turned off, so bars only shorten", () => {
     const all = buildView(diffIndex, request({ cardColumns: 3, selected: { rowKind: "folder", path: "" } }));
     const withoutCode = buildView(diffIndex, request({ cardColumns: 3, kinds: [], selected: { rowKind: "folder", path: "" } }));

@@ -151,6 +151,7 @@ Use the `dev-browser` CLI against the dev server on `http://127.0.0.1:8765`, and
 - Tooltips are CSS, never the native `title` attribute, which cannot be styled, appears on a delay the page does not control, and never appears for a keyboard user.
   Render `Tooltip` from `src/web/components/Tooltip.tsx` as a direct child of the control and spread `tooltipHandlers` onto it.
   The panel is fixed-position and placed on hover, so it escapes a scrolling tree, a table cell, and a panel with hidden overflow.
+  It waits for the pointer to rest and stays for a moment after the pointer leaves, and `src/web/tooltip.ts` holds both delays.
 
 ## Dependencies
 
@@ -165,3 +166,7 @@ Treat an unpinned install as running unreviewed code: check the manifest before 
 
 Add each user-facing change to `CHANGELOG.md` under `Unreleased` in one user-facing sentence.
 Do not add an entry for internal work or for a fix to an unreleased feature. Follow `RELEASING.md` to prepare screenshots, validate, and release a version.
+
+## Promotion to main
+
+Push current working branch and open a PR to `main`, wait for green PR. If Greptile Review action is pending, wait for its review and address findings. View all comments posted by Greptile including confidence store, general issues/feedback, and in-line code comments.

@@ -35,6 +35,7 @@ function measuredCommit(commit: SpineCommit, files: readonly FileRow[], urlBase:
     body: commit.body,
     url: urlBase === null ? null : `${urlBase}${commit.sha}`,
     author: commit.author,
+    authorEmail: commit.authorEmail,
     date: commit.date,
     files: 0,
     addedTokens: 0,

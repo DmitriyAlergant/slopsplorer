@@ -1,12 +1,12 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   commitUrlBase, fetchPullRequest, parsePullRequestUrl, pullRequestBacklink, resolveComparison,
-  type PullRequestMetadata,
+  type FetchedPullRequest, type PullRequestMetadata,
 } from "../src/scanner/gitdiff.ts";
 import type { ComparisonRequest } from "../src/shared/api.ts";
 
@@ -193,7 +193,7 @@ describe("fetchPullRequest", () => {
   it("fetches an open pull request and compares it against its fork point", async () => {
     const reviewer = await clone("open-clone");
     const fetched = await fetchPullRequest(
-      reviewer, { number: 1, project: null }, metadataFor(1, "main", openHeadSha),
+      reviewer, { number: 1, project: null }, { metadata: metadataFor(1, "main", openHeadSha) },
     );
 
     expect(fetched.remote).toBe("origin");
@@ -210,7 +210,7 @@ describe("fetchPullRequest", () => {
   it("reaches a squash-merged pull request whose branch was deleted", async () => {
     const reviewer = await clone("squashed-clone");
     const fetched = await fetchPullRequest(
-      reviewer, { number: 2, project: null }, metadataFor(2, "main", "", squashCommitSha),
+      reviewer, { number: 2, project: null }, { metadata: metadataFor(2, "main", "", squashCommitSha) },
     );
     expect(await changedFilesOf(reviewer, fetched)).toEqual(["squashed.ts"]);
   }, SETUP_TIMEOUT_MS);
@@ -222,7 +222,7 @@ describe("fetchPullRequest", () => {
   it("reaches a pull request merged with a merge commit", async () => {
     const reviewer = await clone("merged-clone");
     const fetched = await fetchPullRequest(
-      reviewer, { number: 3, project: null }, metadataFor(3, "main", "", mergeCommitSha),
+      reviewer, { number: 3, project: null }, { metadata: metadataFor(3, "main", "", mergeCommitSha) },
     );
 
     expect(fetched.request).toMatchObject({ base: await shortSha(reviewer, beforeMergeSha) });
@@ -237,7 +237,7 @@ describe("fetchPullRequest", () => {
   it("measures a pull request against the branch it is actually against", async () => {
     const reviewer = await clone("side-branch-clone");
     const fetched = await fetchPullRequest(
-      reviewer, { number: 4, project: null }, metadataFor(4, "release-line", ""),
+      reviewer, { number: 4, project: null }, { metadata: metadataFor(4, "release-line", "") },
     );
 
     expect(fetched.baseBranch).toBe("release-line");
@@ -256,7 +256,7 @@ describe("fetchPullRequest", () => {
   it("names the base by its branch when the branch points at it", async () => {
     const reviewer = await clone("named-base-clone");
     const fetched = await fetchPullRequest(
-      reviewer, { number: 4, project: null }, metadataFor(4, "release-line", ""),
+      reviewer, { number: 4, project: null }, { metadata: metadataFor(4, "release-line", "") },
     );
     expect(fetched.request).toMatchObject({ base: "origin/release-line" });
     expect(await git(reviewer, "rev-parse", "origin/release-line")).toContain(sideBranchBaseSha);
@@ -266,16 +266,105 @@ describe("fetchPullRequest", () => {
     const reviewer = await clone("described-base-clone");
     await git(reviewer, "tag", "v1.0", rootSha);
     const fetched = await fetchPullRequest(
-      reviewer, { number: 1, project: null }, metadataFor(1, "main", openHeadSha),
+      reviewer, { number: 1, project: null }, { metadata: metadataFor(1, "main", openHeadSha) },
     );
     expect(fetched.request).toMatchObject({ base: "v1.0" });
   }, SETUP_TIMEOUT_MS);
 
-  it("refuses a URL naming a project no remote serves", async () => {
+  it("prefers a remote of this repository over a clone", async () => {
+    const reviewer = await clone("serving-clone");
+    const served = { host: "github.com", path: "test-owner/test-repo", webPath: "test-owner/test-repo" };
+    const fetched = await fetchPullRequest(
+      reviewer, { number: 1, project: served }, { metadata: metadataFor(1, "main", openHeadSha) },
+    );
+
+    expect(fetched.temporaryClone).toBeNull();
+    expect(fetched.directory).toBe(await realpath(reviewer));
+  }, SETUP_TIMEOUT_MS);
+});
+
+/**
+ * The review that starts anywhere. No repository here serves the project, so
+ * the project is cloned to a folder of its own, and everything downstream
+ * measures that clone instead of whatever the reviewer was standing in.
+ */
+describe("a pull request no repository here serves", () => {
+  const elsewhere = { host: "github.com", path: "other/repo", webPath: "other/repo" };
+  const temporaryClones: string[] = [];
+
+  /** `cloneUrl` stands in for the forge, as `metadata` stands in for its API. */
+  async function fetchFrom(directory: string): Promise<FetchedPullRequest> {
+    const fetched = await fetchPullRequest(directory, { number: 1, project: elsewhere }, {
+      metadata: metadataFor(1, "main", openHeadSha),
+      cloneUrl: upstream,
+    });
+    if (fetched.temporaryClone !== null) temporaryClones.push(fetched.temporaryClone);
+    return fetched;
+  }
+
+  async function folderOutsideAnyRepository(name: string): Promise<string> {
+    const directory = path.join(workspace, name);
+    await mkdir(directory, { recursive: true });
+    return directory;
+  }
+
+  afterAll(async () => {
+    for (const directory of temporaryClones) await rm(directory, { recursive: true, force: true });
+  });
+
+  it("clones the project, and measures the request there rather than here", async () => {
     const reviewer = await clone("elsewhere-clone");
-    const elsewhere = { host: "github.com", path: "other/repo", webPath: "other/repo" };
-    await expect(fetchPullRequest(reviewer, { number: 1, project: elsewhere }))
-      .rejects.toThrow(/no remote of this repository points at github.com\/other\/repo/);
+    const fetched = await fetchFrom(reviewer);
+
+    expect(fetched.temporaryClone).not.toBeNull();
+    expect(path.dirname(fetched.directory)).toBe(fetched.temporaryClone);
+    // The page names the root after its folder, so the folder carries the project name.
+    expect(path.basename(fetched.directory)).toBe("repo");
+    expect(await changedFilesOf(fetched.directory, fetched)).toEqual(["open.ts"]);
+
+    // The repository the reviewer was standing in holds none of it.
+    await expect(git(reviewer, "rev-parse", "--verify", "refs/slopsplorer/pull/1")).rejects.toThrow();
+  }, SETUP_TIMEOUT_MS);
+
+  it("starts from a folder that is no repository at all", async () => {
+    const fetched = await fetchFrom(await folderOutsideAnyRepository("not-a-repository"));
+    expect(await changedFilesOf(fetched.directory, fetched)).toEqual(["open.ts"]);
+  }, SETUP_TIMEOUT_MS);
+
+  /**
+   * The clone is gone when the run ends, so an edit made in it would be lost.
+   * Read-only files turn that into an editor saying no.
+   */
+  it("checks the head out, and lets nobody write to it", async () => {
+    const fetched = await fetchFrom(await folderOutsideAnyRepository("read-only-checkout"));
+    const checkedOut = path.join(fetched.directory, "open.ts");
+
+    expect(await readFile(checkedOut, "utf8")).toBe("export const open = 1;\n");
+    expect((await stat(checkedOut)).mode & 0o222).toBe(0);
+  }, SETUP_TIMEOUT_MS);
+
+  /**
+   * The clone exists before the fetch that reads the request, so the removal is
+   * armed first. A fetch that fails, or a Ctrl-C during one, would otherwise
+   * leave a folder in the temporary directory that nobody knows to remove.
+   */
+  it("arms the removal of the clone before anything that can fail", async () => {
+    const outside = await folderOutsideAnyRepository("failing-fetch");
+    const armed = process.listenerCount("exit");
+
+    // Request 99 was never pushed to the upstream, so the head ref cannot be fetched.
+    await expect(fetchPullRequest(outside, { number: 99, project: elsewhere }, {
+      metadata: metadataFor(99, "main", openHeadSha),
+      cloneUrl: upstream,
+    })).rejects.toThrow();
+
+    expect(process.listenerCount("exit")).toBe(armed + 1);
+  }, SETUP_TIMEOUT_MS);
+
+  it("refuses a bare number outside a repository, and says what to name instead", async () => {
+    const outside = await folderOutsideAnyRepository("bare-number-outside");
+    await expect(fetchPullRequest(outside, { number: 1, project: null }))
+      .rejects.toThrow(/Name the pull request by the URL of its page/);
   }, SETUP_TIMEOUT_MS);
 });
 

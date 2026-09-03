@@ -518,7 +518,10 @@ function buildDetail(
     if (aggregation.included[fileIndex] === 1) shownFiles += 1;
     const file = index.files[fileIndex]!;
     const flavor = flavorOf(file);
-    flavorWeights.set(flavor, (flavorWeights.get(flavor) ?? 0) + Math.abs(file[weightField(request.measure, request.aspect)]));
+    // Signed, unlike the bar slices: a switch states what its flavor does to the
+    // active figure, so in net the chips add up to the panel's net. A reader
+    // who wants the mass behind a cancelling flavor has the other aspects.
+    flavorWeights.set(flavor, (flavorWeights.get(flavor) ?? 0) + file[weightField(request.measure, request.aspect)]);
   };
   if (directFilesOnly || request.fileScope === "folder") {
     for (const fileIndex of folder.directFileIndices) addFlavor(fileIndex);

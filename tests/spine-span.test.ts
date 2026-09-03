@@ -15,6 +15,7 @@ function entry(sha: string, parent: string, added: number, removed: number): Spi
     body: "",
     url: null,
     author: "Test",
+    authorEmail: "test@example.com",
     date: "2026-01-01T00:00:00Z",
     files: 1,
     addedTokens: added * 4,

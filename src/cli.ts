@@ -21,7 +21,7 @@ import { buildReport, DEFAULT_REPORT_THRESHOLD, REPORT_UNITS, type ReportOptions
 import { snapshotReproductionCommand, writeStaticBundle } from "./server/export.ts";
 import {
   createSlopsplorerServer, isAddressInUse, MAX_TCP_PORT, resolvePackageRoot,
-  type IndexProducer, type ServerAddress,
+  type IndexProducer, type ServerAddress, type SlopsplorerServer,
 } from "./server/server.ts";
 
 const execFileAsync = promisify(execFile);
@@ -80,7 +80,10 @@ OPTIONS
   --pr <number|URL>       Fetch a pull request and compare it against the commit it
                           was written against. Needs gh (GitHub) or glab (GitLab)
                           installed and signed in: only the forge knows which
-                          branch a request is against.
+                          branch a request is against. A URL naming a project no
+                          remote here serves is cloned to a read-only temporary
+                          folder, removed when the run ends, so a review can start
+                          from anywhere.
   --host <address>        Interface to bind. Default ${DEFAULT_HOST}.
   --port <number>         Port to bind. Use 0 for any free port. Default ${DEFAULT_PORT},
                           which walks forward to the next free port when it is
@@ -353,6 +356,12 @@ function pullRequestLocation(argument: string): PullRequestLocation {
   return { number: Number(argument), project: null };
 }
 
+/** A comparison, and the repository it is resolved and measured in. */
+interface ComparisonPlan {
+  request: ComparisonRequest;
+  directory: string;
+}
+
 /**
  * Fetch a pull request and say what was fetched.
  *
@@ -360,15 +369,22 @@ function pullRequestLocation(argument: string): PullRequestLocation {
  * runs only from `--pr` or a pull request URL, and never from a revision the
  * repository happens not to hold.
  */
-async function openPullRequest(directory: string, argument: string): Promise<ComparisonRequest> {
+async function openPullRequest(directory: string, argument: string): Promise<ComparisonPlan> {
   const location = pullRequestLocation(argument);
+  const project = location.project === null ? "" : ` ${location.project.host}/${location.project.webPath}`;
   try {
     const fetched = await fetchPullRequest(directory, location);
+    if (fetched.temporaryClone !== null) {
+      process.stderr.write(
+        `  pull request ${fetched.number}: no remote here serves${project}, so it was cloned to\n`
+        + `  ${fetched.directory}, which is read-only and is removed when this run ends\n`,
+      );
+    }
     process.stderr.write(
       `  pull request ${fetched.number}: fetched ${fetched.remoteRef} from ${fetched.remote}, `
       + `against ${fetched.baseBranch}\n`,
     );
-    return fetched.request;
+    return { request: fetched.request, directory: fetched.directory };
   } catch (cause) {
     fail(cause instanceof GitError ? cause.message : String(cause));
   }
@@ -386,7 +402,7 @@ async function readComparisonRequest(
   wantsWorkingTree: boolean,
   wantsStaged: boolean,
   pullRequest: string | undefined,
-): Promise<ComparisonRequest | null> {
+): Promise<ComparisonPlan | null> {
   if (wantsWorkingTree && wantsStaged) fail("--diff and --staged name two different comparisons");
   if (pullRequest !== undefined) {
     if (wantsWorkingTree || wantsStaged) fail("--pr already names the comparison");
@@ -399,7 +415,7 @@ async function readComparisonRequest(
     if (positionals.length > 0) {
       fail(`${wantsStaged ? "--staged" : "--diff"} already names the comparison, so "${positionals[0]}" has nowhere to go`);
     }
-    return parseComparisonSpec([wantsStaged ? "--staged" : "--diff"]);
+    return { request: parseComparisonSpec([wantsStaged ? "--staged" : "--diff"]), directory };
   }
 
   if (positionals.length === 0) return null;
@@ -422,7 +438,7 @@ async function readComparisonRequest(
   try {
     const request = parseComparisonSpec(positionals);
     await verifyComparisonRequest(directory, request);
-    return request;
+    return { request, directory };
   } catch (cause) {
     if (!(cause instanceof GitError)) throw cause;
     fail(positionals.length === 1 && parseRevisionArgument(only!) === null
@@ -555,13 +571,26 @@ async function main(): Promise<void> {
     fail(`unknown tokenizer "${tokenizer}". Known tokenizers: ${TOKENIZERS.join(", ")}`);
   }
 
-  const comparisonRequest = await readComparisonRequest(
+  // Installed before anything reaches the network or the temporary directory,
+  // so a Ctrl-C during a scan runs the exit listeners a Ctrl-C on the page does.
+  let activeServer: SlopsplorerServer | null = null;
+  let shuttingDown = false;
+  const shutDown = (): void => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    const closed = activeServer === null ? Promise.resolve() : activeServer.close();
+    closed.then(() => process.exit(0), () => process.exit(0));
+  };
+  process.on("SIGINT", shutDown);
+  process.on("SIGTERM", shutDown);
+
+  const comparisonPlan = await readComparisonRequest(
     workingDirectory, positionals, values.diff === true, values.staged === true, values.pr,
   );
-  if (comparisonRequest !== null && values["all-files"] === true) {
+  if (comparisonPlan !== null && values["all-files"] === true) {
     fail("--all-files widens a filesystem walk, and a diff runs none");
   }
-  const reportOptions = readReportOptions(values, comparisonRequest !== null);
+  const reportOptions = readReportOptions(values, comparisonPlan !== null);
 
   const maxFileBytes = values["max-file-bytes"] === undefined
     ? DEFAULT_MAX_FILE_BYTES
@@ -572,7 +601,7 @@ async function main(): Promise<void> {
   const exclude = values.exclude ?? [];
 
   let producer: IndexProducer;
-  if (comparisonRequest === null) {
+  if (comparisonPlan === null) {
     const root = path.resolve(workingDirectory, positionals[0] ?? ".");
     if (!isDirectory(root)) fail(`no such directory: ${root}`);
     const onProgress = createProgressReporter("scanning");
@@ -587,8 +616,8 @@ async function main(): Promise<void> {
     let comparison: Comparison;
     let root: string;
     try {
-      root = await repositoryRoot(workingDirectory);
-      comparison = await resolveComparison(workingDirectory, comparisonRequest);
+      root = await repositoryRoot(comparisonPlan.directory);
+      comparison = await resolveComparison(comparisonPlan.directory, comparisonPlan.request);
     } catch (cause) {
       fail(cause instanceof GitError ? cause.message : String(cause));
     }
@@ -657,6 +686,7 @@ async function main(): Promise<void> {
   const server = createSlopsplorerServer({
     index, producer, host, port, portAttempts, dev: values.dev === true, agents,
   });
+  activeServer = server;
   let address: ServerAddress;
   try {
     address = await server.listen();
@@ -673,18 +703,6 @@ async function main(): Promise<void> {
 
   const shouldOpenBrowser = values["no-open"] !== true && (values.open === true || values.dev !== true);
   if (shouldOpenBrowser) openInBrowser(address.url);
-
-  let shuttingDown = false;
-  const shutDown = (): void => {
-    if (shuttingDown) return;
-    shuttingDown = true;
-    server.close().then(
-      () => process.exit(0),
-      () => process.exit(0),
-    );
-  };
-  process.on("SIGINT", shutDown);
-  process.on("SIGTERM", shutDown);
 }
 
 await main();

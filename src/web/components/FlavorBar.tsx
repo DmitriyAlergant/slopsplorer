@@ -36,7 +36,10 @@ export function FlavorBar({ slices, measure, aspect, isDiff, baseline }: Props):
             {...tooltipHandlers}
           >
             <Tooltip compact>
-              {`${FLAVOR_DETAILS[slice.flavor].label}: ${count(slice.weight)} ${unit}`}
+              {`${FLAVOR_DETAILS[slice.flavor].label}: ${count(slice.weight)} ${unit}`
+                // A slice is drawn from magnitude, so in net it is not the
+                // signed figure the flavor switch below the tiles states.
+                + (aspect === "net" ? ", ignoring sign" : "")}
             </Tooltip>
           </span>
         ))}

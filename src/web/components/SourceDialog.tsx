@@ -7,6 +7,7 @@ import {
   browserStorage, readChangedLinesOnly, readWrapLines, writeChangedLinesOnly, writeWrapLines,
 } from "../preferences.ts";
 import { CopyPathButton } from "./CopyPathButton.tsx";
+import type { PreviewSide } from "./DiffView.tsx";
 import { FilePreview } from "./FilePreview.tsx";
 import { FileStack, foldedAfterFoldAll } from "./FileStack.tsx";
 
@@ -31,6 +32,12 @@ export type Preview =
     isDiff: boolean;
   }
   | { kind: "skill" };
+
+const SIDES: readonly PreviewSide[] = ["before", "diff", "after"];
+
+const SIDE_HEADINGS: Readonly<Record<PreviewSide, string>> = {
+  before: "Before", diff: "Diff", after: "After",
+};
 
 interface Props {
   preview: Preview | null;
@@ -61,6 +68,12 @@ export function SourceDialog({ preview, onClose, loadSource = fetchSource, loadF
   const [folded, setFolded] = useState<ReadonlySet<string>>(() => new Set());
   const [changedOnly, setChangedOnly] = useState(() => readChangedLinesOnly(browserStorage()));
   const [wrap, setWrap] = useState(() => readWrapLines(browserStorage()));
+  /**
+   * Which image of the open file is drawn. It opens on the change, and it is
+   * a question about the file in front of the reader rather than a habit, so
+   * it is not stored and every file opens on the change again.
+   */
+  const [side, setSide] = useState<PreviewSide>("diff");
 
   const stack = preview?.kind === "files" ? preview : null;
 
@@ -68,6 +81,7 @@ export function SourceDialog({ preview, onClose, loadSource = fetchSource, loadF
     if (preview === null || preview.kind === "files") return;
     setSource(null);
     setFailure(null);
+    setSide("diff");
     let cancelled = false;
     const loading = preview.kind === "skill" ? fetchSkillSource() : loadSource(preview.path);
     loading
@@ -125,6 +139,23 @@ export function SourceDialog({ preview, onClose, loadSource = fetchSource, loadF
           </div>
         </div>
         <div className="viewer__actions">
+          {/* Only one file has one before and one after to move between. A
+              stack draws many changes, and a scanned file has one content. */}
+          {isDiff && stack === null ? (
+            <div className="switch" role="group" aria-label="Image of the file the preview draws">
+              {SIDES.map((candidate) => (
+                <button
+                  key={candidate}
+                  type="button"
+                  className="switch__option"
+                  aria-pressed={candidate === side}
+                  onClick={() => setSide(candidate)}
+                >
+                  {SIDE_HEADINGS[candidate]}
+                </button>
+              ))}
+            </div>
+          ) : null}
           {/* One control for the whole stack, beside the two that also act on
               every file it draws. A file folds by its own name, as it does in
               the tree. */}
@@ -137,8 +168,11 @@ export function SourceDialog({ preview, onClose, loadSource = fetchSource, loadF
               {folded.size > 0 ? "Expand all" : "Collapse all"}
             </button>
           ) : null}
+          {/* A side draws the file whole, so the control that hides unchanged
+              lines has nothing to act on. It keeps its place while it waits, so
+              the two switches beside it do not move under the pointer. */}
           {isDiff ? (
-            <label className="viewer__toggle" data-on={changedOnly}>
+            <label className="viewer__toggle" data-on={changedOnly} data-vacant={side !== "diff"}>
               <input type="checkbox" role="switch" checked={changedOnly} onChange={toggleChangedOnly} />
               Only changed lines
             </label>
@@ -164,9 +198,9 @@ export function SourceDialog({ preview, onClose, loadSource = fetchSource, loadF
             onToggleFile={(path) => setFolded(toggledPath(folded, path))}
           />
         ) : stack ? (
-          <FilePreview source={null} failure={failure} changedOnly={changedOnly} />
+          <FilePreview source={null} failure={failure} changedOnly={changedOnly} side="diff" />
         ) : (
-          <FilePreview source={source} failure={failure} changedOnly={changedOnly} />
+          <FilePreview source={source} failure={failure} changedOnly={changedOnly} side={side} />
         )}
       </div>
     </dialog>

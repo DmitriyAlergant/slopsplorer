@@ -58,6 +58,7 @@ A figure in the band and a figure in the page therefore mean the same thing.
 
 The band reads no filter, and it sits above the filter bar to say so.
 It is the frame a review happens inside, so which commit is the heavy one has to stay one answer while the page below it is narrowed.
+Each figure heading says the same thing on hover: the whole commit in the chosen measure, every flavor counted, and generated files left out.
 
 It does follow the measure, because a measure is a unit and not a filter, and one pass per commit produces every measure at once.
 It states added, removed, and net together, so the aspect switch has nothing to change.
@@ -71,17 +72,24 @@ A line a later commit rewrites is counted in both, and the difference is the bra
 
 ## What a row says
 
-The subject is the row, and the whole message is its tooltip: the subject in full and the body under it, trimmed at `MAX_COMMIT_BODY`.
+The subject is the row, and the whole message is its tooltip.
+The panel heads the two parts `Summary` and `Description`, because a commit message read away from a git log has to say which part is which.
+The body is trimmed at `MAX_COMMIT_BODY`.
 The panel is wide enough to hold a hard-wrapped body without wrapping it a second time, and it prints the lines as they were written, because reflowing them would run a bullet list into one line.
 
-The object name opens the commit on the forge when the remote is one.
+The author states the name and the email that git recorded, which is everything a commit holds about the person who wrote it.
+
+The commit hash copies itself, and it copies the whole hash rather than the short one the row draws, because a git command takes the whole hash.
+A mark beside it opens the commit on the host when the remote is one, and the tooltip names that host as the remote spells it.
 `commitUrlBase()` in `src/scanner/gitdiff.ts` builds it from the remote URL: GitLab writes `/-/commit/<sha>` and every other forge writes `/commit/<sha>`, and the host name decides which.
 Guessing is safe here in a way it is not for a fetch, because the worst a wrong guess does is offer a link that does not open, and no figure depends on it.
 The project keeps the case it was written with, since a link is followed rather than compared.
 
 That link is why the row is a grid holding a cover button rather than one button holding cells: a link cannot sit inside a button.
 The button is the selector and lies under the cells, which are positioned so they paint over it and pass their clicks through.
-The working-tree row says `working tree` instead of an object name and has no author or forge link.
+The hash cell and the author cell take their own pointer back, because each carries something of its own.
+The rest of the row passes its clicks to the selector, so the bars and the figures carry no tooltip and select the commit like the subject does.
+The working-tree row says `working tree` instead of a hash, and it has no author, no copy, and no link.
 
 The band is dragged by the same `HeightSplitter` the workspace uses, and the height is remembered.
 
