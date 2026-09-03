@@ -220,6 +220,8 @@ A tile's slices divide the tile's own weight, so the bar and the figure above it
 The tiles account for the whole of their folder, so at the top of a scope the bars add up to the scope.
 A separate ranking panel used to repeat the tiles as rows, which put the same subtree on the page twice.
 The strip above the ranked table holds the flavor controls and states the available weight of every flavor in the table scope, including disabled and empty flavors.
+That weight is signed as the active aspect is, so in net a switch states what its flavor does to the panel's net and the switches add up to it.
+The tile bars stay at magnitude, because a length cannot carry a sign, and a reader who wants the mass behind a flavor that cancels reads it in churn or after.
 The page does not draw a file-scope control, but the request field remains available for shared links and static snapshots.
 
 `ViewRequest.fileScope` is that first control.

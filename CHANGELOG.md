@@ -14,6 +14,10 @@ Write yours under Unreleased as you make the change, and rename that heading to 
 - The preview of one compared file heads with a Before / Diff / After switch, so a reviewer can read either whole image of the file without leaving the change.
 - Tooltips wait half a second before they appear and stay for a moment after the pointer leaves, so a pointer crossing the page no longer flashes them.
 
+### Bug Fixes
+
+- Each flavor switch now states what its flavor does to the figure beside it, so in the net aspect it states a signed net that agrees with the folder tiles instead of the mass the change moved.
+
 ## [0.7.0](https://github.com/DmitriyAlergant/slopsplorer/releases/tag/v0.7.0) - 2026-09-01
 
 ### Features
