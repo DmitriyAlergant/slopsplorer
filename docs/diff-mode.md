@@ -95,15 +95,15 @@ A bare number still needs a repository, because a number names no project to clo
 
 The clone is blobless and takes no checkout, so what travels is the shape of the history and not every version of every file.
 It goes under the temporary directory, in a folder named after the project, because the page names the root after its folder.
-`cloneProject()` removes that folder itself when the clone fails, because the caller never learns a path the clone did not return.
 
 After the head is fetched, `checkOutReadOnly()` checks it out and takes the write bit off every regular file.
 The map reads Git objects, so the checkout is for the reader: "open in" and an agent ask both work on files on disk.
 The folder is removed when the run ends, so an editor has to refuse an edit rather than lose it, and a symbolic link is left alone because `chmod` would follow it out of the folder.
 `warmChangedBlobs()` then reads both sides of every changed file in one command, because a blobless clone fetches what a command misses as that command runs, and measuring file by file would be one round trip per file.
 
-`removeWhenThisRunEnds()` in `src/cli.ts` removes the folder on process exit.
-The signal handlers are installed before the fetch, so a Ctrl-C during the scan ends the run the same way a Ctrl-C on the page does.
+`removeWhenThisRunEnds()` removes the folder on process exit.
+`cloneProject()` arms it the moment the folder exists, because every step after that can fail and nobody else learns the path.
+The signal handlers are installed before the fetch, so a Ctrl-C during the fetch or the scan ends the run the same way a Ctrl-C on the page does.
 
 ## Changing the comparison
 

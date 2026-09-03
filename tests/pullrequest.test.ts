@@ -343,6 +343,24 @@ describe("a pull request no repository here serves", () => {
     expect((await stat(checkedOut)).mode & 0o222).toBe(0);
   }, SETUP_TIMEOUT_MS);
 
+  /**
+   * The clone exists before the fetch that reads the request, so the removal is
+   * armed first. A fetch that fails, or a Ctrl-C during one, would otherwise
+   * leave a folder in the temporary directory that nobody knows to remove.
+   */
+  it("arms the removal of the clone before anything that can fail", async () => {
+    const outside = await folderOutsideAnyRepository("failing-fetch");
+    const armed = process.listenerCount("exit");
+
+    // Request 99 was never pushed to the upstream, so the head ref cannot be fetched.
+    await expect(fetchPullRequest(outside, { number: 99, project: elsewhere }, {
+      metadata: metadataFor(99, "main", openHeadSha),
+      cloneUrl: upstream,
+    })).rejects.toThrow();
+
+    expect(process.listenerCount("exit")).toBe(armed + 1);
+  }, SETUP_TIMEOUT_MS);
+
   it("refuses a bare number outside a repository, and says what to name instead", async () => {
     const outside = await folderOutsideAnyRepository("bare-number-outside");
     await expect(fetchPullRequest(outside, { number: 1, project: null }))

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { execFile } from "node:child_process";
-import { readFileSync, rmSync, statSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { parseArgs, promisify } from "node:util";
@@ -363,19 +363,6 @@ interface ComparisonPlan {
 }
 
 /**
- * Remove a temporary clone when this run ends, however it ends.
- *
- * `exit` covers a normal end and every `process.exit`, and the signal handlers
- * installed at the top of the run turn a Ctrl-C into one of those. The removal
- * is synchronous, because an exit listener cannot wait for a promise.
- */
-function removeWhenThisRunEnds(directory: string): void {
-  process.on("exit", () => {
-    rmSync(directory, { recursive: true, force: true });
-  });
-}
-
-/**
  * Fetch a pull request and say what was fetched.
  *
  * Naming a pull request is the consent to reach the network for it, so this
@@ -388,7 +375,6 @@ async function openPullRequest(directory: string, argument: string): Promise<Com
   try {
     const fetched = await fetchPullRequest(directory, location);
     if (fetched.temporaryClone !== null) {
-      removeWhenThisRunEnds(fetched.temporaryClone);
       process.stderr.write(
         `  pull request ${fetched.number}: no remote here serves${project}, so it was cloned to\n`
         + `  ${fetched.directory}, which is read-only and is removed when this run ends\n`,

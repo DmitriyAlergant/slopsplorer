@@ -1,5 +1,6 @@
 import { execFile, spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { chmod, mkdtemp, rm } from "node:fs/promises";
+import { rmSync } from "node:fs";
+import { chmod, mkdtemp } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -591,6 +592,21 @@ function cloneUrlOf(project: Project): string {
 }
 
 /**
+ * Remove a temporary clone when this run ends, however it ends.
+ *
+ * It is armed the moment the folder exists, because everything after that can
+ * fail and nobody else learns the path. `exit` covers a normal end and every
+ * `process.exit`, and the signal handlers the command line installs turn a
+ * Ctrl-C into one of those. The removal is synchronous, because an exit
+ * listener cannot wait for a promise.
+ */
+function removeWhenThisRunEnds(directory: string): void {
+  process.once("exit", () => {
+    rmSync(directory, { recursive: true, force: true });
+  });
+}
+
+/**
  * Clone a project no repository here serves.
  *
  * The clone is blobless, so what travels is the shape of the history rather
@@ -602,19 +618,13 @@ function cloneUrlOf(project: Project): string {
  */
 async function cloneProject(project: Project, url: string): Promise<PullRequestWorkspace> {
   const temporaryClone = await mkdtemp(path.join(os.tmpdir(), "slopsplorer-pr-"));
+  removeWhenThisRunEnds(temporaryClone);
   const directory = path.join(temporaryClone, project.webPath.split("/").pop() || project.host);
-  try {
-    await git(
-      temporaryClone,
-      ["clone", "--quiet", "--filter=blob:none", "--no-checkout", url, directory],
-      NO_TERMINAL_PROMPT,
-    );
-  } catch (cause) {
-    // The caller never learns this folder, so a clone that fails removes it here
-    // or nobody ever does.
-    await rm(temporaryClone, { recursive: true, force: true });
-    throw cause;
-  }
+  await git(
+    temporaryClone,
+    ["clone", "--quiet", "--filter=blob:none", "--no-checkout", url, directory],
+    NO_TERMINAL_PROMPT,
+  );
   return { directory, remote: "origin", project, temporaryClone };
 }
 
