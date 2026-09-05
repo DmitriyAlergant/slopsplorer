@@ -880,29 +880,30 @@ button { cursor: pointer; }
   color: var(--ink-faint);
 }
 /* The two controls inside the cell, which the row-wide selector sits under. */
-.spine-row__copy, .spine-row__forge {
+.spine-row__link, .spine-row__copy {
   pointer-events: auto;
   color: inherit;
   text-decoration: none;
 }
+.spine-row__link:hover { color: var(--signal); text-decoration: underline; }
 .spine-row__copy {
-  padding: 0;
+  display: flex;
+  padding: 1px;
   border: 0;
+  border-radius: 3px;
   background: none;
-  font: inherit;
+  color: inherit;
   cursor: pointer;
 }
-.spine-row__copy:hover { color: var(--signal); text-decoration: underline; }
-.spine-row__copy[data-copied="true"] { color: var(--status-added); text-decoration: none; }
-.spine-row__forge { display: flex; }
-.spine-row__forge svg {
+.spine-row__copy:hover { background: var(--signal-wash); color: var(--signal); }
+.spine-row__copy[data-copied="true"] { color: var(--status-added); }
+.spine-row__copy svg {
   fill: none;
   stroke: currentColor;
   stroke-linecap: round;
   stroke-linejoin: round;
-  stroke-width: 1.5;
+  stroke-width: 1.7;
 }
-.spine-row__forge:hover { color: var(--signal); }
 /*
  * The subject is the heading of the message, and the body follows it.
  *

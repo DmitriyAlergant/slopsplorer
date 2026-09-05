@@ -6,6 +6,10 @@ Write yours under Unreleased as you make the change, and rename that heading to 
 
 ## [Unreleased]
 
+### Features
+
+- A commit hash in the commit band now opens the commit on its host, and its copy button copies the abbreviated hash shown beside it.
+
 ## [0.8.0](https://github.com/DmitriyAlergant/slopsplorer/releases/tag/v0.8.0) - 2026-09-04
 
 ### Features

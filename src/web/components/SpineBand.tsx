@@ -67,19 +67,12 @@ function whereText(spine: CommitSpine, span: Span | null): string {
   return `commits ${span.start + 1} to ${span.end + 1} of ${count(commitTotal)}`;
 }
 
-/**
- * The commit hash: the control that copies it, and the link that opens it.
- *
- * Reading a commit elsewhere starts with its hash in the clipboard. The hash
- * itself therefore copies, and the link to the host keeps a mark beside it. The
- * whole hash is copied and the row still draws the short one, because a git
- * command takes the whole hash and a column this narrow cannot hold it.
- */
+/** The commit hash link and its adjacent copy control. */
 function CommitSha({ entry }: { entry: CommitSpineEntry }): React.JSX.Element {
   const [copied, setCopied] = useState(false);
 
   const copy = (): void => {
-    void navigator.clipboard.writeText(entry.sha).then(() => {
+    void navigator.clipboard.writeText(entry.shortSha).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 1600);
     });
@@ -87,32 +80,41 @@ function CommitSha({ entry }: { entry: CommitSpineEntry }): React.JSX.Element {
 
   return (
     <span className="spine-row__sha">
-      <button
-        type="button"
-        className="spine-row__copy"
-        data-copied={copied}
-        aria-label={copied ? `Copied ${entry.sha}` : `Copy the commit hash ${entry.sha}`}
-        onClick={copy}
-        {...tooltipHandlers}
-      >
-        {entry.shortSha}
-        <Tooltip compact>{copied ? "Copied" : "Copy the full commit hash"}</Tooltip>
-      </button>
-      {entry.url === null ? null : (
+      {entry.url === null ? (
+        <span>{entry.shortSha}</span>
+      ) : (
         <a
-          className="spine-row__forge"
+          className="spine-row__link"
           href={entry.url}
           target="_blank"
           rel="noreferrer"
           aria-label={`Open commit ${entry.shortSha} on ${hostOf(entry.url)}`}
           {...tooltipHandlers}
         >
-          <svg viewBox="0 0 16 16" width="11" height="11" aria-hidden="true">
-            <path d="M6 3h7v7M13 3 6 10M11 9v4H3V5h4" />
-          </svg>
-          <Tooltip compact>{`Open this commit on ${hostOf(entry.url)}`}</Tooltip>
+          {entry.shortSha}
+          <Tooltip compact>{`Open commit on ${hostOf(entry.url)}`}</Tooltip>
         </a>
       )}
+      <button
+        type="button"
+        className="spine-row__copy"
+        data-copied={copied}
+        aria-label={copied ? `Copied ${entry.shortSha}` : `Copy commit hash ${entry.shortSha}`}
+        onClick={copy}
+        {...tooltipHandlers}
+      >
+        <svg viewBox="0 0 20 20" width="12" height="12" aria-hidden="true">
+          {copied ? (
+            <path d="m4 10.5 4 4 8-9" />
+          ) : (
+            <>
+              <rect x="7" y="7" width="9.5" height="9.5" rx="1.8" />
+              <path d="M4.6 12.5H4A1.5 1.5 0 0 1 2.5 11V5A1.5 1.5 0 0 1 4 3.5h6A1.5 1.5 0 0 1 11.5 5v.6" />
+            </>
+          )}
+        </svg>
+        <Tooltip compact>{copied ? "Copied" : "Copy commit hash"}</Tooltip>
+      </button>
     </span>
   );
 }

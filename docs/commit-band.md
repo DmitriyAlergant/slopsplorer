@@ -79,15 +79,15 @@ The panel is wide enough to hold a hard-wrapped body without wrapping it a secon
 
 The author states the name and the email that git recorded, which is everything a commit holds about the person who wrote it.
 
-The commit hash copies itself, and it copies the whole hash rather than the short one the row draws, because a git command takes the whole hash.
-A mark beside it opens the commit on the host when the remote is one, and the tooltip names that host as the remote spells it.
+The abbreviated commit hash that Git supplies opens the commit on the host when the remote is one, and the tooltip names that host as the remote spells it.
+A copy control beside the hash copies the same abbreviation, not the full hash.
 `commitUrlBase()` in `src/scanner/gitdiff.ts` builds it from the remote URL: GitLab writes `/-/commit/<sha>` and every other forge writes `/commit/<sha>`, and the host name decides which.
 Guessing is safe here in a way it is not for a fetch, because the worst a wrong guess does is offer a link that does not open, and no figure depends on it.
 The project keeps the case it was written with, since a link is followed rather than compared.
 
 That link is why the row is a grid holding a cover button rather than one button holding cells: a link cannot sit inside a button.
 The button is the selector and lies under the cells, which are positioned so they paint over it and pass their clicks through.
-The hash cell and the author cell take their own pointer back, because each carries something of its own.
+The hash cell and the author cell take their own pointer back, because each carries controls of its own.
 The rest of the row passes its clicks to the selector, so the bars and the figures carry no tooltip and select the commit like the subject does.
 The working-tree row says `working tree` instead of a hash, and it has no author, no copy, and no link.
 
