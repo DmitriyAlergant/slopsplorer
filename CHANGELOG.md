@@ -6,6 +6,10 @@ Write yours under Unreleased as you make the change, and rename that heading to 
 
 ## [Unreleased]
 
+### Bug Fixes
+
+- Go module files `go.mod` and `go.work` now count as data instead of code, and the checksum lists `go.sum` and `go.work.sum` count as generated data.
+
 ## [0.9.0](https://github.com/DmitriyAlergant/slopsplorer/releases/tag/v0.9.0) - 2026-10-14
 
 ### Features

@@ -233,6 +233,20 @@ describe("file kind classification", () => {
     expect(isGenerated("requirements.txt")).toBe(false);
   });
 
+  it("classifies Go module files as configuration, and the checksum lists as generated", () => {
+    // Regression: `.mod` and `.sum` are unknown extensions, which enter as code.
+    expect(classify("go.mod")).toBe("data");
+    expect(classify("services/api/go.mod")).toBe("data");
+    expect(classify("go.work")).toBe("data");
+    expect(classify("go.sum")).toBe("data");
+    expect(classify("go.work.sum")).toBe("data");
+    expect(isGenerated("go.mod")).toBe(false);
+    expect(isGenerated("go.work")).toBe(false);
+    expect(isGenerated("go.sum")).toBe(true);
+    expect(isGenerated("services/api/go.sum")).toBe(true);
+    expect(isGenerated("go.work.sum")).toBe(true);
+  });
+
   it("reads a stylesheet as `other`, because presentation is not logic", () => {
     // A stylesheet is hand-written source, and so is the markup it dresses. One
     // could not be code while the other is not: neither holds logic to reason
