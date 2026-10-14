@@ -6,6 +6,18 @@ Write yours under Unreleased as you make the change, and rename that heading to 
 
 ## [Unreleased]
 
+## [0.9.0](https://github.com/DmitriyAlergant/slopsplorer/releases/tag/v0.9.0) - 2026-10-14
+
+### Features
+
+- All text formats now count, including extensionless build files and patches, while the explorer and report account for every changed file and explain unavailable measurements.
+- A commit hash in the commit band now opens the commit on its host, and its copy button copies the abbreviated hash shown beside it.
+
+### Bug Fixes
+
+- File previews no longer briefly show the previous file when another file opens.
+- Filesystem scans now report directory and ignore-file read errors instead of silently omitting content.
+
 ## [0.8.0](https://github.com/DmitriyAlergant/slopsplorer/releases/tag/v0.8.0) - 2026-09-04
 
 ### Features

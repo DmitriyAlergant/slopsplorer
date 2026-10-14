@@ -339,9 +339,14 @@ export function FolderDetail({
               &gt;
               <Tooltip compact>Next {count(rank.limit)} files</Tooltip>
             </button>
-            <span className="detail__file-count">{`of ${count(detail.shownFiles)} files`}</span>
+            <span className="detail__file-count">{`of ${count(filesTotal)} files`}</span>
           </div>
-          <span className="detail__file-total">total {count(detail.availableFiles)} files scanned</span>
+          <span className="detail__file-total">
+            {count(detail.availableFiles)} {isDiff ? "changed" : "files"}
+            {" · "}{count(detail.shownFiles)} in totals
+            {detail.generatedFiles > 0 ? ` · ${count(detail.generatedFiles)} generated` : ""}
+            {detail.unmeasuredFiles > 0 ? ` · ${count(detail.unmeasuredFiles)} not measured` : ""}
+          </span>
           {/* Not drawn for a `.` row: that selection is the folder's own files,
               and a switch offering the subtree would contradict every figure
               above it. */}

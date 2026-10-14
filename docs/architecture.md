@@ -49,7 +49,8 @@ The snapshot worker imports it so the browser and the scanner cannot build diffe
    Inside a Git worktree the list comes from `git ls-files --cached --others --exclude-standard`, so a new untracked file is on the map and an ignored file is not.
    Outside a Git worktree the walker reads the tree itself and applies the `.gitignore` files it finds on the way down.
 2. Each file is read once, up to `--max-file-bytes` (2 MiB by default).
-   Larger files are counted in `ScanMeta.skippedLargeFiles` and are left out.
+   Larger files remain as unmeasured rows and increment `ScanMeta.skippedLargeFiles`.
+   Content detection separates text from binary before decoding or measurement.
 3. `measureFile()` in `src/scanner/measure.ts` selects the grammar, counts the structure, and splits the lines.
    This is the single place that decides whether a file gets tree-sitter comment spans or the comment-marker table, so the scanner and the corpus test cannot disagree about it.
 4. `classifyFile()` and `refineKindByContent()` in `src/scanner/classify.ts` set the flavor, and `isGenerated()` with `hasGeneratedContent()` set the generated flag.
@@ -63,7 +64,11 @@ The result is a `ScanIndex`: the file rows, the folder nodes, and the metadata f
 There is no filesystem watcher. A new index is built at startup and again when the user presses Rescan.
 
 `scanDiff()` in `src/scanner/diffScan.ts` builds the same structure from a revision pair.
-It shares steps 3 to 5 with the scan, and it shares the acceptance rule in `acceptSourcePaths()`, so the two producers cannot disagree about what a source file is.
+It shares path rules in `acceptSourcePaths()`, content decoding in `decodeText()`, and steps 3 to 5 with the scan.
+Every changed path remains in the index, even when a rule prevents measurement.
+`FileRow` is either a `MeasuredFileRow` with numeric metrics or an `UnmeasuredFileRow` with null metrics and a reason.
+The prefix sums and aggregators add only measured rows.
+Folders and path lookups include both kinds of row.
 `ScanMeta.diff` is `null` for a scan and describes the comparison for a diff, and it is the only thing that tells the aggregator and the client which mode they are in.
 `ScanMeta.review` is navigation context only.
 It keeps the comparison and the active Before / Diff / After choice while a repository-side scan has no diff figures.
@@ -205,10 +210,19 @@ The scope's own files always keep a segment, because no other segment leads to t
 
 There is one file table, and it is inside the folder panel.
 The panel divides its subject twice: the tiles divide it by part, and the table lists every file under it, heaviest first.
+Flavor switches and folder checkboxes hide matching rows from the file table and Read all.
+Unmeasured rows in enabled categories show a reason and no numeric figures.
+Path search, folder selection, pagination, and the measured-weight threshold still narrow the table.
+A weight threshold does not remove unmeasured rows.
+The coverage text states the inventory count, included count, generated count, and unmeasured count.
+A tree row with only unmeasured files shows its file count instead of a numeric weight.
+The heat map gives no area to an unmeasured file.
 A part is a child folder or the folder's own files, which take the first tile named `.`.
-The `.` tile remains when a flavor filter leaves it with zero files and zero weight, so the folder's direct-files path never disappears.
+Tile file counts describe the complete path inventory.
+The `.` tile remains when filters exclude all its files from totals, so the direct-files path never disappears.
 It is absent when the folder holds no loose file that the path filter keeps, which is the rule the tree uses for the same row, and the two panels name the same parts.
-A folder with only loose files, and a folder the filters empty, still draw that one tile, because a row of no tiles would move the controls under it.
+A folder with only loose files still draws that one tile.
+Flavor and checkbox filters do not remove navigation tiles.
 The child folder tiles come after it, heaviest first.
 The last tile absorbs the child folders that do not fit one row, and it is named for what it holds, so it stands at the end of the order.
 When every part fits, there is no such tile.

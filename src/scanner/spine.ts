@@ -46,7 +46,7 @@ function measuredCommit(commit: SpineCommit, files: readonly FileRow[], urlBase:
     removedCodeLines: 0,
   };
   for (const file of files) {
-    if (file.generated) continue;
+    if (file.generated || file.measurement !== "measured") continue;
     entry.files += 1;
     entry.addedTokens += file.addedTokens;
     entry.removedTokens += file.removedTokens;
@@ -74,7 +74,7 @@ function measuredWorkingTree(parent: string, files: readonly FileRow[]): Working
     removedCodeLines: 0,
   };
   for (const file of files) {
-    if (file.generated) continue;
+    if (file.generated || file.measurement !== "measured") continue;
     entry.files += 1;
     entry.addedTokens += file.addedTokens;
     entry.removedTokens += file.removedTokens;

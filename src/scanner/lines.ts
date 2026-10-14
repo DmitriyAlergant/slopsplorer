@@ -138,6 +138,7 @@ const HASH_COMMENT_INTERPRETERS: ReadonlySet<string> = new Set([
 /** The markers that apply to one file, or `null` when no rule covers it. */
 function commentSyntaxFor(fileName: string, text: string): CommentSyntax | null {
   const name = fileName.toLowerCase();
+  if (/^(dockerfile|containerfile|makefile|gnumakefile)(\.|$)/.test(name)) return HASH_LINE;
   const byFilename = COMMENT_SYNTAX_BY_FILENAME.get(name);
   if (byFilename) return byFilename;
   const byExtension = COMMENT_SYNTAX_BY_EXTENSION.get(path.posix.extname(name));

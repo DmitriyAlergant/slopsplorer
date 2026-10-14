@@ -1,13 +1,14 @@
-import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import type { FileRow, FileSource, ReviewMeta, ScanMeta } from "../shared/api.ts";
 import { assembleIndex, type FolderNode, type ScanIndex } from "../shared/index.ts";
 import { classifyFile, findLocaleLevels, hasGeneratedContent, isGenerated, refineKindByContent } from "./classify.ts";
 import { GitObjectReader, objectSizes, type Comparison, type DiffSide } from "./gitdiff.ts";
 import { measureFile } from "./measure.ts";
+import { decodeText, readTextFile, type TextRead } from "./text.ts";
+import { unmeasuredFile } from "./unmeasured.ts";
 import { StructureAnalyzer } from "./structure.ts";
 import { tokenCounter, type TokenizerName } from "./tokenize.ts";
-import { acceptSourcePaths, listIndexFiles, listRevisionFiles, listSourceFiles } from "./walk.ts";
+import { acceptSourcePaths, listGitFileModes, listIndexFiles, listRevisionFiles, listSourceFiles } from "./walk.ts";
 
 export { assembleIndex, type FolderNode, type ScanIndex } from "../shared/index.ts";
 
@@ -49,8 +50,10 @@ export const DEFAULT_MAX_FILE_BYTES = 2 * 1024 * 1024;
  * generated, so a search for `netCodeLines` finds this too.
  */
 export const UNCHANGED_FILE_FIELDS = {
+  measurement: "measured",
   status: "unchanged",
   previousPath: null,
+  beforeMode: null, afterMode: null,
   beforeTokens: 0, beforeLines: 0, beforeCodeLines: 0,
   addedTokens: 0, removedTokens: 0, churnTokens: 0, netTokens: 0,
   addedLines: 0, removedLines: 0, churnLines: 0, netLines: 0,
@@ -102,16 +105,11 @@ export async function mapWithConcurrency<In, Out>(
 }
 
 /** Measure every accepted file under `root` and build the queryable index. */
-interface ScanFileRead {
-  text: string | null;
-  oversized: boolean;
-}
-
 interface ListedScan {
   relativePaths: string[];
   fileSource: FileSource;
   review: ReviewMeta | null;
-  read(relativePath: string): Promise<ScanFileRead>;
+  read(relativePath: string): Promise<TextRead>;
   dispose(): void;
 }
 
@@ -127,13 +125,13 @@ async function measureListedScan(options: ScanOptions, listing: ListedScan): Pro
   let completedFiles = 0;
   options.onProgress?.({ completedFiles, totalFiles: relativePaths.length });
 
-  let measured: (FileRow | null)[];
+  let files: FileRow[];
   let languages: string[];
   try {
-    measured = await mapWithConcurrency(relativePaths, options.concurrency, async (relativePath) => {
+    files = await mapWithConcurrency(relativePaths, options.concurrency, async (relativePath) => {
       const loaded = await listing.read(relativePath);
-      if (loaded.oversized) skippedLargeFiles += 1;
-      if (loaded.text === null) return null;
+      if (loaded.reason === "too-large") skippedLargeFiles += 1;
+      if (loaded.text === null) return unmeasuredFile(relativePath, loaded.reason, localeLevels);
       const text = loaded.text;
 
       const name = path.posix.basename(relativePath);
@@ -165,8 +163,6 @@ async function measureListedScan(options: ScanOptions, listing: ListedScan): Pro
     listing.dispose();
   }
 
-  const files = measured.filter((row): row is FileRow => row !== null);
-
   const rootName = path.basename(path.resolve(options.root)) || options.root;
   const folders = buildFolders(files, rootName);
 
@@ -194,22 +190,14 @@ export async function scanSourceTree(options: ScanOptions): Promise<ScanIndex> {
     allFiles: options.allFiles,
     exclude: options.exclude,
   });
+  const accepted = new Set(files.relativePaths);
   return measureListedScan(options, {
-    relativePaths: files.relativePaths,
+    relativePaths: acceptSourcePaths(files.inventory, [], files.inventory),
     fileSource: files.gitTracked ? "git-index" : files.respectsGitignore ? "walk-gitignore" : "walk-all",
     review: null,
-    read: async (relativePath) => {
-      try {
-        const absolutePath = path.join(options.root, relativePath);
-        const info = await stat(absolutePath);
-        if (!info.isFile()) return { text: null, oversized: false };
-        if (info.size > options.maxFileBytes) return { text: null, oversized: true };
-        return { text: await readFile(absolutePath, "utf8"), oversized: false };
-      } catch {
-        // The file disappeared or is unreadable between listing and measuring.
-        return { text: null, oversized: false };
-      }
-    },
+    read: (relativePath) => accepted.has(relativePath)
+      ? readTextFile(options.root, relativePath, options.maxFileBytes)
+      : Promise.resolve({ text: null, reason: "excluded" }),
     dispose: () => undefined,
   });
 }
@@ -244,7 +232,9 @@ export async function scanReviewSide(options: ReviewSideScanOptions): Promise<Sc
   const inventory = side.kind === "index"
     ? await listIndexFiles(options.root)
     : await listRevisionFiles(options.root, side.rev);
-  const relativePaths = acceptSourcePaths(inventory, options.exclude, inventory);
+  const accepted = new Set(acceptSourcePaths(inventory, options.exclude, inventory));
+  const relativePaths = acceptSourcePaths(inventory, [], inventory);
+  const modes = await listGitFileModes(options.root, side);
   const specs = relativePaths.map((relativePath) => sideObjectSpec(side, relativePath)!);
   const sizes = await objectSizes(options.root, specs);
   const sizeByPath = new Map(relativePaths.map((relativePath, index) => [relativePath, sizes[index] ?? null]));
@@ -254,11 +244,14 @@ export async function scanReviewSide(options: ReviewSideScanOptions): Promise<Sc
     fileSource: side.kind === "index" ? "git-index" : "git-tree",
     review: reviewMeta(options),
     read: async (relativePath) => {
+      if (!accepted.has(relativePath)) return { text: null, reason: "excluded" };
+      if (modes.get(relativePath) === "120000") return { text: null, reason: "symlink" };
+      if (modes.get(relativePath) === "160000") return { text: null, reason: "submodule" };
       const size = sizeByPath.get(relativePath);
-      if (size === undefined || size === null) return { text: null, oversized: false };
-      if (size > options.maxFileBytes) return { text: null, oversized: true };
+      if (size === undefined || size === null) return { text: null, reason: "unreadable" };
+      if (size > options.maxFileBytes) return { text: null, reason: "too-large" };
       const buffer = await reader.read(sideObjectSpec(side, relativePath)!);
-      return { text: buffer?.toString("utf8") ?? null, oversized: false };
+      return buffer === null ? { text: null, reason: "unreadable" } : decodeText(buffer);
     },
     dispose: () => reader.dispose(),
   });

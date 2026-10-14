@@ -49,6 +49,11 @@ A number is fetched from this repository's remote.
 A URL also reviews a project this machine has no checkout of: slopsplorer clones it to a read-only temporary folder and removes that folder when the run ends.
 It needs `gh` or `glab` signed in, because only the forge knows which branch a request is against, and it is the one command here that uses the network.
 
+The scanner measures text regardless of extension, including build files and patches.
+A comparison accounts for every changed path.
+Binary, oversized, excluded, and other unmeasured files show a reason when their category is enabled and do not contribute to numeric totals.
+The report states coverage and lists unmeasured paths.
+
 The report has one section per flavor.
 `CODE` and `TESTS` are trees.
 `DOCS`, `I18N`, `DATA & CONFIG`, and `OTHER` are one line each, with their heaviest files.

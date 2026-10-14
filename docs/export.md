@@ -32,12 +32,14 @@ The exporter copies the built client and makes `snapshot.html` the exported `ind
 It replaces the snapshot context placeholder with escaped JSON that holds the optional review backlink and the local reproduction command.
 `snapshotMain.tsx` validates that context before it starts React.
 
-`data/index.json` holds `ScanMeta`, every measured `FileRow`, and the folder list.
+`data/index.json` holds `ScanMeta`, every measured or unmeasured `FileRow`, and the folder list.
+The worker preserves null metrics and the same file coverage as the live explorer.
 It replaces the absolute local root with `rootName` before serialization.
 `hydrateScanIndex()` in `src/shared/index.ts` rebuilds the prefix arrays and lookup maps in the snapshot worker.
 The worker runs `buildView()` from `src/server/aggregate.ts`, so a live view and a static view use one aggregation rule.
 
 `data/sources/<index>.json` holds one `SnapshotSourceRecord` for each path-sorted file: a `SourceResponse`, or the `{ error }` refusal the live route would send for that file.
+An unmeasured row produces a `mode: "unmeasured"` response with its reason and change metadata, without reading file content.
 A refusal reaches the record instead of stopping the export, so one unreadable file, such as a symlink out of the scan root, never blocks the bundle.
 The file index is stable and needs no path encoding.
 The page fetches one response only when the reader opens that file, or when a stack of files scrolls to it.

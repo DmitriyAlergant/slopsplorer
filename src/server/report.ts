@@ -1,5 +1,5 @@
-import type { Aspect, ChangeStatus, FileRow, Flavor, Measure, WeightField } from "../shared/api.ts";
-import { weightField } from "../shared/api.ts";
+import type { Aspect, ChangeStatus, MeasuredFileRow, Flavor, Measure, WeightField } from "../shared/api.ts";
+import { MEASUREMENT_LABELS, weightField } from "../shared/api.ts";
 import type { FolderNode, ScanIndex } from "../scanner/scan.ts";
 import { byMagnitude, flavorOf } from "./aggregate.ts";
 
@@ -105,7 +105,7 @@ function emptyTotals(): Totals {
   };
 }
 
-function addFile(totals: Totals, file: FileRow, fields: ReportFields): void {
+function addFile(totals: Totals, file: MeasuredFileRow, fields: ReportFields): void {
   totals.weight += file[fields.weight];
   totals.baseline += file[fields.baseline];
   totals.added += file[fields.added];
@@ -142,7 +142,7 @@ function sectionTotals(index: ScanIndex, fields: ReportFields, flavor: Flavor): 
     const totals = emptyTotals();
     for (const fileIndex of folder.directFileIndices) {
       const file = index.files[fileIndex]!;
-      if (flavorOf(file) === flavor) addFile(totals, file, fields);
+      if (file.measurement === "measured" && flavorOf(file) === flavor) addFile(totals, file, fields);
     }
     for (const childPath of folder.childPaths) mergeTotals(totals, subtree.get(childPath)!);
     subtree.set(folder.path, totals);
@@ -228,7 +228,7 @@ interface WalkContext {
 
 type Child =
   | { kind: "folder"; path: string; name: string; weight: number; files: number; added: number; removed: number }
-  | { kind: "file"; file: FileRow; weight: number; files: number; added: number; removed: number };
+  | { kind: "file"; file: MeasuredFileRow; weight: number; files: number; added: number; removed: number };
 
 function passes(context: WalkContext, weight: number): boolean {
   return context.baseline > 0 && Math.abs(weight) / context.baseline >= context.threshold / 100;
@@ -245,7 +245,7 @@ function folderTrailer(context: WalkContext, totals: Totals): string {
   return change ? `${files}  ${change}` : files;
 }
 
-function fileTrailer(context: WalkContext, file: FileRow): string {
+function fileTrailer(context: WalkContext, file: MeasuredFileRow): string {
   if (context.isDiff) {
     const parts = [STATUS_LETTERS[file.status]];
     const change = formatChange(file[context.fields.added], file[context.fields.removed]);
@@ -277,9 +277,10 @@ function walkSection(context: WalkContext): Row[] {
   const rows: Row[] = [];
   const { index, fields, section, totals } = context;
 
-  const childrenOf = (folder: FolderNode): { folders: string[]; files: number[] } => ({
+  const childrenOf = (folder: FolderNode): { folders: string[]; files: MeasuredFileRow[] } => ({
     folders: folder.childPaths.filter((childPath) => totals.get(childPath)!.files > 0),
-    files: folder.directFileIndices.filter((fileIndex) => flavorOf(index.files[fileIndex]!) === section.flavor),
+    files: folder.directFileIndices.map((fileIndex) => index.files[fileIndex]!)
+      .filter((file): file is MeasuredFileRow => file.measurement === "measured" && flavorOf(file) === section.flavor),
   });
 
   const renderFolder = (start: FolderNode, depth: number, segments: string[]): void => {
@@ -308,8 +309,7 @@ function walkSection(context: WalkContext): Row[] {
           weight: child.weight, files: child.files, added: child.added, removed: child.removed,
         };
       }),
-      ...children.files.map((fileIndex): Child => {
-        const file = index.files[fileIndex]!;
+      ...children.files.map((file): Child => {
         return {
           kind: "file", file, weight: file[fields.weight], files: 1,
           added: file[fields.added], removed: file[fields.removed],
@@ -391,7 +391,7 @@ function renderHeader(
   for (const { totals } of sections) mergeTotals(whole, totals);
 
   if (meta.diff === null) {
-    const sum = (field: WeightField): number => index.files.reduce((total, file) => total + file[field], 0);
+    const sum = (field: WeightField): number => index.files.reduce((total, file) => total + (file.measurement === "measured" ? file[field] : 0), 0);
     lines.push(
       `tree of ${formatFiles(meta.fileCount)}: ${formatCompact(sum("tokens"))} tokens (${meta.tokenizer}), `
         + `${formatCompact(sum("lines"))} lines, ${formatCompact(sum("codeLines"))} loc, `
@@ -429,6 +429,10 @@ function renderHeader(
   }
   sentences.push(`A node is expanded at >= ${options.threshold}% of its section.`);
   lines.push(sentences.join(" "));
+  const measured = index.files.filter((file) => file.measurement === "measured");
+  const unmeasured = index.files.filter((file) => file.measurement !== "measured");
+  lines.push(`Coverage: ${index.files.length} files, ${measured.length} measured, ${measured.filter((file) => file.generated).length} generated, ${unmeasured.length} not measured.`);
+  for (const file of unmeasured) lines.push(`  ${file.path}: ${MEASUREMENT_LABELS[file.measurement]}`);
   return lines;
 }
 
@@ -437,7 +441,7 @@ function renderOneLine(
   formatWeight: (value: number) => string,
 ): string {
   const named = index.files
-    .filter((file) => flavorOf(file) === section.flavor)
+    .filter((file): file is MeasuredFileRow => file.measurement === "measured" && flavorOf(file) === section.flavor)
     .sort((left, right) => byMagnitude(left[fields.weight], right[fields.weight]) || left.path.localeCompare(right.path))
     .slice(0, NAMED_FILES)
     .map((file) => `${file.path} ${formatWeight(file[fields.weight])}`);

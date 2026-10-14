@@ -1,7 +1,7 @@
 import { Fragment } from "react";
-import type { Aspect, FileRow, Measure, MeasuredMetric, RankMetric } from "../../shared/api.ts";
+import type { Aspect, FileRow, MeasuredFileRow, Measure, MeasuredMetric, RankMetric } from "../../shared/api.ts";
 import {
-  FLAVOR_DETAILS, aspectHeading, measureAbbreviation, rankMetricsFor, weightField,
+  FLAVOR_DETAILS, MEASUREMENT_LABELS, aspectHeading, measureAbbreviation, rankMetricsFor, weightField,
 } from "../../shared/api.ts";
 import { pathRelativeTo } from "../displayPath.ts";
 import { changePercent, count, percent, signed, statusLetter, statusName } from "../format.ts";
@@ -47,7 +47,7 @@ const PLAIN_COLUMNS: Readonly<Record<
 interface Column {
   metric: MeasuredMetric;
   label: string;
-  value: (file: FileRow) => number;
+  value: (file: MeasuredFileRow) => number;
   /** Whether the figure carries a sign of its own. */
   isSigned: boolean;
 }
@@ -61,13 +61,13 @@ function describeColumn(metric: MeasuredMetric, measure: Measure): Column {
       return {
         metric,
         label: `${aspectHeading(metric)} ${measureAbbreviation(measure)}`,
-        value: (file: FileRow) => file[field],
+        value: (file: MeasuredFileRow) => file[field],
         isSigned: metric === "net",
       };
     }
     default: {
       const plain = PLAIN_COLUMNS[metric];
-      return { metric, label: plain.label, value: (file: FileRow) => file[plain.field], isSigned: false };
+      return { metric, label: plain.label, value: (file: MeasuredFileRow) => file[plain.field], isSigned: false };
     }
   }
 }
@@ -139,14 +139,16 @@ export function FileTable({
         </thead>
         <tbody>
           {files.map((file) => {
-            const commentShare = file.lines > 0 ? file.commentLines / file.lines : 0;
+            const commentShare = file.measurement === "measured" && file.lines > 0 ? file.commentLines / file.lines : 0;
             const displayedPath = pathRelativeTo(file.path, displayRoot);
             return (
               <tr key={file.path}>
                 <td>
-                  <span className="tag" data-flavor={file.generated ? "generated" : file.kind}>
-                    {file.generated ? "gen" : FLAVOR_DETAILS[file.kind].label}
-                  </span>
+                  {file.measurement === "measured" ? (
+                    <span className="tag" data-flavor={file.generated ? "generated" : file.kind}>
+                      {file.generated ? "gen" : FLAVOR_DETAILS[file.kind].label}
+                    </span>
+                  ) : <span aria-label="Not classified">-</span>}
                 </td>
                 {isDiff ? (
                   /* A Git letter rather than a second pill: the flavor beside it
@@ -170,9 +172,15 @@ export function FileTable({
                       <Tooltip compact>{file.path}</Tooltip>
                     </button>
                     <CopyPathButton path={file.path} />
+                    {file.measurement !== "measured" ? (
+                      <span className="metrics__reason">{MEASUREMENT_LABELS[file.measurement]}</span>
+                    ) : null}
                   </span>
                 </td>
                 {columns.map(({ metric, value, isSigned }) => {
+                  if (file.measurement !== "measured") {
+                    return <td key={metric} colSpan={metric === "churn" || metric === "net" ? 2 : 1} aria-label="Not measured">-</td>;
+                  }
                   const raw = value(file);
                   const cell = isSigned ? signed(raw) : count(raw);
                   const marks = {

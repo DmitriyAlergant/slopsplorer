@@ -211,7 +211,7 @@ export function InstrumentBar({
 
       {meta && meta.skippedLargeFiles > 0 ? (
         <p className="instrument__note">
-          {countOf(meta.skippedLargeFiles, "file")} skipped for exceeding the per-file size ceiling.
+          {countOf(meta.skippedLargeFiles, "file")} not measured: over the per-file size limit.
         </p>
       ) : null}
     </header>

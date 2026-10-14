@@ -320,7 +320,8 @@ export function defaultRankMetric(isDiff: boolean): RankMetric {
  * rather than optional so that `row[field]` is always a number and no reader
  * has to guard an index expression.
  */
-export interface FileRow {
+export interface MeasuredFileRow {
+  measurement: "measured";
   path: string;
   name: string;
   kind: FileKind;
@@ -329,6 +330,8 @@ export interface FileRow {
   status: ChangeStatus;
   /** Where a renamed file came from, or `null`. */
   previousPath: string | null;
+  beforeMode: string | null;
+  afterMode: string | null;
   tokens: number;
   /** Lines with content: code plus comment, excluding blank lines. */
   lines: number;
@@ -370,6 +373,29 @@ export interface FileRow {
   language: string | null;
 }
 
+export type UnmeasuredReason = "binary" | "too-large" | "excluded" | "unsupported-encoding" | "unreadable" | "symlink" | "submodule";
+
+export const MEASUREMENT_LABELS: Readonly<Record<UnmeasuredReason, string>> = {
+  binary: "Binary",
+  "too-large": "Over size limit",
+  excluded: "Excluded from scan",
+  "unsupported-encoding": "Unsupported encoding",
+  unreadable: "File unavailable",
+  symlink: "Symbolic link",
+  submodule: "Submodule",
+};
+
+type NumericFileField = {
+  [Key in keyof MeasuredFileRow]: MeasuredFileRow[Key] extends number ? Key : never;
+}[keyof MeasuredFileRow];
+
+/** Unmeasured files have no numeric observations. */
+export type UnmeasuredFileRow = Omit<MeasuredFileRow, NumericFileField | "measurement"> & {
+  [Key in NumericFileField]: null;
+} & { measurement: UnmeasuredReason };
+
+export type FileRow = MeasuredFileRow | UnmeasuredFileRow;
+
 /**
  * What a row, a tile, or a selection names.
  *
@@ -392,6 +418,8 @@ export const FILE_SCOPES: readonly FileScope[] = ["folder", "subtree"];
 
 /** One rendered row of the source tree, already filtered and aggregated. */
 export interface TreeRow {
+  files: number;
+  unmeasuredFiles: number;
   /** Folder path. `""` is the scan root. */
   path: string;
   name: string;
@@ -506,10 +534,12 @@ export interface DetailView {
    */
   shareOfScope: number;
   cards: FolderCard[];
-  /** Files the active flavor switches keep in the file table's path and checkbox scope. */
+  /** Measured files included in totals within the file table scope. */
   shownFiles: number;
-  /** Files of every flavor in the same path and checkbox scope. */
+  /** Complete path inventory in the file table scope, before flavor and checkbox filters. */
   availableFiles: number;
+  unmeasuredFiles: number;
+  generatedFiles: number;
   /** Every flavor in the file table's scope, including disabled and empty ones. */
   flavorStats: FlavorStat[];
   /**
@@ -1020,7 +1050,8 @@ interface SourceResponseBase {
  */
 export type SourceResponse =
   | (SourceResponseBase & { mode: "source"; content: string })
-  | (SourceResponseBase & { mode: "diff"; lines: DiffLine[] });
+  | (SourceResponseBase & { mode: "diff"; lines: DiffLine[]; previousPath: string | null; beforeMode: string | null; afterMode: string | null })
+  | (SourceResponseBase & { mode: "unmeasured"; reason: UnmeasuredReason; status: ChangeStatus; previousPath: string | null; beforeMode: string | null; afterMode: string | null });
 
 /**
  * One `data/sources/<index>.json` record of a static snapshot.

@@ -118,7 +118,7 @@ function tokensOf(...paths: string[]): number {
   return paths.reduce((total, filePath) => {
     const file = index.files.find((row) => row.path === filePath);
     expect(file, `fixture file ${filePath}`).toBeDefined();
-    return total + file!.tokens;
+    return total + file!.tokens!;
   }, 0);
 }
 
@@ -249,7 +249,7 @@ describe("visibility switches", () => {
     const codeOnly = buildView(index, request({ kinds: ["code"] }));
     const withGenerated = buildView(index, request({ showGenerated: true }));
 
-    const unfilteredTotal = index.files.reduce((total, file) => total + file.tokens, 0);
+    const unfilteredTotal = index.files.reduce((total, file) => total + file!.tokens!, 0);
     expect(everything.summary.projectWeight).toBe(unfilteredTotal);
     expect(codeOnly.summary.projectWeight).toBe(unfilteredTotal);
     expect(withGenerated.summary.projectWeight).toBe(unfilteredTotal);
@@ -319,7 +319,7 @@ describe("file ranking", () => {
   it("drops files below the token floor so a long tail of tiny files does not crowd out the real weight", () => {
     const helper = index.files.find((file) => file.path === "src/deep/helper.ts")!;
     const view = buildView(index, request({
-      rank: { metric: "tokens", minWeight: helper.tokens + 1, limit: 100, offset: 0 },
+      rank: { metric: "tokens", minWeight: helper.tokens! + 1, limit: 100, offset: 0 },
     }));
     expect(view.ranked.map((file) => file.path)).not.toContain("src/deep/helper.ts");
     expect(view.ranked.map((file) => file.path)).toContain("src/main.ts");
@@ -386,8 +386,9 @@ describe("file ranking", () => {
     expect(folderOnly.detail.weight).toBe(subtree.detail.weight);
   });
 
-  it("ranks only what is in scope, so an excluded folder cannot reappear in the top-files list", () => {
+  it("hides files excluded by folder checkboxes", () => {
     const view = buildView(index, request({ excludedFolders: ["src"] }));
+    expect(buildFileList(index, request({ excludedFolders: ["src"] })).rows).toEqual(view.ranked);
     expect(view.ranked.map((file) => file.path).sort()).toEqual(["README.md", "tests/main.test.ts"]);
   });
 });
@@ -465,7 +466,7 @@ describe("primary measure", () => {
     return paths.reduce((total, filePath) => {
       const file = index.files.find((row) => row.path === filePath);
       expect(file, `fixture file ${filePath}`).toBeDefined();
-      return total + file![measure];
+      return total + file![measure]!;
     }, 0);
   }
 
@@ -479,7 +480,7 @@ describe("primary measure", () => {
       measured("codeLines", "README.md", "src/main.ts", "src/util.ts", "src/deep/helper.ts", "tests/main.test.ts"),
     );
     expect(byCodeLines.summary.projectWeight).toBe(
-      index.files.reduce((total, file) => total + file.codeLines, 0),
+      index.files.reduce((total, file) => total + file.codeLines!, 0),
     );
   });
 
@@ -500,7 +501,7 @@ describe("primary measure", () => {
     const shareOfSrcFiles = (measure: "tokens" | "lines" | "codeLines"): number => {
       const view = buildView(index, request({ measure, selected: { rowKind: "files", path: "src" } }));
       const util = view.ranked.find((file) => file.path === "src/util.ts")!;
-      return util[measure] / view.detail.weight;
+      return util[measure]! / view.detail.weight;
     };
 
     expect(shareOfSrcFiles("lines")).toBeGreaterThan(shareOfSrcFiles("codeLines"));
@@ -510,10 +511,10 @@ describe("primary measure", () => {
     const helper = index.files.find((file) => file.path === "src/deep/helper.ts")!;
     const view = buildView(index, request({
       measure: "lines",
-      rank: { metric: "lines", minWeight: helper.lines + 1, limit: 100, offset: 0 },
+      rank: { metric: "lines", minWeight: helper.lines! + 1, limit: 100, offset: 0 },
     }));
 
-    expect(helper.lines).toBeLessThan(helper.tokens);
+    expect(helper.lines!).toBeLessThan(helper.tokens!);
     expect(view.ranked.map((file) => file.path)).not.toContain("src/deep/helper.ts");
     expect(view.ranked.map((file) => file.path)).toContain("src/util.ts");
   });
@@ -724,7 +725,7 @@ describe("ranking scope", () => {
     expect(view.detail.cards.find((card) => card.rowKind === "files")).toMatchObject({
       name: ".",
       path: "src",
-      files: 0,
+      files: 2,
       weight: 0,
     });
   });
@@ -963,7 +964,7 @@ describe("a folder with no loose files of its own", () => {
     const view = shell({ kinds: ["code"] });
     const ownFiles = view.detail.cards[0]!;
     expect(ownFiles).toMatchObject({ rowKind: "files", path: "shell", name: "." });
-    expect(ownFiles.files).toBe(0);
+    expect(ownFiles.files).toBe(1);
     expect(ownFiles.weight).toBe(0);
   });
 
@@ -978,10 +979,11 @@ describe("a folder with no loose files of its own", () => {
     expect(children.map((row) => row.name).sort()).toEqual(view.detail.cards.map((card) => card.name).sort());
   });
 
-  it("draws the own-files tile alone rather than an empty row", () => {
+  it("keeps every navigation tile when all flavors are disabled", () => {
     const view = shell({ kinds: [] });
-    expect(view.detail.cards).toHaveLength(1);
-    expect(view.detail.cards[0]).toMatchObject({ rowKind: "files", path: "shell", name: ".", files: 0 });
+    expect(view.detail.cards).toHaveLength(3);
+    expect(view.detail.cards[0]).toMatchObject({ rowKind: "files", path: "shell", name: ".", files: 1 });
+    expect(view.detail.cards.every((card) => card.weight === 0)).toBe(true);
   });
 });
 

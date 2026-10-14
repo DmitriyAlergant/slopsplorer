@@ -139,7 +139,7 @@ describe("diff scan", () => {
     }
 
     for (const file of index.files) {
-      expect({ path: file.path, added: file.addedPhysicalLines, removed: file.removedPhysicalLines })
+      expect({ path: file.path, added: file.addedPhysicalLines!, removed: file.removedPhysicalLines! })
         .toEqual({ path: file.path, ...expected.get(file.path)! });
     }
     expect(index.files.length).toBe(expected.size);
@@ -147,21 +147,21 @@ describe("diff scan", () => {
 
   it("splits every measure into two identities that hold for each file", () => {
     for (const file of index.files) {
-      expect(file.churnTokens).toBe(file.addedTokens + file.removedTokens);
-      expect(file.netTokens).toBe(file.addedTokens - file.removedTokens);
-      expect(file.churnLines).toBe(file.addedLines + file.removedLines);
-      expect(file.netLines).toBe(file.addedLines - file.removedLines);
-      expect(file.churnCodeLines).toBe(file.addedCodeLines + file.removedCodeLines);
-      expect(file.netCodeLines).toBe(file.addedCodeLines - file.removedCodeLines);
+      expect(file.churnTokens).toBe(file.addedTokens! + file.removedTokens!);
+      expect(file.netTokens).toBe(file.addedTokens! - file.removedTokens!);
+      expect(file.churnLines).toBe(file.addedLines! + file.removedLines!);
+      expect(file.netLines).toBe(file.addedLines! - file.removedLines!);
+      expect(file.churnCodeLines).toBe(file.addedCodeLines! + file.removedCodeLines!);
+      expect(file.netCodeLines).toBe(file.addedCodeLines! - file.removedCodeLines!);
     }
   });
 
   it("keeps every bucketed count inside its physical count, because blank lines fall out", () => {
     for (const file of index.files) {
-      expect(file.addedLines).toBe(file.addedCodeLines + file.addedCommentLines);
-      expect(file.removedLines).toBe(file.removedCodeLines + file.removedCommentLines);
-      expect(file.addedLines).toBeLessThanOrEqual(file.addedPhysicalLines);
-      expect(file.removedLines).toBeLessThanOrEqual(file.removedPhysicalLines);
+      expect(file.addedLines!).toBe(file.addedCodeLines! + file.addedCommentLines!);
+      expect(file.removedLines!).toBe(file.removedCodeLines! + file.removedCommentLines!);
+      expect(file.addedLines!).toBeLessThanOrEqual(file.addedPhysicalLines!);
+      expect(file.removedLines!).toBeLessThanOrEqual(file.removedPhysicalLines!);
     }
   });
 
@@ -171,10 +171,10 @@ describe("diff scan", () => {
     // the middle line looks like one on its own. The guard, its statement, and
     // its brace are the added code, and the re-indented statement they replace
     // is the one line removed.
-    expect(main.addedCommentLines).toBe(3);
-    expect(main.addedCodeLines).toBe(3);
-    expect(main.removedCommentLines).toBe(0);
-    expect(main.removedCodeLines).toBe(1);
+    expect(main.addedCommentLines!).toBe(3);
+    expect(main.addedCodeLines!).toBe(3);
+    expect(main.removedCommentLines!).toBe(0);
+    expect(main.removedCodeLines!).toBe(1);
     expect(main.status).toBe("modified");
   });
 
@@ -204,7 +204,7 @@ describe("diff scan", () => {
 
   it("keeps the after-image structure counts beside the before-image ones", () => {
     const main = rowFor("src/main.ts");
-    expect(main.branches).toBeGreaterThan(main.beforeBranches);
+    expect(main.branches).toBeGreaterThan(main.beforeBranches!);
     expect(rowFor("src/gone.ts").functions).toBe(0);
   });
 
@@ -215,13 +215,14 @@ describe("diff scan", () => {
     });
   });
 
-  it("skips a file whose either side is over the ceiling, and counts it", async () => {
+  it("retains a file whose either side is over the ceiling, without numeric measurements", async () => {
     const comparison = await resolveComparison(root, { kind: "revisionPair", base: "HEAD~1", target: "HEAD" });
     const tiny = await scanDiff({
       root, comparison, tokenizer: "cl100k_base", exclude: [], maxFileBytes: 40, concurrency: 4,
     });
     expect(tiny.meta.skippedLargeFiles).toBeGreaterThan(0);
-    expect(tiny.files.length).toBeLessThan(index.files.length);
+    expect(tiny.files.length).toBe(index.files.length);
+    expect(tiny.files.filter((file) => file.measurement === "too-large")).toHaveLength(tiny.meta.skippedLargeFiles);
   }, SCAN_TIMEOUT_MS);
 
   it("sorts files by path, so a subtree stays one slice of the index", () => {
@@ -268,7 +269,7 @@ describe("diff scan", () => {
         concurrency: 2,
       });
 
-      expect(revisionIndex.files).toEqual([]);
+      expect(revisionIndex.files).toMatchObject([{ path: "site/assets/app.js", measurement: "excluded", tokens: null }]);
 
       await rm(path.join(revisionRoot, "site/.slopsplorer-export"));
       await revisionWrite(".slopsplorer-export", "");
@@ -289,7 +290,7 @@ describe("diff scan", () => {
         maxFileBytes: 2 * 1024 * 1024,
         concurrency: 2,
       });
-      expect(visibleIndex.files.map((file) => file.path)).toEqual(["src/main.ts"]);
+      expect(visibleIndex.files.map((file) => file.path)).toEqual([".slopsplorer-export", "src/main.ts"]);
     } finally {
       await rm(revisionRoot, { recursive: true, force: true });
     }

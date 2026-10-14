@@ -198,10 +198,10 @@ describe("scanning a source tree", () => {
   it("counts a Python docstring as commentary, because it carries the prose weight a block comment carries elsewhere", () => {
     const file = index.files.find((row) => row.path === "chainlit-datalayer/models.py")!;
     expect(file.language).toBe("python");
-    expect(file.commentLines).toBe(3);
-    expect(file.codeLines).toBe(2);
+    expect(file.commentLines!).toBe(3);
+    expect(file.codeLines!).toBe(2);
     expect(file.blankLines).toBe(1);
-    expect(file.lines).toBe(file.codeLines + file.commentLines);
+    expect(file.lines!).toBe(file.codeLines! + file.commentLines!);
   });
 
   it("reports TypeScript structure, including arrow functions, under the typescript grammar", () => {
@@ -210,7 +210,7 @@ describe("scanning a source tree", () => {
     expect(file.functions).toBe(2);
     expect(file.classes).toBe(1);
     expect(file.branches).toBe(1);
-    expect(file.commentLines).toBe(1);
+    expect(file.commentLines!).toBe(1);
   });
 
   it("still weighs a file whose format has no grammar, reporting zero structure rather than a guess", () => {
@@ -219,8 +219,8 @@ describe("scanning a source tree", () => {
     expect(file.functions).toBe(0);
     expect(file.classes).toBe(0);
     expect(file.branches).toBe(0);
-    expect(file.tokens).toBeGreaterThan(0);
-    expect(file.lines).toBeGreaterThan(0);
+    expect(file.tokens!).toBeGreaterThan(0);
+    expect(file.lines!).toBeGreaterThan(0);
     expect(file.kind).toBe("text");
   });
 
@@ -292,13 +292,13 @@ describe("walking a plain folder that is not a Git worktree", () => {
     const index = await scan(root, false);
     expect(index.meta.fileSource).not.toBe("git-index");
     expect(index.meta.fileSource).toBe("walk-gitignore");
-    expect(index.files.map((file) => file.path)).toEqual(["kept.py"]);
+    expect(index.files.map((file) => file.path)).toEqual([".gitignore", "kept.py"]);
   }, SCAN_TIMEOUT_MS);
 
   it("reports ignored files when --all-files is asked for, so nothing is hidden by accident", async () => {
     const index = await scan(root, true);
     expect(index.meta.fileSource).toBe("walk-all");
-    expect(index.files.map((file) => file.path)).toEqual(["ignored/thing.py", "kept.py"]);
+    expect(index.files.map((file) => file.path)).toEqual([".gitignore", "ignored/thing.py", "kept.py"]);
   }, SCAN_TIMEOUT_MS);
 });
 
@@ -332,20 +332,20 @@ describe("scanning the shell family", () => {
     const index = await scan(root, true);
     const file = index.files.find((row) => row.path === "scripts/deploy.sh")!;
     expect(file.language).toBe("bash");
-    expect(file.commentLines).toBe(2);
-    expect(file.codeLines).toBe(7);
+    expect(file.commentLines!).toBe(2);
+    expect(file.codeLines!).toBe(7);
     expect(file.blankLines).toBe(2);
-    expect(file.lines).toBe(file.codeLines + file.commentLines);
+    expect(file.lines!).toBe(file.codeLines! + file.commentLines!);
     expect(file.functions).toBe(1);
     expect(file.branches).toBe(1);
-    expect(file.tokens).toBeGreaterThan(0);
+    expect(file.tokens!).toBeGreaterThan(0);
   }, SCAN_TIMEOUT_MS);
 
   it("keeps fish on the marker path, because its syntax is not Bourne shell", async () => {
     const index = await scan(root, true);
     const file = index.files.find((row) => row.path === "scripts/config.fish")!;
     expect(file.language).toBeNull();
-    expect(file.commentLines).toBe(2);
-    expect(file.codeLines).toBe(1);
+    expect(file.commentLines!).toBe(2);
+    expect(file.codeLines!).toBe(1);
   }, SCAN_TIMEOUT_MS);
 });

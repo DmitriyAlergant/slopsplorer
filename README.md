@@ -51,6 +51,7 @@ The commit band allows to focus layer-by-layer on the whole PR, selected run of 
 `--pr` accepts a GitHub or GitLab pull request number or URL and needs the matching `gh` or `glab` CLI signed in.
 A URL works from anywhere, including a folder that is no repository: when no remote here serves that project, slopsplorer clones it to a read-only temporary folder and removes it when the run ends.
 Click a file to read its source or diff, or use **Read all** to open every matching file in path order.
+All text formats count, including extensionless build files and patches; changed files that cannot be measured show a reason when their category is enabled.
 
 ## Read the map
 

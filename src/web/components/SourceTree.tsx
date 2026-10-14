@@ -233,9 +233,9 @@ export function SourceTree({
                   <>
                     {centreAxis ? null : <span className="tree__mass" aria-hidden="true" />}
                     <span className="tree__count" {...(centreAxis ? tooltipHandlers : {})}>
-                      {weightCount(row.weight, aspect)}
+                      {row.files === row.unmeasuredFiles ? `${count(row.files)} ${row.files === 1 ? "file" : "files"}` : weightCount(row.weight, aspect)}
                       {centreAxis ? (
-                        <Tooltip compact>{`${count(row.added)} added, ${count(row.removed)} removed`}</Tooltip>
+                        <Tooltip compact>{`${count(row.files)} files, ${count(row.unmeasuredFiles)} not measured; ${count(row.added)} added, ${count(row.removed)} removed`}</Tooltip>
                       ) : null}
                     </span>
                   </>

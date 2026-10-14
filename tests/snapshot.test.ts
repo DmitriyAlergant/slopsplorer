@@ -226,7 +226,7 @@ describe("a static scan index", () => {
       const record = JSON.parse(await readFile(
         path.join(output, "data", "sources", `${fileIndex}.json`), "utf8",
       )) as SnapshotSourceRecord;
-      expect(record).toEqual({ error: "file resolves outside the scan root" });
+      expect(record).toMatchObject({ mode: "unmeasured", reason: "symlink" });
     } finally {
       await rm(escapePath, { force: true });
       await rm(outsideRoot, { recursive: true, force: true });
@@ -242,8 +242,7 @@ describe("a static scan index", () => {
     const output = await mkdtemp(path.join(os.tmpdir(), "slopsplorer-site-"));
     try {
       await writeFile(path.join(outsideRoot, "secret.ts"), "export const secret = true;\n", "utf8");
-      // Git lists a tracked or untracked symlink, and the scanner measures its
-      // target, so the export meets the file the live route refuses.
+      // The scanner retains the link without reading or exporting its target.
       await execFileAsync("git", ["init", "-q"], { cwd: escapingRoot });
       await writeFile(path.join(escapingRoot, "ok.ts"), "export const ok = true;\n", "utf8");
       await symlink(path.join(outsideRoot, "secret.ts"), path.join(escapingRoot, "escape.ts"));
@@ -277,7 +276,7 @@ describe("a static scan index", () => {
       const recordOf = async (filePath: string): Promise<SnapshotSourceRecord> => JSON.parse(await readFile(
         path.join(output, "data", "sources", `${escapingIndex.fileIndexByPath.get(filePath)}.json`), "utf8",
       )) as SnapshotSourceRecord;
-      await expect(recordOf("escape.ts")).resolves.toEqual({ error: "file resolves outside the scan root" });
+      await expect(recordOf("escape.ts")).resolves.toMatchObject({ mode: "unmeasured", reason: "symlink" });
       await expect(recordOf("ok.ts")).resolves.toMatchObject({ mode: "source", path: "ok.ts" });
     } finally {
       await rm(outsideRoot, { recursive: true, force: true });

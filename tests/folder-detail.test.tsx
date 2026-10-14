@@ -28,6 +28,8 @@ const DETAIL: DetailView = {
   shareOfScope: 0.8,
   cards: [],
   shownFiles: 90,
+  unmeasuredFiles: 0,
+  generatedFiles: 0,
   availableFiles: 90,
   flavorStats: FLAVOR_STATS,
   flavorBaseline: 326_117,

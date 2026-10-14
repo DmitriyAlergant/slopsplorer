@@ -153,7 +153,7 @@ A static snapshot offers none of these choices because each one needs a new inde
 
 ## The file list
 
-`git diff --name-status -z -M <base> <target>` gives the changed paths, the status letter, and the rename pairs.
+`git diff --raw -z -M <base> <target>` gives the changed paths, status letters, rename pairs, and file modes.
 
 Rename detection is not optional.
 Without `-M`, one renamed file reads as a whole-file add beside a whole-file delete, and a branch that moves a folder fills the map with change that nobody wrote.
@@ -162,13 +162,19 @@ A renamed row is filed under its target path, which is where the change now sits
 When the target side is the working tree, `git ls-files --others --exclude-standard` adds the untracked files as additions.
 `git diff` cannot see them, but a file written a minute ago is most of what uncommitted work is, and a scan already counts it.
 
-`acceptSourcePaths()` in `src/scanner/walk.ts` then reduces the list exactly as it reduces a walk, so a diff and a scan agree about what a source file is.
+`acceptSourcePaths()` in `src/scanner/walk.ts` decides which paths can be read.
+The index retains all changed paths; a refused path carries an unmeasured reason.
+Content detection, classification, and measurement use the same rules as a tree scan.
+Pure renames, mode-only changes, and empty files remain in the inventory with zero textual churn.
+`beforeMode` and `afterMode` retain the file modes for the preview.
 
 Content at a revision comes from one long-lived `git cat-file --batch` process.
 One `git show` for each file would spend seconds of process startup on a diff of several hundred files.
 Sizes are asked first, through `git cat-file --batch-check`, so a blob over `--max-file-bytes` is never pulled through the pipe.
 Content for the working tree comes from `readFile`, as it does in a scan.
-A file over the ceiling on either side is skipped and counted in `ScanMeta.skippedLargeFiles`.
+A file over the ceiling on either side remains as a `too-large` row and increments `ScanMeta.skippedLargeFiles`.
+Binary files, unsupported encodings, symbolic links, and submodules also remain as unmeasured rows.
+The report and the explorer state why these files have no figures.
 
 Both sides are put on one line-ending convention before they are compared.
 A blob is stored as Git holds it while a working-tree file may have been written back with CRLF, and without this every line of such a file would read as changed.
@@ -317,6 +323,8 @@ Sorting one of the aspect columns chooses the aspect, exactly as sorting a measu
 
 Inside a comparison a file has two contents, so `SourceDialog` draws the change with `DiffView`.
 Showing the after-image alone would be a claim the page cannot support.
+An unmeasured file opens the same preview with its status and reason, without reading its content.
+A measured diff preview states the old path of a rename and any file-mode change even when no text changed.
 
 The aligner that `openDiffAligner()` opens reads both sides again and `alignedLines()` interleaves them into one sequence, from the same aligner the figures came from, rather than shelling out to `git diff` a second time.
 One aligner serves every row it was opened for through one size batch and one object reader, so the exporter walking a whole index shares two git processes instead of paying two per file.

@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 import type { FileRow, Measure, SourceResponse } from "../../shared/api.ts";
-import { measureAbbreviation, weightField } from "../../shared/api.ts";
+import { MEASUREMENT_LABELS, measureAbbreviation, weightField } from "../../shared/api.ts";
 import { aspectFigure, count, messageOf, statusLetter, statusName } from "../format.ts";
 import { Chevron } from "./Chevron.tsx";
 import { CopyPathButton } from "./CopyPathButton.tsx";
@@ -137,8 +137,8 @@ function StackedFile({
 
   // Both sides whatever the page's aspect switch selects, as the folder tiles
   // state them, because one figure would hide a rewrite behind a small number.
-  const added = aspectFigure("added", row[weightField(measure, "added")]);
-  const removed = aspectFigure("removed", row[weightField(measure, "removed")]);
+  const added = aspectFigure("added", row[weightField(measure, "added")] ?? 0);
+  const removed = aspectFigure("removed", row[weightField(measure, "removed")] ?? 0);
 
   const toggleOpen = (): void => {
     if (!open) {
@@ -188,7 +188,7 @@ function StackedFile({
         </h3>
         <CopyPathButton path={row.path} />
         <span className="stack__figures">
-          {isDiff ? (
+          {row.measurement !== "measured" ? MEASUREMENT_LABELS[row.measurement] : isDiff ? (
             <>
               <span data-sign={added.sign}>{added.text}</span>
               <span data-sign={removed.sign}>{removed.text}</span>
