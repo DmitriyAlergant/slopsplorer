@@ -297,11 +297,11 @@ const FILE_SOURCE_LABELS: Readonly<Record<FileSourceName, string>> = {
 function printSummary(index: ScanIndex, maxFileBytes: number, agents: readonly AvailableAgent[]): void {
   const { meta } = index;
   const skipped = meta.skippedLargeFiles > 0
-    ? `, ${formatCount(meta.skippedLargeFiles)} skipped over ${formatCount(maxFileBytes)} bytes`
+    ? `, ${formatCount(meta.skippedLargeFiles)} not measured above ${formatCount(maxFileBytes)} bytes`
     : "";
   const lines: string[] = [`root       ${path.resolve(meta.rootPath)}`];
-  const sum = (pick: (file: ScanIndex["files"][number]) => number): number =>
-    index.files.reduce((total, file) => total + pick(file), 0);
+  const sum = (pick: (file: import("./shared/api.ts").MeasuredFileRow) => number): number =>
+    index.files.reduce((total, file) => total + (file.measurement === "measured" ? pick(file) : 0), 0);
 
   if (meta.diff) {
     const addedLines = sum((file) => file.addedLines);

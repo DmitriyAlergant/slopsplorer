@@ -1,6 +1,5 @@
-import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
-import type { ChangeStatus, DiffLine, DiffMeta, FileRow, ScanMeta } from "../shared/api.ts";
+import type { ChangeStatus, DiffLine, DiffMeta, FileRow, ScanMeta, UnmeasuredReason } from "../shared/api.ts";
 import { classifyFile, findLocaleLevels, hasGeneratedContent, isGenerated, refineKindByContent } from "./classify.ts";
 import { GitObjectReader, listChangedFiles, objectSizes, type ChangedFile, type Comparison, type DiffSide } from "./gitdiff.ts";
 import { alignedLines, diffLines } from "./linediff.ts";
@@ -8,9 +7,11 @@ import type { LineBucket } from "./lines.ts";
 import { splitLines } from "./lines.ts";
 import { measureFile, type FileMeasurement } from "./measure.ts";
 import { assembleIndex, buildFolders, mapWithConcurrency, type ScanIndex, type ScanProgress } from "./scan.ts";
+import { decodeText, readTextFile, type TextRead } from "./text.ts";
+import { unmeasuredFile } from "./unmeasured.ts";
 import { StructureAnalyzer } from "./structure.ts";
 import { tokenCounter, type TokenizerName } from "./tokenize.ts";
-import { acceptSourcePaths, listRevisionFiles, listSourceFiles } from "./walk.ts";
+import { acceptSourcePaths, listIndexFiles, listRevisionFiles, listSourceFiles } from "./walk.ts";
 
 export interface DiffScanOptions {
   /** Top of the worktree. It is also the scan root, so paths read the same as in a scan. */
@@ -38,8 +39,8 @@ interface TargetFiles {
 
 async function listTargetFiles(options: DiffScanOptions): Promise<TargetFiles> {
   const target = options.comparison.target;
-  if (target.kind === "revision") {
-    const inventory = await listRevisionFiles(options.root, target.rev);
+  if (target.kind !== "worktree") {
+    const inventory = target.kind === "revision" ? await listRevisionFiles(options.root, target.rev) : await listIndexFiles(options.root);
     return { sourcePaths: acceptSourcePaths(inventory, options.exclude), inventory };
   }
   const listing = await listSourceFiles(options.root, { allFiles: false, exclude: options.exclude });
@@ -100,7 +101,7 @@ function sideSpecs(comparison: Comparison, entry: ChangedFile): { before: string
 }
 
 /**
- * Fetch both sides of one file, or `null` when either is over the ceiling.
+ * Fetch both text sides, or explain why either side cannot be measured.
  *
  * `sizes` is asked first so a blob too large to measure is never pulled
  * through the pipe. A working-tree side has no blob and is read from disk, as
@@ -109,32 +110,26 @@ function sideSpecs(comparison: Comparison, entry: ChangedFile): { before: string
 async function readSides(
   options: DiffScanOptions, reader: GitObjectReader, sizes: ReadonlyMap<string, number | null>, entry: ChangedFile,
   worktreeFilePath?: string | null,
-): Promise<FileContents | null> {
-  const read = async (side: DiffSide, filePath: string, exists: boolean): Promise<string | null> => {
-    if (!exists) return NOTHING;
+): Promise<FileContents | { reason: UnmeasuredReason }> {
+  const read = async (side: DiffSide, filePath: string, exists: boolean): Promise<TextRead> => {
+    if (!exists) return { text: NOTHING, reason: null };
     const spec = objectSpec(side, filePath);
     if (spec === null) {
-      if (worktreeFilePath === null) return NOTHING;
-      const absolutePath = worktreeFilePath ?? path.join(options.root, filePath);
-      const info = await stat(absolutePath).catch(() => null);
-      // A working-tree file the diff named but the filesystem no longer holds
-      // is an empty after-image, which is what deleting it in between means.
-      if (info === null || !info.isFile()) return NOTHING;
-      if (info.size > options.maxFileBytes) return null;
-      return readFile(absolutePath, "utf8");
+      if (worktreeFilePath === null) return { text: null, reason: "unreadable" };
+      return readTextFile(options.root, filePath, options.maxFileBytes, worktreeFilePath);
     }
     const size = sizes.get(spec);
-    if (size === undefined || size === null) return NOTHING;
-    if (size > options.maxFileBytes) return null;
+    if (size === undefined || size === null) return { text: null, reason: "unreadable" };
+    if (size > options.maxFileBytes) return { text: null, reason: "too-large" };
     const blob = await reader.read(spec);
-    return blob === null ? NOTHING : blob.toString("utf8");
+    return blob === null ? { text: null, reason: "unreadable" } : decodeText(blob);
   };
 
   const before = await read(options.comparison.base, entry.basePath, entry.status !== "added");
-  if (before === null) return null;
+  if (before.reason !== null) return { reason: before.reason };
   const after = await read(options.comparison.target, entry.path, entry.status !== "deleted");
-  if (after === null) return null;
-  return { before: normalizeLineEndings(before), after: normalizeLineEndings(after) };
+  if (after.reason !== null) return { reason: after.reason };
+  return { before: normalizeLineEndings(before.text), after: normalizeLineEndings(after.text) };
 }
 
 /** The change entry a measured row came from, for reading its two sides again. */
@@ -142,6 +137,7 @@ function changedFileOf(row: FileRow): ChangedFile {
   return {
     path: row.path,
     basePath: row.previousPath ?? row.path,
+    beforeMode: row.beforeMode, afterMode: row.afterMode,
     status: row.status === "unchanged" ? "modified" : row.status,
   };
 }
@@ -177,7 +173,7 @@ export async function openDiffAligner(options: DiffScanOptions, rows: readonly F
   return {
     align: async (row, worktreeFilePath) => {
       const contents = await readSides(options, reader, sizes, changedFileOf(row), worktreeFilePath);
-      if (contents === null) return null;
+      if ("reason" in contents) return null;
       const before = splitLines(contents.before);
       const after = splitLines(contents.after);
       return alignedLines(before, after, diffLines(before, after));
@@ -215,12 +211,11 @@ export async function scanDiff(options: DiffScanOptions): Promise<ScanIndex> {
   const startedAt = Date.now();
   const { comparison } = options;
   const changed = await listChangedFiles(options.root, comparison);
-  const byPath = new Map(changed.map((entry) => [entry.path, entry]));
   const targetFiles = await listTargetFiles(options);
   const localeLevels = findLocaleLevels(targetFiles.sourcePaths);
   const changedPaths = changed.map((entry) => entry.path);
-  const accepted = acceptSourcePaths(changedPaths, options.exclude, targetFiles.inventory)
-    .map((filePath) => byPath.get(filePath)!);
+  const acceptedPaths = new Set(acceptSourcePaths(changedPaths, options.exclude, targetFiles.inventory));
+  const accepted = [...changed].sort((left, right) => left.path < right.path ? -1 : left.path > right.path ? 1 : 0);
 
   const sizeSpecs: string[] = [];
   for (const entry of accepted) {
@@ -240,14 +235,23 @@ export async function scanDiff(options: DiffScanOptions): Promise<ScanIndex> {
   let completedFiles = 0;
   options.onProgress?.({ completedFiles, totalFiles: accepted.length });
 
-  let measured: (FileRow | null)[];
+  let files: FileRow[];
   let languages: string[];
   try {
-    measured = await mapWithConcurrency(accepted, options.concurrency, async (entry: ChangedFile) => {
+    files = await mapWithConcurrency(accepted, options.concurrency, async (entry: ChangedFile) => {
+      const previousPath = entry.status === "renamed" ? entry.basePath : null;
+      const unmeasured = (reason: UnmeasuredReason): FileRow => ({
+        ...unmeasuredFile(entry.path, reason, localeLevels, entry.status, previousPath),
+        beforeMode: entry.beforeMode, afterMode: entry.afterMode,
+      });
+      if (!acceptedPaths.has(entry.path)) return unmeasured("excluded");
+      const modes = [entry.beforeMode, entry.afterMode];
+      if (modes.includes("160000")) return unmeasured("submodule");
+      if (modes.includes("120000")) return unmeasured("symlink");
       const contents = await readSides(options, reader, sizes, entry);
-      if (contents === null) {
-        skippedLargeFiles += 1;
-        return null;
+      if ("reason" in contents) {
+        if (contents.reason === "too-large") skippedLargeFiles += 1;
+        return unmeasured(contents.reason);
       }
 
       const name = path.posix.basename(entry.path);
@@ -264,13 +268,15 @@ export async function scanDiff(options: DiffScanOptions): Promise<ScanIndex> {
       const grammar = after.grammar ?? before.grammar;
 
       const row: FileRow = {
+        measurement: "measured",
         path: entry.path,
         name,
         kind: refineKindByContent(classifyFile(entry.path, localeLevels), entry.path, { grammar, ...after.structure }),
         // The after image, or the before image of a file the change deleted.
         generated: isGenerated(entry.path) || hasGeneratedContent(entry.path, contents.after || contents.before),
         status: entry.status,
-        previousPath: entry.status === "renamed" ? entry.basePath : null,
+        previousPath,
+        beforeMode: entry.beforeMode, afterMode: entry.afterMode,
         tokens: countTokens(contents.after),
         lines: after.lines.lines,
         codeLines: after.lines.codeLines,
@@ -314,7 +320,6 @@ export async function scanDiff(options: DiffScanOptions): Promise<ScanIndex> {
     reader.dispose();
   }
 
-  const files = measured.filter((row): row is FileRow => row !== null);
   const rootName = path.basename(path.resolve(options.root)) || options.root;
   const folders = buildFolders(files, rootName);
   const countOf = (status: ChangeStatus): number => files.filter((file) => file.status === status).length;

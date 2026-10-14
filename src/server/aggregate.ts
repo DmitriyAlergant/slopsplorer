@@ -94,6 +94,7 @@ function emptyTotals(): Totals {
 }
 
 function addFile(totals: Totals, file: FileRow, fields: ActiveFields): void {
+  if (file.measurement !== "measured") return;
   const weight = file[fields.weight];
   totals.weight += weight;
   totals.added += file[fields.added];
@@ -234,6 +235,7 @@ interface Aggregation {
   categoryCount: Map<string, number>;
   /** Path-search matches per subtree, before flavor switches. */
   pathCount: Map<string, number>;
+  unmeasuredCount: Map<string, number>;
   /** Category-visible weight per folder subtree, before scope exclusions. */
   categorySubtreeWeight: Map<string, number>;
   /** Category-visible weight for files sitting directly in a folder. */
@@ -268,6 +270,7 @@ function aggregate(
   const subtree = new Map<string, Totals>();
   const categoryCount = new Map<string, number>();
   const pathCount = new Map<string, number>();
+  const unmeasuredCount = new Map<string, number>();
   const categorySubtreeWeight = new Map<string, number>();
   const categoryDirectWeight = new Map<string, number>();
   const flavorBaseline = new Map<string, number>();
@@ -278,6 +281,7 @@ function aggregate(
     const directTotals = emptyTotals();
     let visibleBelow = 0;
     let pathMatchesBelow = 0;
+    let unmeasuredBelow = 0;
     let visibleDirectWeight = 0;
     let baselineWeight = 0;
     for (const fileIndex of folder.directFileIndices) {
@@ -285,12 +289,15 @@ function aggregate(
       if (included[fileIndex]) addFile(directTotals, file, fields);
       if (categoryVisible[fileIndex]) {
         visibleBelow += 1;
-        visibleDirectWeight += Math.abs(file[fields.weight]);
+        visibleDirectWeight += Math.abs(file[fields.weight] ?? 0);
       }
-      if (pathVisible[fileIndex]) pathMatchesBelow += 1;
+      if (pathVisible[fileIndex]) {
+        pathMatchesBelow += 1;
+        if (file.measurement !== "measured") unmeasuredBelow += 1;
+      }
       // The tile bars divide every flavor the scope holds, so their whole is the
       // available set: the switches shorten a bar rather than move its scale.
-      if (available[fileIndex]) baselineWeight += Math.abs(file[fields.weight]);
+      if (available[fileIndex]) baselineWeight += Math.abs(file[fields.weight] ?? 0);
     }
     direct.set(folder.path, directTotals);
 
@@ -302,12 +309,14 @@ function aggregate(
       if (childTotals) mergeTotals(subtreeTotals, childTotals);
       visibleBelow += categoryCount.get(childPath) ?? 0;
       pathMatchesBelow += pathCount.get(childPath) ?? 0;
+      unmeasuredBelow += unmeasuredCount.get(childPath) ?? 0;
       visibleSubtreeWeight += categorySubtreeWeight.get(childPath) ?? 0;
       baselineWeight += flavorBaseline.get(childPath) ?? 0;
     }
     subtree.set(folder.path, subtreeTotals);
     categoryCount.set(folder.path, visibleBelow);
     pathCount.set(folder.path, pathMatchesBelow);
+    unmeasuredCount.set(folder.path, unmeasuredBelow);
     categoryDirectWeight.set(folder.path, visibleDirectWeight);
     categorySubtreeWeight.set(folder.path, visibleSubtreeWeight);
     flavorBaseline.set(folder.path, baselineWeight);
@@ -320,6 +329,7 @@ function aggregate(
     included,
     categoryCount,
     pathCount,
+    unmeasuredCount,
     categorySubtreeWeight,
     categoryDirectWeight,
     flavorBaseline,
@@ -418,6 +428,8 @@ function buildTree(
     const isExpanded = queryActive || expanded.has(folder.path);
     rows.push({
       path: folder.path,
+      files: aggregation.pathCount.get(folder.path) ?? 0,
+      unmeasuredFiles: aggregation.unmeasuredCount.get(folder.path) ?? 0,
       name: folder.name,
       depth,
       rowKind: "folder",
@@ -446,6 +458,8 @@ function buildTree(
       const folderExcluded = exclusions.excluded.has(folder.path);
       rows.push({
         path: folder.path,
+        files: folder.directFileIndices.filter((position) => aggregation.pathVisible[position] === 1).length,
+        unmeasuredFiles: folder.directFileIndices.filter((position) => aggregation.pathVisible[position] === 1 && index.files[position]!.measurement !== "measured").length,
         name: child.name,
         depth: depth + 1,
         rowKind: child.rowKind,
@@ -512,11 +526,15 @@ function buildDetail(
   const flavorWeights = new Map<Flavor, number>();
   let shownFiles = 0;
   let availableFiles = 0;
+  let unmeasuredFiles = 0;
+  let generatedFiles = 0;
   const addFlavor = (fileIndex: number): void => {
-    if (aggregation.available[fileIndex] !== 1) return;
+    if (aggregation.pathVisible[fileIndex] !== 1) return;
     availableFiles += 1;
-    if (aggregation.included[fileIndex] === 1) shownFiles += 1;
     const file = index.files[fileIndex]!;
+    if (file.measurement !== "measured") { unmeasuredFiles += 1; return; }
+    if (aggregation.included[fileIndex] === 1) shownFiles += 1;
+    if (file.generated) generatedFiles += 1;
     const flavor = flavorOf(file);
     // Signed, unlike the bar slices: a switch states what its flavor does to the
     // active figure, so in net the chips add up to the panel's net. A reader
@@ -546,8 +564,8 @@ function buildDetail(
   const subfolders = directFilesOnly ? [] : folder.childPaths
     .map((childPath) => ({ node: index.folderByPath.get(childPath), totals: aggregation.subtree.get(childPath) }))
     .filter((entry): entry is { node: FolderNode; totals: Totals } => entry.node !== undefined && entry.totals !== undefined)
-    .filter((entry) => entry.totals.files > 0)
-    .map((entry) => ({ name: entry.node.name, path: entry.node.path, rowKind: "folder" as const, totals: entry.totals }));
+    .filter((entry) => (aggregation.pathCount.get(entry.node.path) ?? 0) > 0)
+    .map((entry) => ({ name: entry.node.name, path: entry.node.path, rowKind: "folder" as const, totals: { ...entry.totals, files: aggregation.pathCount.get(entry.node.path) ?? 0 } }));
   subfolders.sort((left, right) => byMagnitude(left.totals.weight, right.totals.weight));
 
   // One row, so the tiles take a fixed height whatever the folder holds and the
@@ -562,7 +580,7 @@ function buildDetail(
   const folderCapacity = drawsDirect ? cardColumns - 1 : cardColumns;
   const shownFolders = subfolders.length <= folderCapacity ? subfolders.length : Math.max(folderCapacity - 1, 0);
   if (drawsDirect) {
-    cards.push(buildFolderCard(DIRECT_FILES_LABEL, folder.path, "files", directTotals, visibleScopeWeight));
+    cards.push(buildFolderCard(DIRECT_FILES_LABEL, folder.path, "files", { ...directTotals, files: folder.directFileIndices.filter((position) => aggregation.pathVisible[position] === 1).length }, visibleScopeWeight));
   }
   for (const entry of subfolders.slice(0, shownFolders)) {
     cards.push(buildFolderCard(entry.name, entry.path, entry.rowKind, entry.totals, visibleScopeWeight));
@@ -608,6 +626,8 @@ function buildDetail(
     cards,
     shownFiles,
     availableFiles,
+    unmeasuredFiles,
+    generatedFiles,
     flavorStats,
     flavorBaseline,
     cardColumns,
@@ -619,7 +639,7 @@ type FileOrder = (left: FileRow, right: FileRow) => number;
 /** Heaviest first in the active measure and aspect. */
 function byWeight(fields: ActiveFields): FileOrder {
   return (left, right) =>
-    byMagnitude(left[fields.weight], right[fields.weight])
+    byMagnitude(left[fields.weight] ?? 0, right[fields.weight] ?? 0)
     || left.path.localeCompare(right.path);
 }
 
@@ -636,7 +656,7 @@ function byMetric(metric: RankMetric, measure: Measure, fields: ActiveFields): F
   if (metric === "name") return byPath;
   const sorted = columnField(metric, measure);
   const tieBreak = byWeight(fields);
-  return (left, right) => byMagnitude(left[sorted], right[sorted]) || tieBreak(left, right);
+  return (left, right) => byMagnitude(left[sorted] ?? 0, right[sorted] ?? 0) || tieBreak(left, right);
 }
 
 /**
@@ -660,7 +680,7 @@ function matchingFiles(
     const file = index.files[position]!;
     // A floor on the magnitude: in net, a file at -900 is a large change, and
     // comparing it signed would drop every deletion.
-    if (Math.abs(file[fields.weight]) < request.rank.minWeight) return;
+    if (file.measurement === "measured" && Math.abs(file[fields.weight]) < request.rank.minWeight) return;
     matches.push(file);
   };
   if (directFilesOnly) {

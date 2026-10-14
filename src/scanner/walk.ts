@@ -3,7 +3,7 @@ import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import ignore, { type Ignore } from "ignore";
-import { EXCLUDED_DIRECTORIES, isSourceFile } from "./classify.ts";
+import { EXCLUDED_DIRECTORIES } from "./classify.ts";
 
 const execFileAsync = promisify(execFile);
 
@@ -70,8 +70,9 @@ async function loadIgnoreScope(directory: string, relative: string): Promise<Ign
   try {
     const contents = await readFile(path.join(directory, ".gitignore"), "utf8");
     return { base: relative, matcher: ignore().add(contents) };
-  } catch {
-    return null;
+  } catch (cause) {
+    if (cause instanceof Error && "code" in cause && cause.code === "ENOENT") return null;
+    throw cause;
   }
 }
 
@@ -88,18 +89,12 @@ function isIgnored(scopes: readonly IgnoreScope[], relativePath: string, isDirec
 
 async function listFilesystemFiles(
   root: string,
-  extraExclusions: ReadonlySet<string>,
   respectGitignore: boolean,
 ): Promise<string[]> {
   const found: string[] = [];
 
   async function descend(directory: string, relative: string, scopes: readonly IgnoreScope[]): Promise<void> {
-    let entries;
-    try {
-      entries = await readdir(directory, { withFileTypes: true });
-    } catch {
-      return;
-    }
+    const entries = await readdir(directory, { withFileTypes: true });
 
     let activeScopes = scopes;
     if (respectGitignore) {
@@ -108,10 +103,14 @@ async function listFilesystemFiles(
     }
 
     for (const entry of entries) {
-      if (entry.isSymbolicLink()) continue;
+      if (entry.isSymbolicLink()) {
+        const relativePath = relative ? `${relative}/${entry.name}` : entry.name;
+        if (!respectGitignore || !isIgnored(activeScopes, relativePath, false)) found.push(relativePath);
+        continue;
+      }
       const childRelative = relative ? `${relative}/${entry.name}` : entry.name;
       if (entry.isDirectory()) {
-        if (EXCLUDED_DIRECTORIES.has(entry.name) || extraExclusions.has(entry.name)) continue;
+        if (EXCLUDED_DIRECTORIES.has(entry.name)) continue;
         if (respectGitignore && isIgnored(activeScopes, childRelative, true)) continue;
         await descend(path.join(directory, entry.name), childRelative, activeScopes);
       } else if (entry.isFile()) {
@@ -155,7 +154,7 @@ export async function listRevisionSourceFiles(
 
 export interface FileListing {
   relativePaths: string[];
-  /** All listed files, including non-source files used to identify excluded export roots. */
+  /** Complete path inventory, including markers that identify excluded export roots. */
   inventory: string[];
   /** The listing came from the Git index rather than a filesystem walk. */
   gitTracked: boolean;
@@ -178,12 +177,11 @@ export interface ListOptions {
  * exclusions allow.
  */
 export async function listSourceFiles(root: string, options: ListOptions): Promise<FileListing> {
-  const extraExclusions = new Set(options.exclude);
   const useGit = !options.allFiles && (await isGitWorktree(root));
   const respectGitignore = !options.allFiles;
   const candidates = useGit
     ? await listGitFiles(root)
-    : await listFilesystemFiles(root, extraExclusions, respectGitignore);
+    : await listFilesystemFiles(root, respectGitignore);
   const exportMarkers = useGit ? await listIgnoredGitExportMarkers(root) : [];
   const inventory = [...candidates, ...exportMarkers];
 
@@ -196,11 +194,8 @@ export async function listSourceFiles(root: string, options: ListOptions): Promi
 }
 
 /**
- * Reduce a candidate list to the files a scan measures, sorted by path.
- *
- * Both producers of an index end here, so a diff and a scan can never disagree
- * about what counts as a source file. The sort is what makes every subtree a
- * contiguous slice of `ScanIndex.files`.
+ * Apply path exclusions before reading content.
+ * Both producers use these rules; comparisons retain rejected paths as unmeasured rows.
  */
 export function acceptSourcePaths(
   candidates: readonly string[], exclude: readonly string[], inventory: readonly string[] = candidates,
@@ -213,7 +208,6 @@ export function acceptSourcePaths(
       return directory === "." ? "" : directory;
     });
   return candidates
-    .filter((relativePath) => isSourceFile(relativePath))
     .filter((relativePath) => !exportRoots.some((root) => (
       root === "" || relativePath === root || relativePath.startsWith(`${root}/`)
     )))
@@ -222,4 +216,22 @@ export function acceptSourcePaths(
       return !directories.some((directory) => extraExclusions.has(directory));
     })
     .sort();
+}
+
+/** Git modes distinguish links and submodules from text blobs without reading their targets. */
+export async function listGitFileModes(
+  root: string, side: { kind: "revision"; rev: string } | { kind: "index" },
+): Promise<Map<string, string>> {
+  const args = side.kind === "revision"
+    ? ["ls-tree", "-r", "-z", side.rev, "--", "."]
+    : ["ls-files", "--stage", "-z", "--", "."];
+  const { stdout } = await execFileAsync("git", args, { cwd: root, maxBuffer: 256 * 1024 * 1024, encoding: "utf8" });
+  const modes = new Map<string, string>();
+  for (const record of stdout.split("\0")) {
+    if (!record) continue;
+    const tab = record.indexOf("\t");
+    if (tab < 0) throw new Error("Git file listing has no path separator");
+    modes.set(record.slice(tab + 1), record.slice(0, 6));
+  }
+  return modes;
 }

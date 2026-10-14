@@ -10,25 +10,36 @@ For how those parts fit together, read [architecture.md](./architecture.md).
 
 ## Which files enter a scan
 
-A file must pass three checks before it is measured.
+The scanner lists paths before it classifies content.
+An extension never decides whether a file can enter the scan.
 
-1. The listing accepts it.
-   Inside a Git worktree the list is `git ls-files --cached --others --exclude-standard`.
-   Outside one, the walker reads the tree and applies every `.gitignore` above the file.
-   `--all-files` turns both off.
-   The filesystem walker does not follow symlinks.
-2. `isSourceFile()` accepts it.
-   The extension must be in `SOURCE_EXTENSIONS`, or the name must be in `TEXT_NAMES`.
-   `TEXT_NAMES` holds the extensionless repository documents `README`, `CHANGELOG`, `CHANGES`, `CITATION`, `CONTRIBUTING`, `COPYING`, `LICENSE`, and `LICENCE`.
-   No folder on the path may be in `EXCLUDED_DIRECTORIES`, which holds `node_modules`, `vendor`, `target`, `venv`, `.venv`, and the tool cache folders.
-   Build output such as `dist` is not excluded by name.
-   Where it is committed, or where `--all-files` is used, it is scanned and marked generated.
-   `--exclude <name>` adds more folder names.
-3. It is not larger than `--max-file-bytes`, which is 2 MiB by default.
+Inside a Git worktree, `git ls-files --cached --others --exclude-standard` lists tracked files and untracked files that Git does not ignore.
+Tracked files under `vendor`, `target`, `.vscode`, or other conventional output folders remain candidates.
+Outside Git, the walker applies `.gitignore` and skips `EXCLUDED_DIRECTORIES` during traversal.
+`--all-files` disables ignore rules for the filesystem walk but keeps those traversal exclusions.
+The walker lists symbolic links but never follows them.
 
-`SOURCE_EXTENSIONS` is an allow list, so any other file type is invisible to a scan.
-It includes `.html`, `.htm`, and `.xhtml` because the same markup rules apply to all three formats.
-Several formats have comment rules in `lines.ts` that a scan never reaches, including Terraform, INI, SVG, `Dockerfile`, and scripts with no extension.
+`acceptSourcePaths()` in `src/scanner/walk.ts` applies `--exclude` and the static-export marker rule.
+Tree scans omit export bundles to prevent a snapshot from scanning its own output.
+A comparison retains every changed path, including paths excluded by either rule.
+An explicit folder exclusion remains visible but is not read.
+
+`decodeText()` in `src/scanner/text.ts` detects binary content and decodes UTF-8 or BOM-marked UTF-16 in either byte order.
+It rejects null bytes and binary control characters after decoding.
+An invalid encoding produces `unsupported-encoding`; it never inserts replacement characters.
+`readTextFile()` applies the same rule to disk content and refuses symbolic links and paths outside the root.
+Revision and index scans inspect Git modes to identify symbolic links and submodules before reading blobs.
+Source previews use the same decoder.
+
+A text file within `--max-file-bytes` is measured even when no grammar exists for it.
+The default ceiling is 2 MiB.
+In a comparison, either side can prevent measurement.
+`FileRow.measurement` is `measured`, `binary`, `too-large`, `excluded`, `unsupported-encoding`, `unreadable`, `symlink`, or `submodule`.
+An unmeasured row retains its path and change status, but every numeric metric is `null`.
+`unmeasuredFile()` in `src/scanner/unmeasured.ts` constructs these rows.
+Expected file-read failures become visible outcomes; other errors stop the scan.
+Directory-listing and ignore-file read errors stop a filesystem scan because the scanner cannot establish complete coverage.
+A missing `.gitignore` is normal and needs no error.
 
 ## Upstream evidence
 
@@ -125,10 +136,15 @@ A comparison sees only the files a change touched, so `listTargetFiles()` in `sr
 6. The data extensions `.csv`, `.json`, `.jsonc`, `.toml`, `.tsv`, `.xml`, `.yaml`, `.yml`: `i18n` inside a folder named for translation, and `data` otherwise.
 7. The prose extensions `.adoc`, `.md`, `.mdx`, `.rst`, `.txt`: `data` inside a folder named `data`, `fixture`, `fixtures`, `testdata`, `sample`, `samples`, `snapshot`, `snapshots`, `__snapshots__`, `golden`, or `goldens`, and `text` otherwise.
 8. A code extension: `test` if the filename follows a test-suffix convention through `isTestSourceName()`, or if a folder on the path is a test directory, and `code` otherwise.
-9. Everything else: `other`.
+9. Presentation formats and `.lock`: `other`.
+10. Other text files: `code`.
 
 `.css` and `.scss` are deliberately absent from the code extensions, so a stylesheet falls to `other` beside the `.html` it dresses.
 Neither holds logic to reason about, and both are read for what they render, so one could not be code while the other is not.
+Dockerfiles, Containerfiles, Makefiles, extensionless scripts, `.patch`, `.diff`, and unknown text formats enter as code unless a stronger classification rule applies.
+Filename variants such as `Containerfile.dev` and `Dockerfile.build` use the same hash-comment rules as their base names.
+A patch is measured as a document, not as a second comparison inside the repository comparison.
+
 A stylesheet still carries its tokens and its line split, and the Other switch is what takes presentation off the map.
 
 ### The two test-filename rules
@@ -205,6 +221,8 @@ That is what makes it safe, and it is also what makes the folder unimportant: a 
 ### What the content says
 
 `hasGeneratedContent()` reads three kinds of evidence.
+It does not inspect `.patch` or `.diff` content for generator markers because those markers can belong to the quoted code.
+Neither suffix alone marks a file as generated; explicit generated path rules still apply.
 
 The first is the header a generator writes about itself, which is the only thing that identifies an SDK client emitted from a service specification.
 Such a client sits in an ordinary `src/` folder under an ordinary name, and that is 11 percent of Azure's JavaScript SDK.

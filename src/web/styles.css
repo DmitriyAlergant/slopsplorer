@@ -2324,3 +2324,8 @@ button { cursor: pointer; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition-duration: 1ms !important; animation-duration: 1ms !important; }
 }
+
+.metrics__reason { color: var(--ink-soft); font-size: 0.75rem; white-space: nowrap; }
+.viewer__metadata { padding: 1.5rem; }
+.viewer__metadata dl { display: grid; grid-template-columns: max-content 1fr; gap: 0.5rem 1rem; }
+.viewer__metadata dd { margin: 0; overflow-wrap: anywhere; }

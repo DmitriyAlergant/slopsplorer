@@ -1,6 +1,6 @@
 import { readFile, realpath } from "node:fs/promises";
 import path from "node:path";
-import { StringDecoder } from "node:string_decoder";
+import { decodeText } from "../scanner/text.ts";
 import { openDiffAligner, type DiffScanOptions } from "../scanner/diffScan.ts";
 import { GitObjectReader, type DiffSide } from "../scanner/gitdiff.ts";
 import type { ReviewSideScanOptions, ScanIndex } from "../scanner/scan.ts";
@@ -61,18 +61,7 @@ async function readScanSource(root: string, requestedPath: string, row: FileRow)
     if (!isFileSystemError(cause)) throw cause;
     throw new SourceReadError("file is no longer readable", 404);
   }
-  const truncated = buffer.byteLength > MAX_SOURCE_BYTES;
-  const content = truncated
-    ? new StringDecoder("utf8").write(buffer.subarray(0, MAX_SOURCE_BYTES))
-    : buffer.toString("utf8");
-  return {
-    path: row.path,
-    content,
-    mode: "source",
-    truncated,
-    totalBytes: buffer.byteLength,
-    language: row.language,
-  };
+  return sourceFromBuffer(row, buffer);
 }
 
 function reviewSide(options: ReviewSideScanOptions): DiffSide {
@@ -84,17 +73,15 @@ function reviewObjectSpec(side: Exclude<DiffSide, { kind: "worktree" }>, request
 }
 
 function sourceFromBuffer(row: FileRow, buffer: Buffer): SourceResponse {
-  const truncated = buffer.byteLength > MAX_SOURCE_BYTES;
-  return {
-    path: row.path,
-    content: truncated
-      ? new StringDecoder("utf8").write(buffer.subarray(0, MAX_SOURCE_BYTES))
-      : buffer.toString("utf8"),
-    mode: "source",
-    truncated,
-    totalBytes: buffer.byteLength,
-    language: row.language,
-  };
+  const decoded = decodeText(buffer);
+  if (decoded.reason !== null) throw new SourceReadError(`file is ${decoded.reason}`, 404);
+  const textBuffer = Buffer.from(decoded.text, "utf8");
+  const truncated = textBuffer.byteLength > MAX_SOURCE_BYTES;
+  const content = truncated
+    ? new TextDecoder("utf-8", { fatal: true }).decode(textBuffer.subarray(0, MAX_SOURCE_BYTES), { stream: true })
+    : decoded.text;
+  return { path: row.path, content, mode: "source", truncated, totalBytes: buffer.byteLength, language: row.language };
+
 }
 
 /** Resolve an existing file and enforce the scan-root boundary. */
@@ -122,7 +109,7 @@ async function resolveInsideRoot(root: string, requestedPath: string): Promise<s
  * exporter's reads share one size batch and one object reader, and a single
  * interactive preview measures one file rather than the whole comparison.
  */
-export async function openSourceReader(
+async function openMeasuredSourceReader(
   index: ScanIndex, producer: SourceProducer, rows: readonly FileRow[],
 ): Promise<SourceReader> {
   if (producer.kind === "scan") {
@@ -178,12 +165,36 @@ export async function openSourceReader(
         path: row.path,
         lines: kept.lines,
         mode: "diff",
+        previousPath: row.previousPath, beforeMode: row.beforeMode, afterMode: row.afterMode,
         truncated: kept.lines.length < aligned.length,
         totalBytes: kept.totalBytes,
         language: row.language,
       };
     },
     dispose: () => aligner.dispose(),
+  };
+}
+
+/** Unmeasured rows are metadata, never a request to read excluded content. */
+export async function openSourceReader(
+  index: ScanIndex, producer: SourceProducer, rows: readonly FileRow[],
+): Promise<SourceReader> {
+  const measuredRows = rows.filter((row) => row.measurement === "measured");
+  const reader = measuredRows.length > 0 ? await openMeasuredSourceReader(index, producer, measuredRows) : null;
+  return {
+    read: async (requestedPath) => {
+      const row = rowOf(index, requestedPath);
+      if (row.measurement !== "measured") {
+        return {
+          path: row.path, mode: "unmeasured", reason: row.measurement,
+          status: row.status, previousPath: row.previousPath, beforeMode: row.beforeMode, afterMode: row.afterMode,
+          truncated: false, totalBytes: 0, language: null,
+        };
+      }
+      if (reader === null) throw new SourceReadError("reader was not opened for this file", 404);
+      return reader.read(requestedPath);
+    },
+    dispose: () => reader?.dispose(),
   };
 }
 

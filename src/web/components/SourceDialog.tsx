@@ -61,9 +61,12 @@ function toggledPath(folded: ReadonlySet<string>, path: string): ReadonlySet<str
  */
 export function SourceDialog({ preview, onClose, loadSource = fetchSource, loadFileList }: Props): React.JSX.Element {
   const dialogRef = useModalDialog(preview !== null);
-  const [source, setSource] = useState<SourceResponse | null>(null);
-  const [failure, setFailure] = useState<string | null>(null);
-  const [stackRows, setStackRows] = useState<FileListResponse["rows"] | null>(null);
+  const [sourceResult, setSourceResult] = useState<{
+    preview: Preview; source: SourceResponse | null; failure: string | null;
+  } | null>(null);
+  const [stackResult, setStackResult] = useState<{
+    preview: Preview; rows: FileListResponse["rows"] | null; failure: string | null;
+  } | null>(null);
   /** Paths folded away in the open stack. A new selection arrives with every file open. */
   const [folded, setFolded] = useState<ReadonlySet<string>>(() => new Set());
   const [changedOnly, setChangedOnly] = useState(() => readChangedLinesOnly(browserStorage()));
@@ -76,30 +79,35 @@ export function SourceDialog({ preview, onClose, loadSource = fetchSource, loadF
   const [side, setSide] = useState<PreviewSide>("diff");
 
   const stack = preview?.kind === "files" ? preview : null;
+  // A new title must never render the previous request's payload before its effect runs.
+  const source = sourceResult?.preview === preview ? sourceResult?.source ?? null : null;
+  const stackRows = stackResult?.preview === preview ? stackResult?.rows ?? null : null;
+  const result = stack === null ? sourceResult : stackResult;
+  const failure = result?.preview === preview ? result?.failure ?? null : null;
 
   useEffect(() => {
     if (preview === null || preview.kind === "files") return;
-    setSource(null);
-    setFailure(null);
+    setSourceResult(null);
     setSide("diff");
     let cancelled = false;
     const loading = preview.kind === "skill" ? fetchSkillSource() : loadSource(preview.path);
     loading
-      .then((loaded) => { if (!cancelled) setSource(loaded); })
-      .catch((cause: unknown) => { if (!cancelled) setFailure(messageOf(cause)); });
+      .then((loaded) => { if (!cancelled) setSourceResult({ preview, source: loaded, failure: null }); })
+      .catch((cause: unknown) => { if (!cancelled) setSourceResult({ preview, source: null, failure: messageOf(cause) }); });
     return () => { cancelled = true; };
   }, [loadSource, preview]);
 
   useEffect(() => {
     if (stack === null) return;
     const controller = new AbortController();
-    setStackRows(null);
-    setFailure(null);
+    setStackResult(null);
     setFolded(new Set());
     loadFileList(stack.request, controller.signal)
-      .then((loaded) => setStackRows(loaded.rows))
+      .then((loaded) => {
+        if (!controller.signal.aborted) setStackResult({ preview: stack, rows: loaded.rows, failure: null });
+      })
       .catch((cause: unknown) => {
-        if (!controller.signal.aborted) setFailure(messageOf(cause));
+        if (!controller.signal.aborted) setStackResult({ preview: stack, rows: null, failure: messageOf(cause) });
       });
     return () => controller.abort();
   }, [loadFileList, stack]);
@@ -177,7 +185,7 @@ export function SourceDialog({ preview, onClose, loadSource = fetchSource, loadF
               Only changed lines
             </label>
           ) : null}
-          {loaded ? (
+          {loaded && source?.mode !== "unmeasured" ? (
             <label className="viewer__toggle" data-on={wrap}>
               <input type="checkbox" role="switch" checked={wrap} onChange={toggleWrap} />
               Wrap lines

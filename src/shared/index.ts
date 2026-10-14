@@ -76,7 +76,7 @@ function buildWeightPrefixes(files: readonly FileRow[]): Record<WeightField, Flo
   for (const field of WEIGHT_FIELD_NAMES) {
     const running = new Float64Array(files.length + 1);
     for (const [position, file] of files.entries()) {
-      running[position + 1] = running[position]! + file[field];
+      running[position + 1] = running[position]! + (file.measurement === "measured" ? file[field] : 0);
     }
     prefixes[field] = running;
   }

@@ -1,18 +1,20 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import type { FileRow } from "../src/shared/api.ts";
+import type { MeasuredFileRow } from "../src/shared/api.ts";
 import { parseViewRequest } from "../src/server/aggregate.ts";
 import { FileStack, alignNextFileAfterCollapse, foldedAfterFoldAll, inPathOrder } from "../src/web/components/FileStack.tsx";
 import { SourceDialog } from "../src/web/components/SourceDialog.tsx";
 
-function row(path: string, figures: Partial<FileRow> = {}): FileRow {
+function row(path: string, figures: Partial<MeasuredFileRow> = {}): MeasuredFileRow {
   return {
+    measurement: "measured",
     path,
     name: path.slice(path.lastIndexOf("/") + 1),
     kind: "code",
     generated: false,
     status: "modified",
     previousPath: null,
+    beforeMode: null, afterMode: null,
     tokens: 100, lines: 40, codeLines: 30, commentLines: 10, blankLines: 4,
     beforeTokens: 100, beforeLines: 40, beforeCodeLines: 30,
     addedTokens: 0, removedTokens: 0, churnTokens: 0, netTokens: 0,
@@ -28,7 +30,7 @@ function row(path: string, figures: Partial<FileRow> = {}): FileRow {
 }
 
 /** The order the panel hands the stack: heaviest first, which the stack ignores. */
-const RANKED: FileRow[] = [
+const RANKED: MeasuredFileRow[] = [
   row("src/web/App.tsx", { tokens: 900 }),
   row("src/cli.ts", { tokens: 400 }),
   row("src/web/api.ts", { tokens: 120 }),

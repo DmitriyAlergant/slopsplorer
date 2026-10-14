@@ -1,5 +1,6 @@
+import { acceptSourcePaths } from "../src/scanner/walk.ts";
 import { afterAll, describe, expect, it } from "vitest";
-import { classifyFile, findLocaleLevels, hasGeneratedContent, isGenerated, isSourceFile, refineKindByContent, shebangInterpreter } from "../src/scanner/classify.ts";
+import { classifyFile, findLocaleLevels, hasGeneratedContent, isGenerated, refineKindByContent, shebangInterpreter } from "../src/scanner/classify.ts";
 import { measureFile } from "../src/scanner/measure.ts";
 import { StructureAnalyzer } from "../src/scanner/structure.ts";
 
@@ -23,7 +24,7 @@ describe("file kind classification", () => {
 
   it("reads the extensionless documentation names maintained by Linguist as prose", () => {
     for (const name of ["README", "CHANGELOG", "CHANGES", "CITATION", "CONTRIBUTING", "COPYING", "LICENSE", "LICENCE"]) {
-      expect({ name, kind: classify(name), admitted: isSourceFile(name) }).toEqual({
+      expect({ name, kind: classify(name), admitted: acceptSourcePaths([name], []).length === 1 }).toEqual({
         name,
         kind: "text",
         admitted: true,
@@ -405,28 +406,12 @@ describe("generated content", () => {
 });
 
 describe("scan admission", () => {
-  it("accepts readable source extensions and refuses vendored or cached directories", () => {
-    expect(isSourceFile("src/service.py")).toBe(true);
-    expect(isSourceFile("site/index.htm")).toBe(true);
-    expect(isSourceFile("site/index.xhtml")).toBe(true);
-    expect(isSourceFile("assets/logo.png")).toBe(false);
-    expect(isSourceFile("node_modules/left-pad/index.js")).toBe(false);
-    expect(isSourceFile("app/__pycache__/service.py")).toBe(false);
+  it("accepts paths without extension or directory guesses", () => {
+    const paths = ["Dockerfile", "Makefile", "scripts/provision", "assets/logo.png", "vendor/fix.patch"];
+    expect(acceptSourcePaths(paths, [])).toEqual([...paths].sort());
   });
-
-  it("accepts the whole shell family, not just .sh", () => {
-    for (const name of ["deploy.sh", "build.bash", "run.ksh", "unit.bats", "prompt.zsh", "config.fish"]) {
-      expect({ name, admitted: isSourceFile(`scripts/${name}`) }).toEqual({ name, admitted: true });
-    }
-  });
-
-  it("admits known extensionless docs while refusing an unknown extensionless file", () => {
-    expect(isSourceFile("README")).toBe(true);
-    expect(isSourceFile("CITATION")).toBe(true);
-    expect(isSourceFile("legal/LICENSE")).toBe(true);
-    expect(isSourceFile("scripts/provision")).toBe(false);
-    expect(isSourceFile("Dockerfile")).toBe(false);
-    expect(isSourceFile("Makefile")).toBe(false);
+  it("retains explicit folder exclusions", () => {
+    expect(acceptSourcePaths(["src/code", "private/code"], ["private"])).toEqual(["src/code"]);
   });
 });
 

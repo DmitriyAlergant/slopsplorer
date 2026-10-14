@@ -1,10 +1,10 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { UNCHANGED_FILE_FIELDS } from "../src/scanner/scan.ts";
-import type { FileRow } from "../src/shared/api.ts";
+import type { MeasuredFileRow } from "../src/shared/api.ts";
 import { FileTable } from "../src/web/components/FileTable.tsx";
 
-function row(overrides: Partial<FileRow>): FileRow {
+function row(overrides: Partial<MeasuredFileRow>): MeasuredFileRow {
   return {
     ...UNCHANGED_FILE_FIELDS,
     path: "src/example.ts",
@@ -33,7 +33,7 @@ function row(overrides: Partial<FileRow>): FileRow {
   };
 }
 
-function render(files: readonly FileRow[]): string {
+function render(files: readonly MeasuredFileRow[]): string {
   return renderToStaticMarkup(
     <FileTable
       files={files}

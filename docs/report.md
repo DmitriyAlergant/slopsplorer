@@ -44,7 +44,11 @@ The other flavors are in the report so that a reader knows how much of the tree 
 A one-line section is omitted when the tree holds no file of that flavor.
 `CODE` and `TESTS` print `none` instead, because their absence is a fact worth a line.
 
-Four header lines come first: the root, the whole tree in every measure, the unit split by flavor against the whole tree, and two sentences.
+The header includes a coverage line with the total path count, measured count, generated count, and unmeasured count.
+Each unmeasured path appears with its reason, regardless of the section threshold.
+Only measured files contribute to metric totals or flavor sections.
+
+The other header lines state: the root, the whole tree in every measure, the unit split by flavor against the whole tree, and two sentences.
 The first sentence is the weight of tests against code, or in a comparison the churn of tests against the churn of code.
 The second states the threshold.
 

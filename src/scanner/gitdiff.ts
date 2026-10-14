@@ -923,6 +923,8 @@ export interface ChangedFile {
   path: string;
   /** Path on the base side. Differs from `path` only for a rename. */
   basePath: string;
+  beforeMode: string | null;
+  afterMode: string | null;
   status: "added" | "modified" | "deleted" | "renamed";
 }
 
@@ -947,7 +949,7 @@ async function listUntrackedFiles(directory: string): Promise<string[]> {
  */
 export async function listChangedFiles(directory: string, comparison: Comparison): Promise<ChangedFile[]> {
   const stdout = await git(directory, [
-    "diff", "--name-status", "-z", "-M", ...comparison.diffArguments,
+    "diff", "--raw", "-z", "-M", ...comparison.diffArguments,
   ]);
   const fields = stdout.split("\0");
   const changed: ChangedFile[] = [];
@@ -955,7 +957,11 @@ export async function listChangedFiles(directory: string, comparison: Comparison
   while (cursor < fields.length) {
     const code = fields[cursor];
     if (code === undefined || code === "") break;
-    const letter = code[0]!;
+    const header = code.slice(1).split(" ");
+    const beforeMode = header[0] === "000000" ? null : header[0]!;
+    const afterMode = header[1] === "000000" ? null : header[1]!;
+    const modes = { beforeMode, afterMode };
+    const letter = header[4]![0]!;
     if (letter === "R" || letter === "C") {
       const from = fields[cursor + 1];
       const to = fields[cursor + 2];
@@ -963,24 +969,24 @@ export async function listChangedFiles(directory: string, comparison: Comparison
       if (from === undefined || to === undefined) break;
       // A copy leaves its source in place, so only the new path is new content.
       changed.push(letter === "R"
-        ? { path: to, basePath: from, status: "renamed" }
-        : { path: to, basePath: to, status: "added" });
+        ? { ...modes, path: to, basePath: from, status: "renamed" }
+        : { ...modes, beforeMode: null, path: to, basePath: to, status: "added" });
       continue;
     }
     const filePath = fields[cursor + 1];
     cursor += 2;
     if (filePath === undefined) break;
-    if (letter === "A") changed.push({ path: filePath, basePath: filePath, status: "added" });
-    else if (letter === "D") changed.push({ path: filePath, basePath: filePath, status: "deleted" });
+    if (letter === "A") changed.push({ ...modes, path: filePath, basePath: filePath, status: "added" });
+    else if (letter === "D") changed.push({ ...modes, path: filePath, basePath: filePath, status: "deleted" });
     // A type change and an unmerged path both have two contents, which is all
     // a measurement needs, so neither earns a status of its own.
-    else changed.push({ path: filePath, basePath: filePath, status: "modified" });
+    else changed.push({ ...modes, path: filePath, basePath: filePath, status: "modified" });
   }
 
   if (comparison.target.kind === "worktree") {
     const tracked = new Set(changed.map((entry) => entry.path));
     for (const filePath of await listUntrackedFiles(directory)) {
-      if (!tracked.has(filePath)) changed.push({ path: filePath, basePath: filePath, status: "added" });
+      if (!tracked.has(filePath)) changed.push({ beforeMode: null, afterMode: null, path: filePath, basePath: filePath, status: "added" });
     }
   }
   return changed;

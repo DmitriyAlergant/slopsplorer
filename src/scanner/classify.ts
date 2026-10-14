@@ -1,19 +1,6 @@
 import path from "node:path";
 import type { FileKind } from "../shared/api.ts";
 
-/**
- * Extensions the scanner will read. Anything else is treated as a binary or
- * uninteresting artifact and never enters a snapshot.
- */
-const SOURCE_EXTENSIONS: ReadonlySet<string> = new Set([
-  ".adoc", ".bash", ".bats", ".c", ".cc", ".cjs", ".cpp", ".cs", ".csv",
-  ".css", ".fish", ".go", ".h", ".hpp", ".htm", ".html", ".java", ".js", ".json",
-  ".jsonc", ".jsx", ".ksh", ".kt", ".kts", ".lock", ".lua", ".md", ".mdx",
-  ".mjs", ".php", ".po", ".pot", ".prisma", ".ps1", ".py", ".pyi", ".rb",
-  ".rs", ".rst", ".scss", ".sh", ".sql", ".svelte", ".swift", ".toml", ".ts",
-  ".tsv", ".tsx", ".txt", ".vue", ".xhtml", ".xml", ".yaml", ".yml", ".zsh",
-]);
-
 /** Directories never worth measuring, even when a filesystem walk reaches them. */
 export const EXCLUDED_DIRECTORIES: ReadonlySet<string> = new Set([
   ".git", ".hg", ".idea", ".mypy_cache", ".next", ".nuxt", ".pytest_cache",
@@ -32,6 +19,8 @@ const CODE_EXTENSIONS: ReadonlySet<string> = new Set([
   ".mjs", ".php", ".prisma", ".ps1", ".py", ".pyi", ".rb", ".rs",
   ".sh", ".sql", ".svelte", ".swift", ".ts", ".tsx", ".vue", ".zsh",
 ]);
+
+const OTHER_EXTENSIONS: ReadonlySet<string> = new Set([".html", ".htm", ".xhtml", ".css", ".scss", ".sass", ".less", ".svg", ".lock"]);
 
 const DATA_EXTENSIONS: ReadonlySet<string> = new Set([
   ".csv", ".json", ".jsonc", ".toml", ".tsv", ".xml", ".yaml", ".yml",
@@ -348,7 +337,7 @@ export function classifyFile(relativePath: string, localeLevels: ReadonlySet<str
   if (CODE_EXTENSIONS.has(extension)) {
     return isTestSourceName(name) || containsAny(directories, TEST_DIRECTORIES) ? "test" : "code";
   }
-  return "other";
+  return OTHER_EXTENSIONS.has(extension) ? "other" : "code";
 }
 
 /**
@@ -599,6 +588,7 @@ function isMinified(text: string): boolean {
  * library copied into an ordinary `static/` folder.
  */
 export function hasGeneratedContent(relativePath: string, text: string): boolean {
+  if (/\.(patch|diff)$/i.test(relativePath)) return false;
   const head = text.slice(0, GENERATED_HEADER_CHARS).split("\n", GENERATED_HEADER_LINES);
   if (head.some(isGeneratedHeader)) return true;
   if (hasHtmlGeneratorMetadata(relativePath, text)) return true;
@@ -658,13 +648,4 @@ export function shebangInterpreter(text: string): string | null {
   }
   const unversioned = name.replace(INTERPRETER_VERSION_SUFFIX, "");
   return unversioned === "" ? name : unversioned;
-}
-
-/** Whether the scanner should read this path at all. */
-export function isSourceFile(relativePath: string): boolean {
-  const extension = path.posix.extname(relativePath).toLowerCase();
-  const name = path.posix.basename(relativePath).toLowerCase();
-  if (!SOURCE_EXTENSIONS.has(extension) && !TEXT_NAMES.has(name)) return false;
-  const directories = path.posix.dirname(relativePath).split("/").filter((part) => part && part !== ".");
-  return !containsAny(directories, EXCLUDED_DIRECTORIES);
 }

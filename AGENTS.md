@@ -61,7 +61,8 @@ Each is explained where it belongs; the list exists so nobody breaks one by acci
 - `src/shared/api.ts` is the wire contract both builds import. `src/shared/index.ts` is the one other shared module, so a static worker rebuilds the same queryable index as the scanner. Change either and both sides change together.
 - `src/scanner/measure.ts` is the single place that decides whether a file gets tree-sitter comment spans or the marker table, so the scanner and the corpus test cannot drift apart.
 - `ScanIndex.files` is sorted by path, which is what makes a subtree total a slice. `tests/scan.test.ts` pins it, and `tests/diff-scan.test.ts` pins it for the other producer.
-- `acceptSourcePaths` in `src/scanner/walk.ts` is the single acceptance rule, so a scan and a diff cannot disagree about what a source file is.
+- `acceptSourcePaths` in `src/scanner/walk.ts` owns path exclusions, and `decodeText` in `src/scanner/text.ts` owns text detection for scans, comparisons, and previews.
+- Every changed path remains in `ScanIndex.files`; an unmeasured row has an explicit reason and null metrics, and only measured rows contribute to totals.
 - The server aggregates a live page, and its browser never receives a file it does not display. A static snapshot is the explicit exception: its worker receives the measured file index, and source text still loads one file at a time.
 - `lines === codeLines + commentLines`, non-blank lines only, buckets exclusive. Comment detection may only move a line between the two buckets, never change `lines`, never touch `tokens`.
 - A `Measure` and an `Aspect` resolve to a numeric `FileRow` field through `weightField`, the one table that holds every such name whole. Both are validated by `parseViewRequest` before either reaches an index expression.
