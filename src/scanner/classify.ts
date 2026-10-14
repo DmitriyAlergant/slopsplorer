@@ -26,8 +26,8 @@ const DATA_EXTENSIONS: ReadonlySet<string> = new Set([
   ".csv", ".json", ".jsonc", ".toml", ".tsv", ".xml", ".yaml", ".yml",
 ]);
 
-/** Plain-text manifests whose contents are configuration rather than prose. */
-const DATA_NAMES: ReadonlySet<string> = new Set(["requirements.txt"]);
+/** Manifests whose extension says nothing, or says prose, but whose contents are configuration. */
+const DATA_NAMES: ReadonlySet<string> = new Set(["requirements.txt", "go.mod", "go.sum", "go.work", "go.work.sum"]);
 
 const TEXT_EXTENSIONS: ReadonlySet<string> = new Set([".adoc", ".md", ".mdx", ".rst", ".txt"]);
 
@@ -462,6 +462,7 @@ const GENERATED_STEM = /[._-](?:generated|autogen)(?:$|[._-])|\.gen$/i;
 
 const GENERATED_NAMES: ReadonlySet<string> = new Set([
   "package-lock.json", "npm-shrinkwrap.json", "pnpm-lock.yaml", "yarn.lock", "bun.lockb", "composer.lock",
+  "go.sum", "go.work.sum",
 ]);
 
 /** Generated filenames that form a family rather than one fixed name. */

@@ -131,7 +131,7 @@ A comparison sees only the files a change touched, so `listTargetFiles()` in `sr
 1. `.po` or `.pot`: `i18n`.
 2. A filename that names itself a test whatever its format, through `isTestFileName()`: `test_*`, `spec_*`, `*_test.*`, `*_spec.*`, `*.test.*`, `*.spec.*`: `test`.
 3. One language's copy of something, through `isLocaleCopy()`: a name carrying a region or script anywhere on the path, or a bare language name whose own folder is a locale level: `i18n`.
-4. `requirements.txt`: `data`.
+4. The manifests `requirements.txt`, `go.mod`, `go.sum`, `go.work`, and `go.work.sum`: `data`.
 5. An extensionless name in `TEXT_NAMES`: `text`.
 6. The data extensions `.csv`, `.json`, `.jsonc`, `.toml`, `.tsv`, `.xml`, `.yaml`, `.yml`: `i18n` inside a folder named for translation, and `data` otherwise.
 7. The prose extensions `.adoc`, `.md`, `.mdx`, `.rst`, `.txt`: `data` inside a folder named `data`, `fixture`, `fixtures`, `testdata`, `sample`, `samples`, `snapshot`, `snapshots`, `__snapshots__`, `golden`, or `goldens`, and `text` otherwise.
@@ -201,7 +201,7 @@ Two functions set the flag, and either one is enough.
 
 ### What the path says
 
-`isGenerated()` marks a folder named `__generated__`, `coverage`, `dist`, `generated`, or `gen`; the known lock files; and the suffixes that build tools use, among them `.g.dart`, `.pb.go`, `_pb2.py`, `.min.js`, `.min.css`, `.bundle.js`, `.chunk.js`, `.map`, and `.lock`.
+`isGenerated()` marks a folder named `__generated__`, `coverage`, `dist`, `generated`, or `gen`; the known lock files, which include the Go checksum lists `go.sum` and `go.work.sum`; and the suffixes that build tools use, among them `.g.dart`, `.pb.go`, `_pb2.py`, `.min.js`, `.min.css`, `.bundle.js`, `.chunk.js`, `.map`, and `.lock`.
 It also marks `.designer.cs`, `.feature.cs`, Yarn Plug'n'Play files named `.pnp.*`, and `npm-shrinkwrap.json`.
 
 It also reads the marker that a build tool writes into the stem, in whatever language it emits: `vimfn.gen.lua`, `CallInstruction.Generated.cs`, `serializer.autogen.cs`, and `zz_generated.deepcopy.go`.
